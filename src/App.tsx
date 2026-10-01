@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
 
 type AuthMode = 'sign-in' | 'sign-up'
+type WorkMode = 'create' | 'update'
 
 type CreateDraft = {
   subject_member_id: string | null
@@ -15,6 +16,27 @@ type CreateDraft = {
   first_reminder_at: string | null
   reminder_phrase: string | null
   confirmation_text: string
+}
+
+type UpdateDraft = {
+  pending_action_id: string
+  target_item_id: string
+  confirmation_text: string
+}
+
+type UpdateCandidate = {
+  id: string
+  label: string
+  title: string
+  due_date: string | null
+  due_time: string | null
+  subject_display_name: string | null
+}
+
+type UpdateChanges = {
+  due_date: string | null
+  due_time: string | null
+  title: string | null
 }
 
 export default function App() {
@@ -32,8 +54,12 @@ export default function App() {
   const [managedMembersText, setManagedMembersText] = useState('Bence, Anyu')
   const [setupComplete, setSetupComplete] = useState<boolean | null>(null)
 
+  const [workMode, setWorkMode] = useState<WorkMode>('create')
   const [naturalMessage, setNaturalMessage] = useState('')
   const [draft, setDraft] = useState<CreateDraft | null>(null)
+  const [updateDraft, setUpdateDraft] = useState<UpdateDraft | null>(null)
+  const [updateCandidates, setUpdateCandidates] = useState<UpdateCandidate[]>([])
+  const [updateChanges, setUpdateChanges] = useState<UpdateChanges | null>(null)
   const [flowMessage, setFlowMessage] = useState<string | null>(null)
   const [flowError, setFlowError] = useState<string | null>(null)
   const [flowBusy, setFlowBusy] = useState(false)
@@ -51,6 +77,9 @@ export default function App() {
       setLoadingSession(false)
       setSetupComplete(null)
       setDraft(null)
+      setUpdateDraft(null)
+      setUpdateCandidates([])
+      setUpdateChanges(null)
       setFlowMessage(null)
       setFlowError(null)
     })
@@ -153,16 +182,42 @@ export default function App() {
     setFlowError(null)
     setFlowMessage(null)
     setDraft(null)
+    setUpdateDraft(null)
+    setUpdateCandidates([])
+    setUpdateChanges(null)
 
     try {
       const data = await invokeCore({
-        action: 'interpret_create',
+        action: workMode === 'create' ? 'interpret_create' : 'interpret_update',
         message: naturalMessage.trim(),
       })
 
-      setDraft(data.draft as CreateDraft)
+      if (workMode === 'create') {
+        setDraft(data.draft as CreateDraft)
+        return
+      }
+
+      if (data.status === 'needs_confirmation') {
+        setUpdateDraft(data.draft as UpdateDraft)
+        return
+      }
+
+      if (data.status === 'choose_target') {
+        setUpdateCandidates(data.candidates as UpdateCandidate[])
+        setUpdateChanges(data.changes as UpdateChanges)
+        return
+      }
+
+      if (data.status === 'needs_change_details') {
+        setFlowError(data.error ?? 'Pontosítsd, mire szeretnéd módosítani az ügyet.')
+        return
+      }
+
+      if (data.status === 'no_match') {
+        setFlowError(data.error ?? 'Nem találtam megfelelő ügyet.')
+      }
     } catch (error) {
-      setFlowError(error instanceof Error ? error.message : 'Nem sikerült értelmezni a bejegyzést.')
+      setFlowError(error instanceof Error ? error.message : 'Nem sikerült értelmezni a kérést.')
     } finally {
       setFlowBusy(false)
     }
@@ -188,6 +243,76 @@ export default function App() {
       setFlowError(error instanceof Error ? error.message : 'Nem sikerült rögzíteni a bejegyzést.')
     } finally {
       setFlowBusy(false)
+    }
+  }
+
+
+  async function handleChooseUpdateTarget(targetItemId: string) {
+    if (!updateChanges) return
+
+    setFlowBusy(true)
+    setFlowError(null)
+
+    try {
+      const data = await invokeCore({
+        action: 'prepare_update_target',
+        target_item_id: targetItemId,
+        changes: updateChanges,
+      })
+
+      if (data.status === 'needs_confirmation') {
+        setUpdateDraft(data.draft as UpdateDraft)
+        setUpdateCandidates([])
+      } else {
+        setFlowError(data.error ?? 'A módosítást még pontosítani kell.')
+      }
+    } catch (error) {
+      setFlowError(error instanceof Error ? error.message : 'Nem sikerült kiválasztani az ügyet.')
+    } finally {
+      setFlowBusy(false)
+    }
+  }
+
+  async function handleConfirmUpdate() {
+    if (!updateDraft) return
+
+    setFlowBusy(true)
+    setFlowError(null)
+    setFlowMessage(null)
+
+    try {
+      const data = await invokeCore({
+        action: 'confirm_update',
+        pending_action_id: updateDraft.pending_action_id,
+      })
+
+      setFlowMessage(`Módosítva: ${data.item.title}`)
+      setNaturalMessage('')
+      setUpdateDraft(null)
+      setUpdateChanges(null)
+    } catch (error) {
+      setFlowError(error instanceof Error ? error.message : 'Nem sikerült végrehajtani a módosítást.')
+    } finally {
+      setFlowBusy(false)
+    }
+  }
+
+  async function handleCancelUpdate() {
+    const pendingActionId = updateDraft?.pending_action_id
+
+    setUpdateDraft(null)
+    setUpdateCandidates([])
+    setUpdateChanges(null)
+
+    if (!pendingActionId) return
+
+    try {
+      await invokeCore({
+        action: 'cancel_pending',
+        pending_action_id: pendingActionId,
+      })
+    } catch {
+      // A felhasználói felületen már megszakítottuk a műveletet.
     }
   }
 
@@ -249,15 +374,56 @@ export default function App() {
 
           {setupComplete === true && (
             <div className="stack">
+              <div className="auth-tabs" aria-label="Művelet">
+                <button
+                  className={workMode === 'create' ? 'tab active' : 'tab'}
+                  type="button"
+                  onClick={() => {
+                    setWorkMode('create')
+                    setDraft(null)
+                    setUpdateDraft(null)
+                    setUpdateCandidates([])
+                    setUpdateChanges(null)
+                    setFlowError(null)
+                    setFlowMessage(null)
+                  }}
+                >
+                  Új ügy
+                </button>
+                <button
+                  className={workMode === 'update' ? 'tab active' : 'tab'}
+                  type="button"
+                  onClick={() => {
+                    setWorkMode('update')
+                    setDraft(null)
+                    setUpdateDraft(null)
+                    setUpdateCandidates([])
+                    setUpdateChanges(null)
+                    setFlowError(null)
+                    setFlowMessage(null)
+                  }}
+                >
+                  Módosítás
+                </button>
+              </div>
+
               <form className="stack" onSubmit={handleInterpret}>
-                <h2>Új ügy rögzítése</h2>
-                <p className="muted">Írd le természetesen, mit kell észben tartani.</p>
+                <h2>{workMode === 'create' ? 'Új ügy rögzítése' : 'Meglévő ügy módosítása'}</h2>
+                <p className="muted">
+                  {workMode === 'create'
+                    ? 'Írd le természetesen, mit kell észben tartani.'
+                    : 'Írd le természetesen, mit szeretnél módosítani.'}
+                </p>
 
                 <textarea
                   rows={5}
                   value={naturalMessage}
                   onChange={(event) => setNaturalMessage(event.target.value)}
-                  placeholder="Bencének jövő kedden 16:30-kor fogorvosa van, három nappal előtte szólj."
+                  placeholder={
+                    workMode === 'create'
+                      ? 'Bencének jövő kedden 16:30-kor fogorvosa van, három nappal előtte szólj.'
+                      : 'Anya fodrászát áttették jövő keddre 11-re.'
+                  }
                   required
                 />
 
@@ -275,6 +441,41 @@ export default function App() {
                       Igen, rögzítsd
                     </button>
                     <button className="secondary-button" type="button" onClick={() => setDraft(null)} disabled={flowBusy}>
+                      Mégse
+                    </button>
+                  </div>
+                </section>
+              )}
+
+              {updateCandidates.length > 0 && (
+                <section className="confirmation">
+                  <p className="eyebrow">Több lehetséges ügyet találtam</p>
+                  <p>Melyikre gondoltál?</p>
+                  <div className="candidate-list">
+                    {updateCandidates.map((candidate) => (
+                      <button
+                        className="secondary-button candidate-button"
+                        type="button"
+                        key={candidate.id}
+                        onClick={() => handleChooseUpdateTarget(candidate.id)}
+                        disabled={flowBusy}
+                      >
+                        {candidate.label}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {updateDraft && (
+                <section className="confirmation">
+                  <p className="eyebrow">Módosítás visszaigazolása</p>
+                  <p>{updateDraft.confirmation_text}</p>
+                  <div className="actions">
+                    <button className="primary-button" type="button" onClick={handleConfirmUpdate} disabled={flowBusy}>
+                      Igen, módosítsd
+                    </button>
+                    <button className="secondary-button" type="button" onClick={handleCancelUpdate} disabled={flowBusy}>
                       Mégse
                     </button>
                   </div>
