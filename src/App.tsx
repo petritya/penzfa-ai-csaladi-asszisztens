@@ -1,6 +1,12 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
+import {
+  initializePush,
+  isPushConfigured,
+  logoutPush,
+  requestPushPermission,
+} from './lib/onesignal'
 
 type AuthMode = 'sign-in' | 'sign-up'
 type WorkMode = 'create' | 'update' | 'complete'
@@ -71,6 +77,8 @@ export default function App() {
   const [flowMessage, setFlowMessage] = useState<string | null>(null)
   const [flowError, setFlowError] = useState<string | null>(null)
   const [flowBusy, setFlowBusy] = useState(false)
+  const [pushBusy, setPushBusy] = useState(false)
+  const [pushMessage, setPushMessage] = useState<string | null>(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -104,6 +112,14 @@ export default function App() {
       .then((data) => setSetupComplete(Boolean(data.setup_complete)))
       .catch(() => setSetupComplete(false))
   }, [session, setupComplete])
+
+  useEffect(() => {
+    if (!session || !isPushConfigured()) return
+
+    void initializePush(session.user.id).catch(() => {
+      setPushMessage('A push értesítések inicializálása nem sikerült.')
+    })
+  }, [session])
 
   const managedMembers = useMemo(
     () =>
@@ -158,9 +174,40 @@ export default function App() {
 
   async function handleSignOut() {
     setErrorMessage(null)
+
+    try {
+      await logoutPush()
+    } catch {
+      // A kijelentkezést nem akadályozza a push szolgáltatás hibája.
+    }
+
     const { error } = await supabase.auth.signOut()
 
     if (error) setErrorMessage(error.message)
+  }
+
+  async function handleEnablePush() {
+    setPushBusy(true)
+    setPushMessage(null)
+
+    try {
+      if (!session) return
+      await initializePush(session.user.id)
+      const granted = await requestPushPermission()
+      setPushMessage(
+        granted
+          ? 'A push értesítések engedélyezve vannak.'
+          : 'A böngészőben nem engedélyezted a push értesítéseket.',
+      )
+    } catch (error) {
+      setPushMessage(
+        error instanceof Error
+          ? error.message
+          : 'Nem sikerült engedélyezni a push értesítéseket.',
+      )
+    } finally {
+      setPushBusy(false)
+    }
   }
 
   async function handleBootstrap(event: FormEvent<HTMLFormElement>) {
@@ -443,6 +490,20 @@ export default function App() {
           </div>
 
           <p className="lead">{session.user.email ?? 'Bejelentkezett felhasználó'}</p>
+
+          {isPushConfigured() && (
+            <div className="push-setup">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={handleEnablePush}
+                disabled={pushBusy}
+              >
+                {pushBusy ? 'Értesítések beállítása…' : 'Push értesítések engedélyezése'}
+              </button>
+              {pushMessage && <p className="muted">{pushMessage}</p>}
+            </div>
+          )}
 
           {setupComplete === false && (
             <form className="stack" onSubmit={handleBootstrap}>
