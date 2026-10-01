@@ -133,6 +133,7 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'Csak POST kérés támogatott.' }, 405)
 
   try {
+    const body = await req.json().catch(() => ({}))
     const appId = Deno.env.get('ONESIGNAL_APP_ID')
     const restApiKey = Deno.env.get('ONESIGNAL_REST_API_KEY')
 
@@ -140,6 +141,40 @@ Deno.serve(async (req) => {
       return json({
         status: 'waiting_for_push_setup',
         message: 'A scheduler él, de a OneSignal még nincs beállítva.',
+      })
+    }
+
+    if (body?.action === 'notification_status') {
+      const notificationId = String(body?.notification_id ?? '')
+      if (!notificationId) return json({ error: 'Hiányzó notification_id.' }, 400)
+
+      const response = await fetch(
+        `https://api.onesignal.com/notifications/${notificationId}?app_id=${appId}`,
+        {
+          headers: {
+            Authorization: `Key ${restApiKey}`,
+            Accept: 'application/json',
+          },
+        },
+      )
+
+      const data = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        return json({
+          error: data?.errors ?? data?.error ?? `OneSignal HTTP ${response.status}`,
+        }, response.status)
+      }
+
+      return json({
+        id: data?.id ?? notificationId,
+        successful: data?.successful ?? null,
+        failed: data?.failed ?? null,
+        errored: data?.errored ?? null,
+        remaining: data?.remaining ?? null,
+        received: data?.received ?? null,
+        completed_at: data?.completed_at ?? null,
+        platform_delivery_stats: data?.platform_delivery_stats ?? null,
       })
     }
 
