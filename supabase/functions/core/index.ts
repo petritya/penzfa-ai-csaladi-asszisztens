@@ -69,6 +69,67 @@ function weekdayOf(dateIso: string) {
   return new Date(Date.UTC(year, month - 1, day)).getUTCDay()
 }
 
+function makeIsoDate(year: number, month: number, day: number) {
+  const date = new Date(Date.UTC(year, month - 1, day))
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) return null
+
+  return date.toISOString().slice(0, 10)
+}
+
+function findHungarianMonth(value: string) {
+  const text = normalize(value)
+  const months: Array<[string, number]> = [
+    ['januar', 1],
+    ['februar', 2],
+    ['marcius', 3],
+    ['aprilis', 4],
+    ['majus', 5],
+    ['junius', 6],
+    ['julius', 7],
+    ['augusztus', 8],
+    ['szeptember', 9],
+    ['oktober', 10],
+    ['november', 11],
+    ['december', 12],
+  ]
+
+  for (const [name, month] of months) {
+    if (text.includes(name)) return month
+  }
+
+  return null
+}
+
+function findDayOfMonth(value: string) {
+  const text = normalize(value)
+
+  const numeric = text.match(/\b([12]?\d|3[01])(?:\.|-(?:an|en))?\b/)
+  if (numeric) return Number(numeric[1])
+
+  const ordinals: Array<[RegExp, number]> = [
+    [/\belsejen\b/, 1],
+    [/\bmasodikan\b/, 2],
+    [/\bharmadikan\b/, 3],
+    [/\bnegyediken\b/, 4],
+    [/\botodiken\b/, 5],
+    [/\bhatodikan\b/, 6],
+    [/\bhetediken\b/, 7],
+    [/\bnyolcadikan\b/, 8],
+    [/\bkilencediken\b/, 9],
+    [/\btizediken\b/, 10],
+  ]
+
+  for (const [pattern, day] of ordinals) {
+    if (pattern.test(text)) return day
+  }
+
+  return null
+}
+
 function findHungarianWeekday(value: string) {
   const text = normalize(value)
   const weekdays: Array<[RegExp, number]> = [
@@ -97,6 +158,38 @@ function resolveDatePhrase(phrase: string | null, timeZone: string) {
   if (explicitIso) return explicitIso[1]
 
   const today = localDateInTimezone(timeZone)
+  const [todayYear, todayMonth] = today.split('-').map(Number)
+
+  const explicitMonth = findHungarianMonth(raw)
+  const explicitDay = findDayOfMonth(raw)
+
+  if (explicitMonth !== null && explicitDay !== null) {
+    let year = todayYear
+    let candidate = makeIsoDate(year, explicitMonth, explicitDay)
+    if (!candidate) return null
+    if (candidate < today) {
+      year += 1
+      candidate = makeIsoDate(year, explicitMonth, explicitDay)
+    }
+    return candidate
+  }
+
+  if (explicitMonth === null && explicitDay !== null) {
+    let year = todayYear
+    let month = todayMonth
+    let candidate = makeIsoDate(year, month, explicitDay)
+
+    if (!candidate || candidate < today) {
+      month += 1
+      if (month > 12) {
+        month = 1
+        year += 1
+      }
+      candidate = makeIsoDate(year, month, explicitDay)
+    }
+
+    return candidate
+  }
 
   if (/\bholnaputan\b/.test(normalized)) return addDays(today, 2)
   if (/\bholnap\b/.test(normalized)) return addDays(today, 1)
