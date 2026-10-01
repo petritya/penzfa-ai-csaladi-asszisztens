@@ -112,8 +112,7 @@ export default function App() {
     }
 
     if (data?.error) {
-      const code = data.code ? ` [${data.code}]` : ''
-      throw new Error(`${data.error}${code}`)
+      throw new Error(data.error)
     }
 
     return data
