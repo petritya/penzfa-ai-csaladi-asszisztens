@@ -327,6 +327,13 @@ Deno.serve(async (req) => {
       .eq('member_kind', 'active')
       .maybeSingle()
 
+    if (body?.action === 'setup_status') {
+      return json({
+        setup_complete: Boolean(activeMembership),
+        family_id: activeMembership?.family_id ?? null,
+      })
+    }
+
     if (body?.action === 'bootstrap') {
       if (activeMembership) {
         return json({ status: 'exists', family_id: activeMembership.family_id })
