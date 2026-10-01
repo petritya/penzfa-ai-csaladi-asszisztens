@@ -219,6 +219,21 @@ function resolveDatePhrase(phrase: string | null, timeZone: string) {
   if (/\bholnap\b/.test(normalized)) return addDays(today, 1)
   if (/\bma\b/.test(normalized)) return today
 
+  const weeksWithWeekdayMatch = normalized.match(
+    /\b(\d+|egy|ket|ketto|harom|negy|ot|hat|het|nyolc|kilenc|tiz)\s+het\s+mulva\b/,
+  )
+  const weekdayInPhrase = findHungarianWeekday(normalized)
+
+  if (weeksWithWeekdayMatch && weekdayInPhrase !== null) {
+    const weeks = parseHungarianNumber(weeksWithWeekdayMatch[1])
+    if (weeks !== null && weeks >= 1) {
+      const todayWeekday = weekdayOf(today)
+      const daysToNextMonday = ((1 - todayWeekday + 7) % 7) || 7
+      const targetOffsetFromMonday = (weekdayInPhrase - 1 + 7) % 7
+      return addDays(today, daysToNextMonday + (weeks - 1) * 7 + targetOffsetFromMonday)
+    }
+  }
+
   const relativeMatch = normalized.match(
     /\b(\d+|egy|ket|ketto|harom|negy|ot|hat|het|nyolc|kilenc|tiz)\s+(nap|het)\s+mulva\b/,
   )
@@ -230,7 +245,7 @@ function resolveDatePhrase(phrase: string | null, timeZone: string) {
     }
   }
 
-  const targetWeekday = findHungarianWeekday(normalized)
+  const targetWeekday = weekdayInPhrase
   if (targetWeekday === null) return null
 
   const todayWeekday = weekdayOf(today)
