@@ -24,6 +24,30 @@ type CreateDraft = {
   confirmation_text: string
 }
 
+type UpdateInterpretation = {
+  intent: 'update'
+  target_title: string
+  subject_name: string | null
+  target_date_phrase: string | null
+  new_date_phrase: string | null
+  new_time: string | null
+  new_title: string | null
+}
+
+type UpdateCandidate = {
+  id: string
+  title: string
+  due_date: string | null
+  due_time: string | null
+  subject_display_name: string | null
+}
+
+type UpdateDraft = {
+  pending_action_id: string
+  target_item_id: string
+  confirmation_text: string
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -310,6 +334,42 @@ function formatHungarianDate(dateIso: string | null) {
   }).format(new Date(Date.UTC(year, month - 1, day)))
 }
 
+function dateInTimezone(isoTimestamp: string, timeZone: string) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(isoTimestamp))
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return `${values.year}-${values.month}-${values.day}`
+}
+
+function timeInTimezone(isoTimestamp: string, timeZone: string) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(isoTimestamp))
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return `${values.hour}:${values.minute}`
+}
+
+function daysBetween(fromDateIso: string, toDateIso: string) {
+  const [fy, fm, fd] = fromDateIso.split('-').map(Number)
+  const [ty, tm, td] = toDateIso.split('-').map(Number)
+  const diff = Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)
+  return Math.round(diff / 86400000)
+}
+
+function updateCandidateLabel(candidate: UpdateCandidate) {
+  const subject = candidate.subject_display_name ? `${candidate.subject_display_name}: ` : ''
+  const date = candidate.due_date ? formatHungarianDate(candidate.due_date) : 'dátum nélkül'
+  const time = candidate.due_time ? ` ${String(candidate.due_time).slice(0, 5)}` : ''
+  return `${subject}${candidate.title} – ${date}${time}`
+}
+
 function extractOutputText(response: any) {
   for (const item of response?.output ?? []) {
     for (const content of item?.content ?? []) {
@@ -390,6 +450,77 @@ async function interpretWithOpenAI(
   if (!outputText) throw new Error('Az AI nem adott értelmezhető strukturált választ.')
 
   return JSON.parse(outputText) as CreateInterpretation
+}
+
+
+async function interpretUpdateWithOpenAI(
+  message: string,
+  memberNames: string[],
+): Promise<UpdateInterpretation> {
+  const apiKey = Deno.env.get('OPENAI_API_KEY')
+  if (!apiKey) throw new Error('OPENAI_API_KEY nincs beállítva a Supabase Edge Function secretjei között.')
+
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'gpt-5.6-luna',
+      instructions: [
+        'Te egy magyar nyelvű családi asszisztens módosítás-értelmező rétege vagy.',
+        'A felhasználó egy már létező családi ügyet akar módosítani.',
+        'Ne módosíts adatbázist és ne találj ki hiányzó adatot.',
+        'A target_title legyen rövid, alapalakú megnevezés, amely alapján a meglévő ügy megkereshető, például "Fodrász".',
+        'A subject_name lehetőleg a megadott családtag-nevek egyikének alapalakja legyen.',
+        `Ismert családtagok: ${memberNames.length ? memberNames.join(', ') : 'nincs'}.`,
+        'A target_date_phrase csak akkor legyen kitöltve, ha a felhasználó a régi eseményt dátummal azonosítja.',
+        'A new_date_phrase csak az új dátumra vonatkozó természetes nyelvű kifejezés legyen.',
+        'Ha azt mondja, hogy ugyanazon a napon marad, a new_date_phrase legyen null.',
+        'A new_time mezőt HH:MM formára normalizáld, ha új időpont egyértelmű.',
+        'Ha új címet nem kér, new_title legyen null.',
+      ].join('\n'),
+      input: message,
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'update_item_interpretation',
+          strict: true,
+          schema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              intent: { type: 'string', enum: ['update'] },
+              target_title: { type: 'string' },
+              subject_name: { type: ['string', 'null'] },
+              target_date_phrase: { type: ['string', 'null'] },
+              new_date_phrase: { type: ['string', 'null'] },
+              new_time: { type: ['string', 'null'] },
+              new_title: { type: ['string', 'null'] },
+            },
+            required: [
+              'intent',
+              'target_title',
+              'subject_name',
+              'target_date_phrase',
+              'new_date_phrase',
+              'new_time',
+              'new_title',
+            ],
+          },
+        },
+      },
+    }),
+  })
+
+  const data = await response.json()
+  if (!response.ok) throw new Error(data?.error?.message ?? 'OpenAI API hiba.')
+
+  const outputText = extractOutputText(data)
+  if (!outputText) throw new Error('Az AI nem adott értelmezhető módosítási választ.')
+
+  return JSON.parse(outputText) as UpdateInterpretation
 }
 
 Deno.serve(async (req) => {
@@ -650,6 +781,363 @@ Deno.serve(async (req) => {
       })
 
       return json({ status: 'created', item })
+    }
+
+
+    if (body?.action === 'interpret_update') {
+      const message = String(body?.message ?? '').trim()
+      if (!message) return json({ error: 'Az üzenet nem lehet üres.' }, 400)
+
+      const [{ data: members, error: membersError }, { data: settings }] = await Promise.all([
+        db
+          .from('family_members')
+          .select('id, display_name, member_kind, user_id')
+          .eq('family_id', familyId),
+        db
+          .from('user_settings')
+          .select('timezone, briefing_time')
+          .eq('user_id', user.id)
+          .maybeSingle(),
+      ])
+      if (membersError) throw membersError
+
+      const interpretation = await interpretUpdateWithOpenAI(
+        message,
+        (members ?? []).map((member) => member.display_name),
+      )
+
+      const timeZone = settings?.timezone ?? 'Europe/Budapest'
+      const newDate = interpretation.new_date_phrase
+        ? resolveDatePhrase(interpretation.new_date_phrase, timeZone)
+        : null
+      const targetDate = interpretation.target_date_phrase
+        ? resolveDatePhrase(interpretation.target_date_phrase, timeZone)
+        : null
+      const newTime = validateTime(interpretation.new_time)
+
+      if (interpretation.new_date_phrase && !newDate) {
+        return json({
+          error: 'Az új dátumot még nem tudom biztonságosan feloldani.',
+          code: 'DATE_NEEDS_CLARIFICATION',
+          date_phrase: interpretation.new_date_phrase,
+        })
+      }
+
+      if (interpretation.target_date_phrase && !targetDate) {
+        return json({
+          error: 'A keresett régi dátumot még nem tudom biztonságosan feloldani.',
+          code: 'TARGET_DATE_NEEDS_CLARIFICATION',
+          date_phrase: interpretation.target_date_phrase,
+        })
+      }
+
+      let subjectId: string | null = null
+      if (interpretation.subject_name) {
+        const wanted = normalize(interpretation.subject_name)
+        const subject = (members ?? []).find((member) => normalize(member.display_name) === wanted) ?? null
+        if (!subject) {
+          return json({
+            error: `Nem találtam ilyen családtagot: ${interpretation.subject_name}.`,
+            code: 'SUBJECT_NEEDS_CLARIFICATION',
+            known_members: (members ?? []).map((member) => member.display_name),
+          })
+        }
+        subjectId = subject.id
+      }
+
+      const { data: openItems, error: itemsError } = await db
+        .from('items')
+        .select('id, title, due_date, due_time, subject_member_id')
+        .eq('family_id', familyId)
+        .eq('status', 'open')
+        .order('due_date', { ascending: true, nullsFirst: false })
+      if (itemsError) throw itemsError
+
+      const targetTitle = normalize(interpretation.target_title)
+      const targetTokens = targetTitle.split(/\s+/).filter((token) => token.length >= 3)
+
+      let matches = (openItems ?? []).filter((item) => {
+        if (subjectId && item.subject_member_id !== subjectId) return false
+        if (targetDate && item.due_date !== targetDate) return false
+
+        const itemTitle = normalize(item.title)
+        if (itemTitle.includes(targetTitle) || targetTitle.includes(itemTitle)) return true
+        return targetTokens.some((token) => itemTitle.includes(token))
+      })
+
+      const memberNameById = new Map((members ?? []).map((member) => [member.id, member.display_name]))
+      const candidates: UpdateCandidate[] = matches.map((item) => ({
+        id: item.id,
+        title: item.title,
+        due_date: item.due_date,
+        due_time: item.due_time,
+        subject_display_name: item.subject_member_id
+          ? memberNameById.get(item.subject_member_id) ?? null
+          : null,
+      }))
+
+      const changes = {
+        due_date: newDate,
+        due_time: newTime,
+        title: interpretation.new_title?.trim() || null,
+      }
+
+      const hasChanges = Boolean(changes.due_date || changes.due_time || changes.title)
+
+      if (candidates.length === 0) {
+        return json({
+          status: 'no_match',
+          error: 'Nem találtam egyértelműen ilyen nyitott ügyet.',
+          code: 'UPDATE_TARGET_NOT_FOUND',
+        })
+      }
+
+      if (candidates.length > 1) {
+        return json({
+          status: 'choose_target',
+          candidates: candidates.map((candidate) => ({
+            ...candidate,
+            label: updateCandidateLabel(candidate),
+          })),
+          changes,
+        })
+      }
+
+      if (!hasChanges) {
+        return json({
+          status: 'needs_change_details',
+          error: 'Megtaláltam az ügyet, de még nem derül ki, mire szeretnéd módosítani.',
+          candidate: {
+            ...candidates[0],
+            label: updateCandidateLabel(candidates[0]),
+          },
+        })
+      }
+
+      const candidate = candidates[0]
+      const oldDate = candidate.due_date
+      const oldTime = candidate.due_time ? String(candidate.due_time).slice(0, 5) : null
+      const nextDate = changes.due_date ?? oldDate
+      const nextTime = changes.due_time ?? oldTime
+      const nextTitle = changes.title ?? candidate.title
+
+      const { data: pending, error: pendingError } = await db
+        .from('pending_actions')
+        .insert({
+          family_id: familyId,
+          actor_user_id: user.id,
+          intent: 'update',
+          target_item_id: candidate.id,
+          payload: {
+            before: {
+              title: candidate.title,
+              due_date: oldDate,
+              due_time: oldTime,
+            },
+            changes,
+          },
+        })
+        .select('id')
+        .single()
+      if (pendingError) throw pendingError
+
+      const oldText = `${candidate.title} – ${formatHungarianDate(oldDate)}${oldTime ? ` ${oldTime}` : ''}`
+      const newText = `${nextTitle} – ${formatHungarianDate(nextDate)}${nextTime ? ` ${nextTime}` : ''}`
+
+      const draft: UpdateDraft = {
+        pending_action_id: pending.id,
+        target_item_id: candidate.id,
+        confirmation_text: `Ezt találtam: ${oldText}. Erre módosítsam: ${newText}?`,
+      }
+
+      return json({ status: 'needs_confirmation', draft })
+    }
+
+    if (body?.action === 'prepare_update_target') {
+      const targetItemId = String(body?.target_item_id ?? '')
+      const changes = body?.changes ?? {}
+
+      const { data: item } = await db
+        .from('items')
+        .select('id, title, due_date, due_time, family_id')
+        .eq('id', targetItemId)
+        .eq('family_id', familyId)
+        .eq('status', 'open')
+        .maybeSingle()
+
+      if (!item) return json({ error: 'A kiválasztott ügy már nem található.' })
+
+      const normalizedChanges = {
+        due_date: changes.due_date || null,
+        due_time: changes.due_time || null,
+        title: changes.title || null,
+      }
+
+      if (!normalizedChanges.due_date && !normalizedChanges.due_time && !normalizedChanges.title) {
+        return json({
+          status: 'needs_change_details',
+          error: 'Megvan az ügy. Mondd meg, mire szeretnéd módosítani.',
+        })
+      }
+
+      const oldTime = item.due_time ? String(item.due_time).slice(0, 5) : null
+      const nextDate = normalizedChanges.due_date ?? item.due_date
+      const nextTime = normalizedChanges.due_time ?? oldTime
+      const nextTitle = normalizedChanges.title ?? item.title
+
+      const { data: pending, error: pendingError } = await db
+        .from('pending_actions')
+        .insert({
+          family_id: familyId,
+          actor_user_id: user.id,
+          intent: 'update',
+          target_item_id: item.id,
+          payload: {
+            before: {
+              title: item.title,
+              due_date: item.due_date,
+              due_time: oldTime,
+            },
+            changes: normalizedChanges,
+          },
+        })
+        .select('id')
+        .single()
+      if (pendingError) throw pendingError
+
+      return json({
+        status: 'needs_confirmation',
+        draft: {
+          pending_action_id: pending.id,
+          target_item_id: item.id,
+          confirmation_text:
+            `Ezt találtam: ${item.title} – ${formatHungarianDate(item.due_date)}${oldTime ? ` ${oldTime}` : ''}. ` +
+            `Erre módosítsam: ${nextTitle} – ${formatHungarianDate(nextDate)}${nextTime ? ` ${nextTime}` : ''}?`,
+        },
+      })
+    }
+
+    if (body?.action === 'confirm_update') {
+      const pendingActionId = String(body?.pending_action_id ?? '')
+      if (!pendingActionId) return json({ error: 'Hiányzó függőben lévő művelet.' }, 400)
+
+      const { data: pending } = await db
+        .from('pending_actions')
+        .select('id, target_item_id, payload, status, expires_at')
+        .eq('id', pendingActionId)
+        .eq('actor_user_id', user.id)
+        .eq('family_id', familyId)
+        .maybeSingle()
+
+      if (!pending || pending.status !== 'pending') {
+        return json({ error: 'Ez a módosítás már nem aktív.' })
+      }
+
+      if (new Date(pending.expires_at).getTime() < Date.now()) {
+        await db
+          .from('pending_actions')
+          .update({ status: 'expired', resolved_at: new Date().toISOString() })
+          .eq('id', pending.id)
+        return json({ error: 'A módosítási megerősítés lejárt. Kérlek, indítsd újra.' })
+      }
+
+      const { data: item } = await db
+        .from('items')
+        .select('id, title, due_date, due_time')
+        .eq('id', pending.target_item_id)
+        .eq('family_id', familyId)
+        .eq('status', 'open')
+        .maybeSingle()
+      if (!item) return json({ error: 'A módosítandó ügy már nem található.' })
+
+      const changes = pending.payload?.changes ?? {}
+      const updateValues: Record<string, unknown> = {}
+
+      if (changes.title) updateValues.title = changes.title
+      if (changes.due_date) updateValues.due_date = changes.due_date
+      if (changes.due_time) updateValues.due_time = changes.due_time
+
+      if (Object.keys(updateValues).length === 0) {
+        return json({ error: 'Nincs végrehajtható módosítás.' })
+      }
+
+      const { data: settings } = await db
+        .from('user_settings')
+        .select('timezone')
+        .eq('user_id', user.id)
+        .maybeSingle()
+      const timeZone = settings?.timezone ?? 'Europe/Budapest'
+
+      if (changes.due_date && item.due_date) {
+        const { data: reminder } = await db
+          .from('reminders')
+          .select('id, first_reminder_at, next_notification_at, last_sent_at')
+          .eq('item_id', item.id)
+          .maybeSingle()
+
+        if (reminder?.first_reminder_at && !reminder.last_sent_at) {
+          const oldReminderDate = dateInTimezone(reminder.first_reminder_at, timeZone)
+          const oldReminderTime = timeInTimezone(reminder.first_reminder_at, timeZone)
+          const offset = daysBetween(oldReminderDate, item.due_date)
+          const newReminderDate = addDays(changes.due_date, -offset)
+          const newReminderAt = localDateTimeToUtcIso(newReminderDate, oldReminderTime, timeZone)
+
+          await db
+            .from('reminders')
+            .update({
+              first_reminder_at: newReminderAt,
+              next_notification_at: newReminderAt,
+            })
+            .eq('id', reminder.id)
+        }
+      }
+
+      const { data: updatedItem, error: updateError } = await db
+        .from('items')
+        .update(updateValues)
+        .eq('id', item.id)
+        .select('*')
+        .single()
+      if (updateError) throw updateError
+
+      await db
+        .from('pending_actions')
+        .update({
+          status: 'confirmed',
+          resolved_at: new Date().toISOString(),
+        })
+        .eq('id', pending.id)
+
+      await db.from('activity_log').insert({
+        family_id: familyId,
+        actor_user_id: user.id,
+        item_id: item.id,
+        action: 'item_updated',
+        details: {
+          before: pending.payload?.before ?? null,
+          changes,
+        },
+      })
+
+      return json({ status: 'updated', item: updatedItem })
+    }
+
+    if (body?.action === 'cancel_pending') {
+      const pendingActionId = String(body?.pending_action_id ?? '')
+      if (!pendingActionId) return json({ status: 'cancelled' })
+
+      await db
+        .from('pending_actions')
+        .update({
+          status: 'cancelled',
+          resolved_at: new Date().toISOString(),
+        })
+        .eq('id', pendingActionId)
+        .eq('actor_user_id', user.id)
+        .eq('family_id', familyId)
+        .eq('status', 'pending')
+
+      return json({ status: 'cancelled' })
     }
 
     return json({ error: 'Ismeretlen művelet.' }, 400)
