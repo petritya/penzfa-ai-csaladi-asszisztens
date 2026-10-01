@@ -102,6 +102,17 @@ function resolveDatePhrase(phrase: string | null, timeZone: string) {
   if (/\bholnap\b/.test(normalized)) return addDays(today, 1)
   if (/\bma\b/.test(normalized)) return today
 
+  const relativeMatch = normalized.match(
+    /\b(\d+|egy|ket|ketto|harom|negy|ot|hat|het|nyolc|kilenc|tiz)\s+(nap|het)\s+mulva\b/,
+  )
+  if (relativeMatch) {
+    const amount = parseHungarianNumber(relativeMatch[1])
+    if (amount !== null) {
+      const multiplier = relativeMatch[2] === 'het' ? 7 : 1
+      return addDays(today, amount * multiplier)
+    }
+  }
+
   const targetWeekday = findHungarianWeekday(normalized)
   if (targetWeekday === null) return null
 
@@ -428,7 +439,7 @@ Deno.serve(async (req) => {
           error: 'A dátumot még nem tudom biztonságosan feloldani.',
           code: 'DATE_NEEDS_CLARIFICATION',
           date_phrase: interpretation.date_phrase,
-        }, 422)
+        })
       }
 
       let subject = null
@@ -442,7 +453,7 @@ Deno.serve(async (req) => {
             code: 'SUBJECT_NEEDS_CLARIFICATION',
             subject_name: interpretation.subject_name,
             known_members: (members ?? []).map((member) => member.display_name),
-          }, 422)
+          })
         }
       }
 
@@ -455,7 +466,7 @@ Deno.serve(async (req) => {
             error: 'Az emlékeztetés időpontját még pontosítani kell.',
             code: 'REMINDER_NEEDS_CLARIFICATION',
             reminder_phrase: interpretation.reminder_phrase,
-          }, 422)
+          })
         }
 
         const reminderDate = addDays(dueDate, -reminderOffsetDays)
