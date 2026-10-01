@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
 
 type AuthMode = 'sign-in' | 'sign-up'
-type WorkMode = 'create' | 'update'
+type WorkMode = 'create' | 'update' | 'complete'
 
 type CreateDraft = {
   subject_member_id: string | null
@@ -39,6 +39,12 @@ type UpdateChanges = {
   title: string | null
 }
 
+type CompleteDraft = {
+  pending_action_id: string
+  target_item_id: string
+  confirmation_text: string
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [loadingSession, setLoadingSession] = useState(true)
@@ -60,6 +66,8 @@ export default function App() {
   const [updateDraft, setUpdateDraft] = useState<UpdateDraft | null>(null)
   const [updateCandidates, setUpdateCandidates] = useState<UpdateCandidate[]>([])
   const [updateChanges, setUpdateChanges] = useState<UpdateChanges | null>(null)
+  const [completeDraft, setCompleteDraft] = useState<CompleteDraft | null>(null)
+  const [completeCandidates, setCompleteCandidates] = useState<UpdateCandidate[]>([])
   const [flowMessage, setFlowMessage] = useState<string | null>(null)
   const [flowError, setFlowError] = useState<string | null>(null)
   const [flowBusy, setFlowBusy] = useState(false)
@@ -80,6 +88,8 @@ export default function App() {
       setUpdateDraft(null)
       setUpdateCandidates([])
       setUpdateChanges(null)
+      setCompleteDraft(null)
+      setCompleteCandidates([])
       setFlowMessage(null)
       setFlowError(null)
     })
@@ -184,10 +194,19 @@ export default function App() {
     setUpdateDraft(null)
     setUpdateCandidates([])
     setUpdateChanges(null)
+    setCompleteDraft(null)
+    setCompleteCandidates([])
 
     try {
+      const action =
+        workMode === 'create'
+          ? 'interpret_create'
+          : workMode === 'update'
+            ? 'interpret_update'
+            : 'interpret_complete'
+
       const data = await invokeCore({
-        action: workMode === 'create' ? 'interpret_create' : 'interpret_update',
+        action,
         message: naturalMessage.trim(),
       })
 
@@ -196,24 +215,42 @@ export default function App() {
         return
       }
 
+      if (workMode === 'update') {
+        if (data.status === 'needs_confirmation') {
+          setUpdateDraft(data.draft as UpdateDraft)
+          return
+        }
+
+        if (data.status === 'choose_target') {
+          setUpdateCandidates(data.candidates as UpdateCandidate[])
+          setUpdateChanges(data.changes as UpdateChanges)
+          return
+        }
+
+        if (data.status === 'needs_change_details') {
+          setFlowError(data.error ?? 'Pontosítsd, mire szeretnéd módosítani az ügyet.')
+          return
+        }
+
+        if (data.status === 'no_match') {
+          setFlowError(data.error ?? 'Nem találtam megfelelő ügyet.')
+        }
+
+        return
+      }
+
       if (data.status === 'needs_confirmation') {
-        setUpdateDraft(data.draft as UpdateDraft)
+        setCompleteDraft(data.draft as CompleteDraft)
         return
       }
 
       if (data.status === 'choose_target') {
-        setUpdateCandidates(data.candidates as UpdateCandidate[])
-        setUpdateChanges(data.changes as UpdateChanges)
-        return
-      }
-
-      if (data.status === 'needs_change_details') {
-        setFlowError(data.error ?? 'Pontosítsd, mire szeretnéd módosítani az ügyet.')
+        setCompleteCandidates(data.candidates as UpdateCandidate[])
         return
       }
 
       if (data.status === 'no_match') {
-        setFlowError(data.error ?? 'Nem találtam megfelelő ügyet.')
+        setFlowError(data.error ?? 'Nem találtam megfelelő nyitott ügyet.')
       }
     } catch (error) {
       setFlowError(error instanceof Error ? error.message : 'Nem sikerült értelmezni a kérést.')
@@ -315,6 +352,71 @@ export default function App() {
     }
   }
 
+
+  async function handleChooseCompleteTarget(targetItemId: string) {
+    setFlowBusy(true)
+    setFlowError(null)
+
+    try {
+      const data = await invokeCore({
+        action: 'prepare_complete_target',
+        target_item_id: targetItemId,
+      })
+
+      if (data.status === 'needs_confirmation') {
+        setCompleteDraft(data.draft as CompleteDraft)
+        setCompleteCandidates([])
+      } else {
+        setFlowError(data.error ?? 'Nem sikerült előkészíteni a lezárást.')
+      }
+    } catch (error) {
+      setFlowError(error instanceof Error ? error.message : 'Nem sikerült kiválasztani az ügyet.')
+    } finally {
+      setFlowBusy(false)
+    }
+  }
+
+  async function handleConfirmComplete() {
+    if (!completeDraft) return
+
+    setFlowBusy(true)
+    setFlowError(null)
+    setFlowMessage(null)
+
+    try {
+      const data = await invokeCore({
+        action: 'confirm_complete',
+        pending_action_id: completeDraft.pending_action_id,
+      })
+
+      setFlowMessage(`Készre jelölve: ${data.item.title}`)
+      setNaturalMessage('')
+      setCompleteDraft(null)
+    } catch (error) {
+      setFlowError(error instanceof Error ? error.message : 'Nem sikerült lezárni az ügyet.')
+    } finally {
+      setFlowBusy(false)
+    }
+  }
+
+  async function handleCancelComplete() {
+    const pendingActionId = completeDraft?.pending_action_id
+
+    setCompleteDraft(null)
+    setCompleteCandidates([])
+
+    if (!pendingActionId) return
+
+    try {
+      await invokeCore({
+        action: 'cancel_pending',
+        pending_action_id: pendingActionId,
+      })
+    } catch {
+      // A felhasználói felületen már megszakítottuk a műveletet.
+    }
+  }
+
   if (loadingSession) {
     return (
       <main className="shell">
@@ -398,20 +500,47 @@ export default function App() {
                     setUpdateDraft(null)
                     setUpdateCandidates([])
                     setUpdateChanges(null)
+                    setCompleteDraft(null)
+                    setCompleteCandidates([])
                     setFlowError(null)
                     setFlowMessage(null)
                   }}
                 >
                   Módosítás
                 </button>
+                <button
+                  className={workMode === 'complete' ? 'tab active' : 'tab'}
+                  type="button"
+                  onClick={() => {
+                    setWorkMode('complete')
+                    setDraft(null)
+                    setUpdateDraft(null)
+                    setUpdateCandidates([])
+                    setUpdateChanges(null)
+                    setCompleteDraft(null)
+                    setCompleteCandidates([])
+                    setFlowError(null)
+                    setFlowMessage(null)
+                  }}
+                >
+                  Kész
+                </button>
               </div>
 
               <form className="stack" onSubmit={handleInterpret}>
-                <h2>{workMode === 'create' ? 'Új ügy rögzítése' : 'Meglévő ügy módosítása'}</h2>
+                <h2>
+                  {workMode === 'create'
+                    ? 'Új ügy rögzítése'
+                    : workMode === 'update'
+                      ? 'Meglévő ügy módosítása'
+                      : 'Ügy készre jelölése'}
+                </h2>
                 <p className="muted">
                   {workMode === 'create'
                     ? 'Írd le természetesen, mit kell észben tartani.'
-                    : 'Írd le természetesen, mit szeretnél módosítani.'}
+                    : workMode === 'update'
+                      ? 'Írd le természetesen, mit szeretnél módosítani.'
+                      : 'Írd le természetesen, mit intéztél el.'}
                 </p>
 
                 <textarea
@@ -421,7 +550,9 @@ export default function App() {
                   placeholder={
                     workMode === 'create'
                       ? 'Bencének jövő kedden 16:30-kor fogorvosa van, három nappal előtte szólj.'
-                      : 'Anya fodrászát áttették jövő keddre 11-re.'
+                      : workMode === 'update'
+                        ? 'Anya fodrászát áttették jövő keddre 11-re.'
+                        : 'A biztosítást befizettem.'
                   }
                   required
                 />
@@ -475,6 +606,42 @@ export default function App() {
                       Igen, módosítsd
                     </button>
                     <button className="secondary-button" type="button" onClick={handleCancelUpdate} disabled={flowBusy}>
+                      Mégse
+                    </button>
+                  </div>
+                </section>
+              )}
+
+
+              {completeCandidates.length > 0 && (
+                <section className="confirmation">
+                  <p className="eyebrow">Több lehetséges ügyet találtam</p>
+                  <p>Melyiket intézted el?</p>
+                  <div className="candidate-list">
+                    {completeCandidates.map((candidate) => (
+                      <button
+                        className="secondary-button candidate-button"
+                        type="button"
+                        key={candidate.id}
+                        onClick={() => handleChooseCompleteTarget(candidate.id)}
+                        disabled={flowBusy}
+                      >
+                        {candidate.label}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {completeDraft && (
+                <section className="confirmation">
+                  <p className="eyebrow">Lezárás visszaigazolása</p>
+                  <p>{completeDraft.confirmation_text}</p>
+                  <div className="actions">
+                    <button className="primary-button" type="button" onClick={handleConfirmComplete} disabled={flowBusy}>
+                      Igen, kész
+                    </button>
+                    <button className="secondary-button" type="button" onClick={handleCancelComplete} disabled={flowBusy}>
                       Mégse
                     </button>
                   </div>
