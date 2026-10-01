@@ -61,12 +61,9 @@ export default function App() {
   useEffect(() => {
     if (!session || setupComplete !== null) return
 
-    void invokeCore({ action: 'interpret_create', message: '__setup_probe__' })
-      .then(() => setSetupComplete(true))
-      .catch((error: unknown) => {
-        const text = error instanceof Error ? error.message : String(error)
-        setSetupComplete(!text.includes('SETUP_REQUIRED') && !text.includes('Előbb hozd létre a családot'))
-      })
+    void invokeCore({ action: 'setup_status' })
+      .then((data) => setSetupComplete(Boolean(data.setup_complete)))
+      .catch(() => setSetupComplete(false))
   }, [session, setupComplete])
 
   const managedMembers = useMemo(
