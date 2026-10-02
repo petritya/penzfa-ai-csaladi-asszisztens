@@ -79,3 +79,8 @@ textarea { resize: vertical; }
   gap: 8px;
   margin-top: 16px;
 }
+
+.query-answer {
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
