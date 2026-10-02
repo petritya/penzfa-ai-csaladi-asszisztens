@@ -718,6 +718,19 @@ export default function App() {
                     <button className="primary-button" type="button" onClick={handleConfirmCreate} disabled={flowBusy}>
                       Igen, rögzítsd
                     </button>
+                    {!draft.first_reminder_at && draft.due_date && (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => {
+                          setDraft(null)
+                          setFlowMessage('Egészítsd ki az üzenetet azzal, hogy mikor szóljak előtte.')
+                        }}
+                        disabled={flowBusy}
+                      >
+                        Korábban is szólj
+                      </button>
+                    )}
                     <button className="secondary-button" type="button" onClick={() => setDraft(null)} disabled={flowBusy}>
                       Mégse
                     </button>
