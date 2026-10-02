@@ -63,3 +63,19 @@ textarea { resize: vertical; }
   .topbar { flex-direction: column; }
   .topbar .secondary-button { align-self: flex-start; }
 }
+
+.compact-stack { margin-top: 0; }
+.inline-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.inline-control input {
+  width: auto;
+  padding: 0;
+}
+.push-setup {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
