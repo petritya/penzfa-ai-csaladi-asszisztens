@@ -998,10 +998,6 @@ Deno.serve(async (req) => {
         itemsQuery = itemsQuery.eq('status', interpretation.status)
       }
 
-      if (interpretation.responsibility === 'mine') {
-        itemsQuery = itemsQuery.eq('responsible_user_id', user.id)
-      }
-
       if (subjectId) {
         itemsQuery = itemsQuery.eq('subject_member_id', subjectId)
       }
@@ -1009,13 +1005,23 @@ Deno.serve(async (req) => {
       const { data: rawItems, error: itemsError } = await itemsQuery
       if (itemsError) throw itemsError
 
+      const ownershipFiltered = (rawItems ?? []).filter((item) => {
+        if (interpretation.responsibility !== 'mine') return true
+
+        if (item.subject_member_id) {
+          return item.subject_member_id === activeMembership.id
+        }
+
+        return item.responsible_user_id === user.id
+      })
+
       const keywordTokens = interpretation.keywords
         ? normalize(interpretation.keywords)
             .split(/\s+/)
             .filter((token) => token.length >= 2)
         : []
 
-      const filtered = (rawItems ?? []).filter((item) => {
+      const filtered = ownershipFiltered.filter((item) => {
         if (keywordTokens.length) {
           const haystack = normalize(`${item.title} ${item.notes ?? ''}`)
           if (!keywordTokens.every((token) => haystack.includes(token))) return false
