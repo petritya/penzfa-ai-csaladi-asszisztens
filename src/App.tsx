@@ -309,6 +309,11 @@ export default function App() {
       })
 
       if (workMode === 'create') {
+        if (data.status === 'duplicate') {
+          setFlowError(data.message ?? 'Ez az ügy már szerepel a nyitott ügyek között.')
+          return
+        }
+
         setDraft(data.draft as CreateDraft)
         return
       }
@@ -370,6 +375,14 @@ export default function App() {
         draft,
       })
 
+      if (data.status === 'duplicate') {
+        setFlowError(data.message ?? 'Ez az ügy már szerepel a nyitott ügyek között.')
+        setDraft(null)
+        setReminderFollowupOpen(false)
+        setReminderFollowupText('')
+        return
+      }
+
       setFlowMessage(`Rögzítve: ${data.item.title}`)
       setNaturalMessage('')
       setDraft(null)
@@ -403,6 +416,14 @@ export default function App() {
         action: 'confirm_create',
         draft: updatedDraft,
       })
+
+      if (createData.status === 'duplicate') {
+        setFlowError(createData.message ?? 'Ez az ügy már szerepel a nyitott ügyek között.')
+        setDraft(null)
+        setReminderFollowupOpen(false)
+        setReminderFollowupText('')
+        return
+      }
 
       setFlowMessage(`Rögzítve: ${createData.item.title}. Emlékeztető: ${updatedDraft.reminder_phrase}.`)
       setNaturalMessage('')
