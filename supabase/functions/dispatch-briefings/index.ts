@@ -142,39 +142,33 @@ function itemLine(
 
 function buildBriefingMessage(
   displayName: string,
-  overdue: any[],
   dueToday: any[],
+  overdue: any[],
   reminderToday: any[],
-  needsAttention: any[],
 ) {
   const lines: string[] = [`Jó reggelt, ${displayName}!`]
 
-  if (!overdue.length && !dueToday.length && !reminderToday.length && !needsAttention.length) {
-    lines.push('Mára nincs olyan nyitott ügy, ami külön figyelmet igényel.')
+  if (!dueToday.length && !overdue.length && !reminderToday.length) {
+    lines.push('Mára nincs esedékes vagy jelzendő nyitott ügy.')
     return lines.join('\n')
   }
 
-  for (const item of overdue.slice(0, 2)) {
-    lines.push(itemLine(item.title, item.subject_name, item.due_date, item.due_time, 'Lejárt: '))
-  }
-
-  for (const item of dueToday.slice(0, 3)) {
+  for (const item of dueToday.slice(0, 4)) {
     lines.push(itemLine(item.title, item.subject_name, item.due_date, item.due_time, 'Ma: '))
   }
 
+  for (const item of overdue.slice(0, 3)) {
+    lines.push(itemLine(item.title, item.subject_name, item.due_date, item.due_time, 'Lejárt: '))
+  }
+
   for (const item of reminderToday.slice(0, 3)) {
-    lines.push(itemLine(item.title, item.subject_name, item.due_date, item.due_time, 'Kezdd intézni: '))
+    lines.push(itemLine(item.title, item.subject_name, item.due_date, item.due_time, 'Emlékeztető: '))
   }
 
-  for (const item of needsAttention.slice(0, 2)) {
-    lines.push(itemLine(item.title, item.subject_name, item.due_date, item.due_time, 'Figyelmet igényel: '))
-  }
-
-  const shown = Math.min(overdue.length, 2)
-    + Math.min(dueToday.length, 3)
+  const shown = Math.min(dueToday.length, 4)
+    + Math.min(overdue.length, 3)
     + Math.min(reminderToday.length, 3)
-    + Math.min(needsAttention.length, 2)
-  const total = overdue.length + dueToday.length + reminderToday.length + needsAttention.length
+  const total = dueToday.length + overdue.length + reminderToday.length
 
   if (total > shown) lines.push(`+ még ${total - shown} ügy`)
 
@@ -269,17 +263,11 @@ Deno.serve(async (req) => {
         return reminderLocal.date === local.date && reminderLocal.time <= briefingTime
       })
 
-      const needsAttention = items.filter((item) => {
-        if (!item.due_date || item.due_date <= local.date) return false
-        return !reminderByItem.get(item.id)
-      })
-
       const message = buildBriefingMessage(
         membership.display_name,
-        overdue,
         dueToday,
+        overdue,
         reminderToday,
-        needsAttention,
       )
 
       const { data: run, error: runError } = await db
@@ -358,7 +346,6 @@ Deno.serve(async (req) => {
           overdue_count: overdue.length,
           due_today_count: dueToday.length,
           reminder_today_count: reminderToday.length,
-          needs_attention_count: needsAttention.length,
         },
       })
 
