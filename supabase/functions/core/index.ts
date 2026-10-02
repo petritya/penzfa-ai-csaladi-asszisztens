@@ -837,9 +837,15 @@ Deno.serve(async (req) => {
       const dateText = formatHungarianDate(dueDate)
       const timeText = dueTime ? ` ${dueTime}` : ''
       const subjectText = subject ? `${subject.display_name}: ` : ''
-      const reminderText = interpretation.reminder_phrase
-        ? ` Emlékeztetés: ${interpretation.reminder_phrase}.`
-        : ' Emlékeztetést még nem adtál meg.'
+      let confirmationText: string
+
+      if (interpretation.reminder_phrase) {
+        confirmationText = `${subjectText}${interpretation.title} – ${dateText}${timeText}. Emlékeztetés: ${interpretation.reminder_phrase}. Rögzítsem?`
+      } else if (dueDate) {
+        confirmationText = `${subjectText}${interpretation.title} – ${dateText}${timeText}. Emlékeztetőt nem adtál meg, ezért csak az esedékesség napjának reggeli briefingjében szólok. Így rögzítsem?`
+      } else {
+        confirmationText = `${subjectText}${interpretation.title}. Dátumot és emlékeztetőt nem adtál meg, ezért automatikus értesítés nem készül. Így rögzítsem?`
+      }
 
       const draft: CreateDraft = {
         subject_member_id: subject?.id ?? null,
@@ -851,7 +857,7 @@ Deno.serve(async (req) => {
         due_time: dueTime,
         first_reminder_at: firstReminderAt,
         reminder_phrase: interpretation.reminder_phrase,
-        confirmation_text: `${subjectText}${interpretation.title} – ${dateText}${timeText}.${reminderText} Rögzítsem?`,
+        confirmation_text: confirmationText,
       }
 
       return json({ status: 'needs_confirmation', draft })
