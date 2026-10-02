@@ -66,6 +66,7 @@ type QueryInterpretation = {
   status: 'open' | 'done' | 'all'
   responsibility: 'mine' | 'family'
   subject_name: string | null
+  responsible_name: string | null
   keywords: string | null
   date_scope: 'none' | 'today' | 'tomorrow' | 'this_week' | 'next_7_days' | 'specific_date'
   date_phrase: string | null
@@ -472,18 +473,27 @@ function queryItemDate(item: any, timeZone: string) {
   return item.due_date ?? null
 }
 
-function queryItemLine(item: any, memberName: string | null, timeZone: string) {
+function queryItemLine(
+  item: any,
+  memberName: string | null,
+  responsibleName: string | null,
+  timeZone: string,
+  showResponsible = false,
+) {
   const subject = memberName ? `${memberName}: ` : ''
   const time = item.due_time ? ` ${String(item.due_time).slice(0, 5)}` : ''
+  const responsible = showResponsible && responsibleName
+    ? ` – felelős: ${responsibleName}`
+    : ''
 
   if (item.status === 'done') {
     const completedDate = item.completed_at
       ? dateInTimezone(item.completed_at, timeZone)
       : null
-    return `✓ ${subject}${item.title}${completedDate ? ` – elintézve: ${formatHungarianDate(completedDate)}` : ''}`
+    return `✓ ${subject}${item.title}${completedDate ? ` – elintézve: ${formatHungarianDate(completedDate)}` : ''}${responsible}`
   }
 
-  return `• ${subject}${item.title}${item.due_date ? ` – ${formatHungarianDate(item.due_date)}${time}` : ' – dátum nélkül'}`
+  return `• ${subject}${item.title}${item.due_date ? ` – ${formatHungarianDate(item.due_date)}${time}` : ' – dátum nélkül'}${responsible}`
 }
 
 function updateCandidateLabel(candidate: UpdateCandidate) {
@@ -704,7 +714,8 @@ async function interpretCompleteWithOpenAI(
 
 async function interpretQueryWithOpenAI(
   message: string,
-  memberNames: string[],
+  activeMemberNames: string[],
+  managedMemberNames: string[],
 ): Promise<QueryInterpretation> {
   const apiKey = Deno.env.get('OPENAI_API_KEY')
   if (!apiKey) throw new Error('OPENAI_API_KEY nincs beállítva a Supabase Edge Function secretjei között.')
@@ -721,13 +732,25 @@ async function interpretQueryWithOpenAI(
         'Te egy magyar nyelvű családi asszisztens lekérdezés-értelmező rétege vagy.',
         'Csak a keresési szándékot strukturáld. Ne kérdezz adatbázist és ne számolj relatív dátumot.',
         'status=open: nyitott vagy jövőbeli ügyek; done: elintézett/kész előzmények; all: csak ha a kérdés tényleg mindkettőt kéri.',
-        'responsibility=mine, ha a felhasználó kifejezetten a saját ügyeiről kérdez (pl. "ügyeim", "mit intéztem el"). Egyébként family.',
-        'subject_name akkor legyen kitöltve, ha konkrét családtagra kérdez.',
-        `Ismert családtagok: ${memberNames.length ? memberNames.join(', ') : 'nincs'}.`,
+        'responsibility=mine, ha a felhasználó kifejezetten a saját felelősségi körére kérdez (pl. "ami hozzám tartozik", "az én feladataim"). Egyébként family.',
+        `Aktív felnőttek: ${activeMemberNames.length ? activeMemberNames.join(', ') : 'nincs'}.`,
+        `Kezelt családtagok: ${managedMemberNames.length ? managedMemberNames.join(', ') : 'nincs'}.`,
+        'subject_name azt jelenti, hogy kire vonatkozik az ügy. Kezelt családtagnál általában ezt használd.',
+        'responsible_name azt jelenti, hogy melyik aktív felnőtt felelős az ügyért. Csak aktív felnőtt neve kerülhet ide.',
+        'Ha azt kérdezik, hogy egy aktív felnőttnek milyen feladatai/ügyei vannak, responsible_name legyen az ő neve.',
+        'Ha azt kérdezik, hogy egy kezelt családtagnak (gyerek, nagyszülő) milyen ügyei vannak, subject_name legyen az ő neve.',
+        'Ha konkrét eseményre kérdeznek rá, például "Mikor megy Anya fodrászhoz?", az esemény alanya legyen subject_name, akkor is, ha aktív felnőtt.',
+        'A subject_name és responsible_name egyszerre is kitölthető, például "Mamus ügyei, amik Anyához tartoznak".',
         'keywords legyen rövid keresőkifejezés, például "fodrász", ha konkrét ügytípust keres. Általános listázásnál legyen null.',
         'date_scope: today, tomorrow, this_week, next_7_days, specific_date vagy none.',
         'specific_date esetén a date_phrase őrizze meg az eredeti dátumkifejezést. Más scope esetén date_phrase legyen null.',
-        'Példák: "Mi van holnap?" => open, family, tomorrow. "Mikor megy Anya fodrászhoz?" => open, family, subject_name=Anya, keywords=fodrász, none. "Milyen nyitott ügyeim vannak?" => open, mine, none. "Mit intéztem el ezen a héten?" => done, mine, this_week.',
+        'Példák: "Mi van holnap?" => open, family, subject_name=null, responsible_name=null, tomorrow.',
+        '"Mikor megy Anya fodrászhoz?" => open, family, subject_name=Anya, responsible_name=null, keywords=fodrász, none.',
+        '"Milyen nyitott ügyeim vannak?" => open, mine, subject_name=null, responsible_name=null, none.',
+        '"Mit intéztem el ezen a héten?" => done, mine, subject_name=null, responsible_name=null, this_week.',
+        '"Mamusnak milyen ügyei vannak?" => open, family, subject_name=Mamus, responsible_name=null, none.',
+        '"Mamus melyik ügyei tartoznak hozzám?" => open, mine, subject_name=Mamus, responsible_name=null, none.',
+        '"Mamus melyik ügyei tartoznak Anyához?" => open, family, subject_name=Mamus, responsible_name=Anya, none.',
       ].join('\n'),
       input: message,
       text: {
@@ -743,6 +766,7 @@ async function interpretQueryWithOpenAI(
               status: { type: 'string', enum: ['open', 'done', 'all'] },
               responsibility: { type: 'string', enum: ['mine', 'family'] },
               subject_name: { type: ['string', 'null'] },
+              responsible_name: { type: ['string', 'null'] },
               keywords: { type: ['string', 'null'] },
               date_scope: {
                 type: 'string',
@@ -755,6 +779,7 @@ async function interpretQueryWithOpenAI(
               'status',
               'responsibility',
               'subject_name',
+              'responsible_name',
               'keywords',
               'date_scope',
               'date_phrase',
@@ -955,7 +980,12 @@ Deno.serve(async (req) => {
       const memberList = members ?? []
       const interpretation = await interpretQueryWithOpenAI(
         message,
-        memberList.map((member) => member.display_name),
+        memberList
+          .filter((member) => member.member_kind === 'active')
+          .map((member) => member.display_name),
+        memberList
+          .filter((member) => member.member_kind === 'managed')
+          .map((member) => member.display_name),
       )
 
       const timeZone = settings?.timezone ?? 'Europe/Budapest'
@@ -987,6 +1017,25 @@ Deno.serve(async (req) => {
         subjectId = subject.id
       }
 
+      let responsibleUserId: string | null = null
+      if (interpretation.responsible_name) {
+        const wanted = normalize(interpretation.responsible_name)
+        const responsible = memberList.find((member) =>
+          member.member_kind === 'active'
+          && member.user_id
+          && normalize(member.display_name) === wanted
+        ) ?? null
+
+        if (!responsible?.user_id) {
+          return json({
+            status: 'needs_clarification',
+            answer: `Nem találtam ilyen aktív családi felhasználót: ${interpretation.responsible_name}.`,
+          })
+        }
+
+        responsibleUserId = responsible.user_id
+      }
+
       let itemsQuery = db
         .from('items')
         .select('id, title, notes, due_date, due_time, status, subject_member_id, responsible_user_id, completed_at, created_at')
@@ -1002,11 +1051,20 @@ Deno.serve(async (req) => {
         itemsQuery = itemsQuery.eq('subject_member_id', subjectId)
       }
 
+      if (responsibleUserId) {
+        itemsQuery = itemsQuery.eq('responsible_user_id', responsibleUserId)
+      }
+
       const { data: rawItems, error: itemsError } = await itemsQuery
       if (itemsError) throw itemsError
 
       const ownershipFiltered = (rawItems ?? []).filter((item) => {
+        if (responsibleUserId) return true
         if (interpretation.responsibility !== 'mine') return true
+
+        if (subjectId) {
+          return item.responsible_user_id === user.id
+        }
 
         if (item.subject_member_id) {
           return item.subject_member_id === activeMembership.id
@@ -1049,6 +1107,16 @@ Deno.serve(async (req) => {
       })
 
       const memberNameById = new Map(memberList.map((member) => [member.id, member.display_name]))
+      const responsibleNameByUserId = new Map(
+        memberList
+          .filter((member) => member.member_kind === 'active' && member.user_id)
+          .map((member) => [member.user_id, member.display_name]),
+      )
+      const showResponsible = Boolean(
+        subjectId
+        && !responsibleUserId
+        && interpretation.responsibility === 'family',
+      )
       const visible = filtered.slice(0, 20)
 
       if (!visible.length) {
@@ -1064,7 +1132,11 @@ Deno.serve(async (req) => {
         queryItemLine(
           item,
           item.subject_member_id ? memberNameById.get(item.subject_member_id) ?? null : null,
+          item.responsible_user_id
+            ? responsibleNameByUserId.get(item.responsible_user_id) ?? null
+            : null,
           timeZone,
+          showResponsible,
         ),
       )
 
