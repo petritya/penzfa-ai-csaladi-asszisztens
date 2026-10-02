@@ -69,6 +69,8 @@ export default function App() {
   const [workMode, setWorkMode] = useState<WorkMode>('create')
   const [naturalMessage, setNaturalMessage] = useState('')
   const [draft, setDraft] = useState<CreateDraft | null>(null)
+  const [reminderFollowupOpen, setReminderFollowupOpen] = useState(false)
+  const [reminderFollowupText, setReminderFollowupText] = useState('')
   const [updateDraft, setUpdateDraft] = useState<UpdateDraft | null>(null)
   const [updateCandidates, setUpdateCandidates] = useState<UpdateCandidate[]>([])
   const [updateChanges, setUpdateChanges] = useState<UpdateChanges | null>(null)
@@ -100,6 +102,8 @@ export default function App() {
       setSettingsLoaded(false)
       setSettingsMessage(null)
       setDraft(null)
+      setReminderFollowupOpen(false)
+      setReminderFollowupText('')
       setUpdateDraft(null)
       setUpdateCandidates([])
       setUpdateChanges(null)
@@ -369,8 +373,35 @@ export default function App() {
       setFlowMessage(`Rögzítve: ${data.item.title}`)
       setNaturalMessage('')
       setDraft(null)
+      setReminderFollowupOpen(false)
+      setReminderFollowupText('')
     } catch (error) {
       setFlowError(error instanceof Error ? error.message : 'Nem sikerült rögzíteni a bejegyzést.')
+    } finally {
+      setFlowBusy(false)
+    }
+  }
+
+
+  async function handleAddCreateReminder() {
+    if (!draft || !reminderFollowupText.trim()) return
+
+    setFlowBusy(true)
+    setFlowError(null)
+    setFlowMessage(null)
+
+    try {
+      const data = await invokeCore({
+        action: 'add_create_reminder',
+        draft,
+        reminder_phrase: reminderFollowupText.trim(),
+      })
+
+      setDraft(data.draft as CreateDraft)
+      setReminderFollowupOpen(false)
+      setReminderFollowupText('')
+    } catch (error) {
+      setFlowError(error instanceof Error ? error.message : 'Nem sikerült beállítani az emlékeztetőt.')
     } finally {
       setFlowBusy(false)
     }
@@ -718,23 +749,68 @@ export default function App() {
                     <button className="primary-button" type="button" onClick={handleConfirmCreate} disabled={flowBusy}>
                       Igen, rögzítsd
                     </button>
-                    {!draft.first_reminder_at && draft.due_date && (
+                    {!draft.first_reminder_at && draft.due_date && !reminderFollowupOpen && (
                       <button
                         className="secondary-button"
                         type="button"
                         onClick={() => {
-                          setDraft(null)
-                          setFlowMessage('Egészítsd ki az üzenetet azzal, hogy mikor szóljak előtte.')
+                          setReminderFollowupOpen(true)
+                          setReminderFollowupText('')
+                          setFlowError(null)
                         }}
                         disabled={flowBusy}
                       >
                         Korábban is szólj
                       </button>
                     )}
-                    <button className="secondary-button" type="button" onClick={() => setDraft(null)} disabled={flowBusy}>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => {
+                        setDraft(null)
+                        setReminderFollowupOpen(false)
+                        setReminderFollowupText('')
+                      }}
+                      disabled={flowBusy}
+                    >
                       Mégse
                     </button>
                   </div>
+
+                  {reminderFollowupOpen && !draft.first_reminder_at && draft.due_date && (
+                    <div className="stack compact-stack">
+                      <label>
+                        Mikor szóljak előtte?
+                        <input
+                          type="text"
+                          value={reminderFollowupText}
+                          onChange={(event) => setReminderFollowupText(event.target.value)}
+                          placeholder="Például: egy nappal előtte"
+                        />
+                      </label>
+                      <div className="actions">
+                        <button
+                          className="primary-button"
+                          type="button"
+                          onClick={handleAddCreateReminder}
+                          disabled={flowBusy || !reminderFollowupText.trim()}
+                        >
+                          Emlékeztető beállítása
+                        </button>
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={() => {
+                            setReminderFollowupOpen(false)
+                            setReminderFollowupText('')
+                          }}
+                          disabled={flowBusy}
+                        >
+                          Mégse
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </section>
               )}
 
