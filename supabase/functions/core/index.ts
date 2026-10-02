@@ -87,13 +87,14 @@ function duplicateTitleKey(value: string) {
 }
 
 async function findExactOpenDuplicate(
+  dbClient: any,
   familyId: string,
   title: string,
   dueDate: string | null,
   dueTime: string | null,
   subjectMemberId: string | null,
 ) {
-  let query = db
+  let query = dbClient
     .from('items')
     .select('id, title, due_date, due_time, subject_member_id')
     .eq('family_id', familyId)
@@ -904,6 +905,7 @@ Deno.serve(async (req) => {
       }
 
       const duplicate = await findExactOpenDuplicate(
+        db,
         familyId,
         draft.title,
         draft.due_date,
@@ -999,6 +1001,7 @@ Deno.serve(async (req) => {
       }
 
       const duplicate = await findExactOpenDuplicate(
+        db,
         familyId,
         draft.title,
         draft.due_date,
