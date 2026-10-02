@@ -391,17 +391,26 @@ export default function App() {
     setFlowMessage(null)
 
     try {
-      const data = await invokeCore({
+      const reminderData = await invokeCore({
         action: 'add_create_reminder',
         draft,
         reminder_phrase: reminderFollowupText.trim(),
       })
 
-      setDraft(data.draft as CreateDraft)
+      const updatedDraft = reminderData.draft as CreateDraft
+
+      const createData = await invokeCore({
+        action: 'confirm_create',
+        draft: updatedDraft,
+      })
+
+      setFlowMessage(`Rögzítve: ${createData.item.title}. Emlékeztető: ${updatedDraft.reminder_phrase}.`)
+      setNaturalMessage('')
+      setDraft(null)
       setReminderFollowupOpen(false)
       setReminderFollowupText('')
     } catch (error) {
-      setFlowError(error instanceof Error ? error.message : 'Nem sikerült beállítani az emlékeztetőt.')
+      setFlowError(error instanceof Error ? error.message : 'Nem sikerült beállítani az emlékeztetőt és rögzíteni az ügyet.')
     } finally {
       setFlowBusy(false)
     }
