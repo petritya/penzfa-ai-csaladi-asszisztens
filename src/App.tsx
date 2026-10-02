@@ -9,7 +9,7 @@ import {
 } from './lib/onesignal'
 
 type AuthMode = 'sign-in' | 'sign-up'
-type WorkMode = 'create' | 'update' | 'complete'
+type WorkMode = 'create' | 'update' | 'complete' | 'query'
 
 type CreateDraft = {
   subject_member_id: string | null
@@ -78,6 +78,7 @@ export default function App() {
   const [completeCandidates, setCompleteCandidates] = useState<UpdateCandidate[]>([])
   const [flowMessage, setFlowMessage] = useState<string | null>(null)
   const [flowError, setFlowError] = useState<string | null>(null)
+  const [queryAnswer, setQueryAnswer] = useState<string | null>(null)
   const [flowBusy, setFlowBusy] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
   const [pushMessage, setPushMessage] = useState<string | null>(null)
@@ -111,6 +112,7 @@ export default function App() {
       setCompleteCandidates([])
       setFlowMessage(null)
       setFlowError(null)
+      setQueryAnswer(null)
     })
 
     return () => subscription.unsubscribe()
@@ -294,6 +296,7 @@ export default function App() {
     setUpdateChanges(null)
     setCompleteDraft(null)
     setCompleteCandidates([])
+    setQueryAnswer(null)
 
     try {
       const action =
@@ -301,12 +304,19 @@ export default function App() {
           ? 'interpret_create'
           : workMode === 'update'
             ? 'interpret_update'
-            : 'interpret_complete'
+            : workMode === 'complete'
+              ? 'interpret_complete'
+              : 'query_items'
 
       const data = await invokeCore({
         action,
         message: naturalMessage.trim(),
       })
+
+      if (workMode === 'query') {
+        setQueryAnswer(data.answer ?? 'Nem találtam választ.')
+        return
+      }
 
       if (workMode === 'create') {
         if (data.status === 'duplicate') {
@@ -694,6 +704,7 @@ export default function App() {
                     setUpdateDraft(null)
                     setUpdateCandidates([])
                     setUpdateChanges(null)
+                    setQueryAnswer(null)
                     setFlowError(null)
                     setFlowMessage(null)
                   }}
@@ -711,6 +722,7 @@ export default function App() {
                     setUpdateChanges(null)
                     setCompleteDraft(null)
                     setCompleteCandidates([])
+                    setQueryAnswer(null)
                     setFlowError(null)
                     setFlowMessage(null)
                   }}
@@ -728,11 +740,32 @@ export default function App() {
                     setUpdateChanges(null)
                     setCompleteDraft(null)
                     setCompleteCandidates([])
+                    setQueryAnswer(null)
                     setFlowError(null)
                     setFlowMessage(null)
                   }}
                 >
                   Kész
+                </button>
+                <button
+                  className={workMode === 'query' ? 'tab active' : 'tab'}
+                  type="button"
+                  onClick={() => {
+                    setWorkMode('query')
+                    setDraft(null)
+                    setReminderFollowupOpen(false)
+                    setReminderFollowupText('')
+                    setUpdateDraft(null)
+                    setUpdateCandidates([])
+                    setUpdateChanges(null)
+                    setCompleteDraft(null)
+                    setCompleteCandidates([])
+                    setQueryAnswer(null)
+                    setFlowError(null)
+                    setFlowMessage(null)
+                  }}
+                >
+                  Keresés
                 </button>
               </div>
 
@@ -742,14 +775,18 @@ export default function App() {
                     ? 'Új ügy rögzítése'
                     : workMode === 'update'
                       ? 'Meglévő ügy módosítása'
-                      : 'Ügy készre jelölése'}
+                      : workMode === 'complete'
+                        ? 'Ügy készre jelölése'
+                        : 'Keresés és előzmények'}
                 </h2>
                 <p className="muted">
                   {workMode === 'create'
                     ? 'Írd le természetesen, mit kell észben tartani.'
                     : workMode === 'update'
                       ? 'Írd le természetesen, mit szeretnél módosítani.'
-                      : 'Írd le természetesen, mit intéztél el.'}
+                      : workMode === 'complete'
+                        ? 'Írd le természetesen, mit intéztél el.'
+                        : 'Kérdezz rá a nyitott ügyekre vagy a korábbi, elintézett bejegyzésekre.'}
                 </p>
 
                 <textarea
@@ -761,15 +798,26 @@ export default function App() {
                       ? 'Bencének jövő kedden 16:30-kor fogorvosa van, három nappal előtte szólj.'
                       : workMode === 'update'
                         ? 'Anya fodrászát áttették jövő keddre 11-re.'
-                        : 'A biztosítást befizettem.'
+                        : workMode === 'complete'
+                          ? 'A biztosítást befizettem.'
+                          : 'Mi van holnap? / Mikor megy Anya fodrászhoz? / Mit intéztem el ezen a héten?'
                   }
                   required
                 />
 
                 <button className="primary-button" type="submit" disabled={flowBusy}>
-                  {flowBusy ? 'Értelmezés…' : 'Értelmezés'}
+                  {flowBusy
+                    ? workMode === 'query' ? 'Keresés…' : 'Értelmezés…'
+                    : workMode === 'query' ? 'Keresés' : 'Értelmezés'}
                 </button>
               </form>
+
+              {queryAnswer && (
+                <section className="confirmation">
+                  <p className="eyebrow">Találatok</p>
+                  <p className="query-answer">{queryAnswer}</p>
+                </section>
+              )}
 
               {draft && (
                 <section className="confirmation">
