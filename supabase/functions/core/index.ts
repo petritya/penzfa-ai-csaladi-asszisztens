@@ -863,6 +863,55 @@ Deno.serve(async (req) => {
       return json({ status: 'needs_confirmation', draft })
     }
 
+    if (body?.action === 'add_create_reminder') {
+      const draft = body?.draft as CreateDraft | undefined
+      const reminderPhrase = String(body?.reminder_phrase ?? '').trim()
+
+      if (!draft || !draft.title || !draft.item_type || !draft.due_date) {
+        return json({ error: 'Ehhez az ügyhöz előbb érvényes dátum szükséges.' }, 400)
+      }
+
+      const reminderOffsetDays = reminderDaysBefore(reminderPhrase)
+      if (reminderOffsetDays === null) {
+        return json({
+          error: 'Írd le például így: egy nappal előtte, három nappal előtte vagy két héttel előtte.',
+          code: 'REMINDER_NEEDS_CLARIFICATION',
+        }, 400)
+      }
+
+      const { data: settings } = await db
+        .from('user_settings')
+        .select('timezone, briefing_time')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      const timeZone = settings?.timezone ?? 'Europe/Budapest'
+      const briefingTime = String(settings?.briefing_time ?? '07:00:00').slice(0, 5)
+      const reminderDate = addDays(draft.due_date, -reminderOffsetDays)
+      const today = localDateInTimezone(timeZone)
+
+      if (reminderDate < today) {
+        return json({
+          error: 'Ez az emlékeztetési időpont már elmúlt. Adj meg későbbi jelzést.',
+          code: 'REMINDER_IN_PAST',
+        }, 400)
+      }
+
+      const firstReminderAt = localDateTimeToUtcIso(reminderDate, briefingTime, timeZone)
+      const subjectText = draft.subject_display_name ? `${draft.subject_display_name}: ` : ''
+      const dateText = formatHungarianDate(draft.due_date)
+      const timeText = draft.due_time ? ` ${String(draft.due_time).slice(0, 5)}` : ''
+
+      const updatedDraft: CreateDraft = {
+        ...draft,
+        first_reminder_at: firstReminderAt,
+        reminder_phrase: reminderPhrase,
+        confirmation_text: `${subjectText}${draft.title} – ${dateText}${timeText}. Emlékeztetés: ${reminderPhrase}. Rögzítsem?`,
+      }
+
+      return json({ status: 'needs_confirmation', draft: updatedDraft })
+    }
+
     if (body?.action === 'confirm_create') {
       const draft = body?.draft as CreateDraft | undefined
       if (!draft || !draft.title || !draft.item_type) {
