@@ -61,6 +61,16 @@ type CompleteDraft = {
   confirmation_text: string
 }
 
+type QueryInterpretation = {
+  intent: 'query'
+  status: 'open' | 'done' | 'all'
+  responsibility: 'mine' | 'family'
+  subject_name: string | null
+  keywords: string | null
+  date_scope: 'none' | 'today' | 'tomorrow' | 'this_week' | 'next_7_days' | 'specific_date'
+  date_phrase: string | null
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -428,6 +438,54 @@ function daysBetween(fromDateIso: string, toDateIso: string) {
   return Math.round(diff / 86400000)
 }
 
+function resolveQueryDateRange(
+  scope: QueryInterpretation['date_scope'],
+  phrase: string | null,
+  timeZone: string,
+) {
+  const today = localDateInTimezone(timeZone)
+
+  if (scope === 'none') return null
+  if (scope === 'today') return { start: today, end: today }
+  if (scope === 'tomorrow') {
+    const date = addDays(today, 1)
+    return { start: date, end: date }
+  }
+  if (scope === 'next_7_days') {
+    return { start: today, end: addDays(today, 6) }
+  }
+  if (scope === 'this_week') {
+    const weekday = weekdayOf(today)
+    const daysFromMonday = (weekday + 6) % 7
+    const start = addDays(today, -daysFromMonday)
+    return { start, end: addDays(start, 6) }
+  }
+
+  const date = resolveDatePhrase(phrase, timeZone)
+  return date ? { start: date, end: date } : null
+}
+
+function queryItemDate(item: any, timeZone: string) {
+  if (item.status === 'done' && item.completed_at) {
+    return dateInTimezone(item.completed_at, timeZone)
+  }
+  return item.due_date ?? null
+}
+
+function queryItemLine(item: any, memberName: string | null, timeZone: string) {
+  const subject = memberName ? `${memberName}: ` : ''
+  const time = item.due_time ? ` ${String(item.due_time).slice(0, 5)}` : ''
+
+  if (item.status === 'done') {
+    const completedDate = item.completed_at
+      ? dateInTimezone(item.completed_at, timeZone)
+      : null
+    return `✓ ${subject}${item.title}${completedDate ? ` – elintézve: ${formatHungarianDate(completedDate)}` : ''}`
+  }
+
+  return `• ${subject}${item.title}${item.due_date ? ` – ${formatHungarianDate(item.due_date)}${time}` : ' – dátum nélkül'}`
+}
+
 function updateCandidateLabel(candidate: UpdateCandidate) {
   const subject = candidate.subject_display_name ? `${candidate.subject_display_name}: ` : ''
   const date = candidate.due_date ? formatHungarianDate(candidate.due_date) : 'dátum nélkül'
@@ -644,6 +702,78 @@ async function interpretCompleteWithOpenAI(
   return JSON.parse(outputText) as CompleteInterpretation
 }
 
+async function interpretQueryWithOpenAI(
+  message: string,
+  memberNames: string[],
+): Promise<QueryInterpretation> {
+  const apiKey = Deno.env.get('OPENAI_API_KEY')
+  if (!apiKey) throw new Error('OPENAI_API_KEY nincs beállítva a Supabase Edge Function secretjei között.')
+
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'gpt-5.6-luna',
+      instructions: [
+        'Te egy magyar nyelvű családi asszisztens lekérdezés-értelmező rétege vagy.',
+        'Csak a keresési szándékot strukturáld. Ne kérdezz adatbázist és ne számolj relatív dátumot.',
+        'status=open: nyitott vagy jövőbeli ügyek; done: elintézett/kész előzmények; all: csak ha a kérdés tényleg mindkettőt kéri.',
+        'responsibility=mine, ha a felhasználó kifejezetten a saját ügyeiről kérdez (pl. "ügyeim", "mit intéztem el"). Egyébként family.',
+        'subject_name akkor legyen kitöltve, ha konkrét családtagra kérdez.',
+        `Ismert családtagok: ${memberNames.length ? memberNames.join(', ') : 'nincs'}.`,
+        'keywords legyen rövid keresőkifejezés, például "fodrász", ha konkrét ügytípust keres. Általános listázásnál legyen null.',
+        'date_scope: today, tomorrow, this_week, next_7_days, specific_date vagy none.',
+        'specific_date esetén a date_phrase őrizze meg az eredeti dátumkifejezést. Más scope esetén date_phrase legyen null.',
+        'Példák: "Mi van holnap?" => open, family, tomorrow. "Mikor megy Anya fodrászhoz?" => open, family, subject_name=Anya, keywords=fodrász, none. "Milyen nyitott ügyeim vannak?" => open, mine, none. "Mit intéztem el ezen a héten?" => done, mine, this_week.',
+      ].join('\n'),
+      input: message,
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'query_items_interpretation',
+          strict: true,
+          schema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              intent: { type: 'string', enum: ['query'] },
+              status: { type: 'string', enum: ['open', 'done', 'all'] },
+              responsibility: { type: 'string', enum: ['mine', 'family'] },
+              subject_name: { type: ['string', 'null'] },
+              keywords: { type: ['string', 'null'] },
+              date_scope: {
+                type: 'string',
+                enum: ['none', 'today', 'tomorrow', 'this_week', 'next_7_days', 'specific_date'],
+              },
+              date_phrase: { type: ['string', 'null'] },
+            },
+            required: [
+              'intent',
+              'status',
+              'responsibility',
+              'subject_name',
+              'keywords',
+              'date_scope',
+              'date_phrase',
+            ],
+          },
+        },
+      },
+    }),
+  })
+
+  const data = await response.json()
+  if (!response.ok) throw new Error(data?.error?.message ?? 'OpenAI API hiba.')
+
+  const outputText = extractOutputText(data)
+  if (!outputText) throw new Error('Az AI nem adott értelmezhető keresési választ.')
+
+  return JSON.parse(outputText) as QueryInterpretation
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return json({ error: 'Csak POST kérés támogatott.' }, 405)
@@ -802,6 +932,146 @@ Deno.serve(async (req) => {
       })
 
       return json({ status: 'updated', settings })
+    }
+
+    if (body?.action === 'query_items') {
+      const message = String(body?.message ?? '').trim()
+      if (!message) return json({ error: 'A kérdés nem lehet üres.' }, 400)
+
+      const [{ data: members, error: membersError }, { data: settings }] = await Promise.all([
+        db
+          .from('family_members')
+          .select('id, display_name, member_kind, user_id')
+          .eq('family_id', familyId),
+        db
+          .from('user_settings')
+          .select('timezone')
+          .eq('user_id', user.id)
+          .maybeSingle(),
+      ])
+
+      if (membersError) throw membersError
+
+      const memberList = members ?? []
+      const interpretation = await interpretQueryWithOpenAI(
+        message,
+        memberList.map((member) => member.display_name),
+      )
+
+      const timeZone = settings?.timezone ?? 'Europe/Budapest'
+      const dateRange = resolveQueryDateRange(
+        interpretation.date_scope,
+        interpretation.date_phrase,
+        timeZone,
+      )
+
+      if (interpretation.date_scope === 'specific_date' && !dateRange) {
+        return json({
+          status: 'needs_clarification',
+          answer: 'A megadott dátumot nem tudom biztonságosan értelmezni. Írd le másképp.',
+        })
+      }
+
+      let subjectId: string | null = null
+      if (interpretation.subject_name) {
+        const wanted = normalize(interpretation.subject_name)
+        const subject = memberList.find((member) => normalize(member.display_name) === wanted) ?? null
+
+        if (!subject) {
+          return json({
+            status: 'needs_clarification',
+            answer: `Nem találtam ilyen családtagot: ${interpretation.subject_name}.`,
+          })
+        }
+
+        subjectId = subject.id
+      }
+
+      let itemsQuery = db
+        .from('items')
+        .select('id, title, notes, due_date, due_time, status, subject_member_id, responsible_user_id, completed_at, created_at')
+        .eq('family_id', familyId)
+        .neq('status', 'deleted')
+        .limit(200)
+
+      if (interpretation.status !== 'all') {
+        itemsQuery = itemsQuery.eq('status', interpretation.status)
+      }
+
+      if (interpretation.responsibility === 'mine') {
+        itemsQuery = itemsQuery.eq('responsible_user_id', user.id)
+      }
+
+      if (subjectId) {
+        itemsQuery = itemsQuery.eq('subject_member_id', subjectId)
+      }
+
+      const { data: rawItems, error: itemsError } = await itemsQuery
+      if (itemsError) throw itemsError
+
+      const keywordTokens = interpretation.keywords
+        ? normalize(interpretation.keywords)
+            .split(/\s+/)
+            .filter((token) => token.length >= 2)
+        : []
+
+      const filtered = (rawItems ?? []).filter((item) => {
+        if (keywordTokens.length) {
+          const haystack = normalize(`${item.title} ${item.notes ?? ''}`)
+          if (!keywordTokens.every((token) => haystack.includes(token))) return false
+        }
+
+        if (dateRange) {
+          const itemDate = queryItemDate(item, timeZone)
+          if (!itemDate || itemDate < dateRange.start || itemDate > dateRange.end) return false
+        }
+
+        return true
+      })
+
+      filtered.sort((a, b) => {
+        if (interpretation.status === 'done') {
+          return String(b.completed_at ?? '').localeCompare(String(a.completed_at ?? ''))
+        }
+
+        const aDate = a.due_date ?? '9999-12-31'
+        const bDate = b.due_date ?? '9999-12-31'
+        const dateCompare = aDate.localeCompare(bDate)
+        if (dateCompare !== 0) return dateCompare
+
+        return String(a.due_time ?? '23:59:59').localeCompare(String(b.due_time ?? '23:59:59'))
+      })
+
+      const memberNameById = new Map(memberList.map((member) => [member.id, member.display_name]))
+      const visible = filtered.slice(0, 20)
+
+      if (!visible.length) {
+        return json({
+          status: 'ok',
+          count: 0,
+          answer: 'Nem találtam a kérdésednek megfelelő ügyet.',
+          interpretation,
+        })
+      }
+
+      const lines = visible.map((item) =>
+        queryItemLine(
+          item,
+          item.subject_member_id ? memberNameById.get(item.subject_member_id) ?? null : null,
+          timeZone,
+        ),
+      )
+
+      const more = filtered.length > visible.length
+        ? `\n+ még ${filtered.length - visible.length} találat`
+        : ''
+
+      return json({
+        status: 'ok',
+        count: filtered.length,
+        answer: `${filtered.length} ügyet találtam:\n${lines.join('\n')}${more}`,
+        interpretation,
+      })
     }
 
     if (body?.action === 'interpret_create') {
