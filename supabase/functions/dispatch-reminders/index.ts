@@ -38,6 +38,18 @@ function localDateInTimezone(timeZone: string, date = new Date()) {
   return `${values.year}-${values.month}-${values.day}`
 }
 
+function localTimeInTimezone(timeZone: string, date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date)
+
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return `${values.hour}:${values.minute}`
+}
+
 function addDays(dateIso: string, days: number) {
   const [year, month, day] = dateIso.split('-').map(Number)
   const date = new Date(Date.UTC(year, month - 1, day))
@@ -198,20 +210,6 @@ Deno.serve(async (req) => {
     for (const reminder of dueReminders) {
       const originalNextNotificationAt = reminder.next_notification_at
 
-      const { data: claimed } = await db
-        .from('reminders')
-        .update({
-          next_notification_at: null,
-          last_sent_at: nowIso,
-        })
-        .eq('id', reminder.id)
-        .eq('enabled', true)
-        .lte('next_notification_at', nowIso)
-        .select('id')
-        .maybeSingle()
-
-      if (!claimed) continue
-
       const { data: item, error: itemError } = await db
         .from('items')
         .select('id, family_id, title, due_date, due_time, status, responsible_user_id, subject_member_id')
@@ -244,10 +242,34 @@ Deno.serve(async (req) => {
           : Promise.resolve({ data: null }),
         db
           .from('user_settings')
-          .select('timezone, briefing_time')
+          .select('timezone, briefing_time, briefing_enabled')
           .eq('user_id', item.responsible_user_id)
           .maybeSingle(),
       ])
+
+      const timeZone = settings?.timezone ?? 'Europe/Budapest'
+      const briefingTime = String(settings?.briefing_time ?? '07:00:00').slice(0, 5)
+      const reminderLocalTime = originalNextNotificationAt
+        ? localTimeInTimezone(timeZone, new Date(originalNextNotificationAt))
+        : null
+
+      if (settings?.briefing_enabled && reminderLocalTime === briefingTime) {
+        continue
+      }
+
+      const { data: claimed } = await db
+        .from('reminders')
+        .update({
+          next_notification_at: null,
+          last_sent_at: nowIso,
+        })
+        .eq('id', reminder.id)
+        .eq('enabled', true)
+        .lte('next_notification_at', nowIso)
+        .select('id')
+        .maybeSingle()
+
+      if (!claimed) continue
 
       const subjectPrefix = subject?.display_name ? `${subject.display_name}: ` : ''
       const dateText = formatDate(item.due_date)
@@ -277,8 +299,6 @@ Deno.serve(async (req) => {
 
       sent += 1
 
-      const timeZone = settings?.timezone ?? 'Europe/Budapest'
-      const briefingTime = String(settings?.briefing_time ?? '07:00:00').slice(0, 5)
       let nextNotificationAt: string | null = null
 
       if (item.due_date) {
