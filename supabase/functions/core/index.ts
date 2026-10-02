@@ -832,6 +832,13 @@ Deno.serve(async (req) => {
 
         const reminderDate = addDays(dueDate, -reminderOffsetDays)
         firstReminderAt = localDateTimeToUtcIso(reminderDate, briefingTime, timeZone)
+
+        if (new Date(firstReminderAt).getTime() <= Date.now()) {
+          return json({
+            error: 'A kért emlékeztetési időpont már elmúlt. Adj meg későbbi jelzést.',
+            code: 'REMINDER_IN_PAST',
+          }, 400)
+        }
       }
 
       const dateText = formatHungarianDate(dueDate)
@@ -898,6 +905,14 @@ Deno.serve(async (req) => {
       }
 
       const firstReminderAt = localDateTimeToUtcIso(reminderDate, briefingTime, timeZone)
+
+      if (new Date(firstReminderAt).getTime() <= Date.now()) {
+        return json({
+          error: 'A kért emlékeztetési időpont már elmúlt. Adj meg későbbi jelzést.',
+          code: 'REMINDER_IN_PAST',
+        }, 400)
+      }
+
       const subjectText = draft.subject_display_name ? `${draft.subject_display_name}: ` : ''
       const dateText = formatHungarianDate(draft.due_date)
       const timeText = draft.due_time ? ` ${String(draft.due_time).slice(0, 5)}` : ''
