@@ -82,6 +82,42 @@ function normalize(value: string) {
     .trim()
 }
 
+function duplicateTitleKey(value: string) {
+  return normalize(value).replace(/[^a-z0-9]+/g, '')
+}
+
+async function findExactOpenDuplicate(
+  familyId: string,
+  title: string,
+  dueDate: string | null,
+  dueTime: string | null,
+  subjectMemberId: string | null,
+) {
+  let query = db
+    .from('items')
+    .select('id, title, due_date, due_time, subject_member_id')
+    .eq('family_id', familyId)
+    .eq('status', 'open')
+
+  query = dueDate
+    ? query.eq('due_date', dueDate)
+    : query.is('due_date', null)
+
+  const { data: candidates, error } = await query.limit(50)
+  if (error) throw error
+
+  const wantedTitle = duplicateTitleKey(title)
+  const wantedTime = dueTime ? String(dueTime).slice(0, 5) : null
+  const wantedSubject = subjectMemberId ?? null
+
+  return (candidates ?? []).find((item) => {
+    const itemTime = item.due_time ? String(item.due_time).slice(0, 5) : null
+    return duplicateTitleKey(item.title) === wantedTitle
+      && itemTime === wantedTime
+      && (item.subject_member_id ?? null) === wantedSubject
+  }) ?? null
+}
+
 function localDateInTimezone(timeZone: string) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone,
@@ -867,6 +903,24 @@ Deno.serve(async (req) => {
         confirmation_text: confirmationText,
       }
 
+      const duplicate = await findExactOpenDuplicate(
+        familyId,
+        draft.title,
+        draft.due_date,
+        draft.due_time,
+        draft.subject_member_id,
+      )
+
+      if (duplicate) {
+        const duplicateTime = duplicate.due_time ? ` ${String(duplicate.due_time).slice(0, 5)}` : ''
+        const duplicateSubject = subject?.display_name ? `${subject.display_name}: ` : ''
+        return json({
+          status: 'duplicate',
+          existing_item_id: duplicate.id,
+          message: `Ez már szerepel a nyitott ügyek között: ${duplicateSubject}${duplicate.title} – ${formatHungarianDate(duplicate.due_date)}${duplicateTime}. Ha másik személynek vagy másik időpontra gondoltál, pontosítsd a mondatot.`,
+        })
+      }
+
       return json({ status: 'needs_confirmation', draft })
     }
 
@@ -942,6 +996,23 @@ Deno.serve(async (req) => {
           .maybeSingle()
 
         if (!subject) return json({ error: 'A megadott családtag nem ehhez a családhoz tartozik.' }, 400)
+      }
+
+      const duplicate = await findExactOpenDuplicate(
+        familyId,
+        draft.title,
+        draft.due_date,
+        draft.due_time,
+        draft.subject_member_id,
+      )
+
+      if (duplicate) {
+        const duplicateTime = duplicate.due_time ? ` ${String(duplicate.due_time).slice(0, 5)}` : ''
+        return json({
+          status: 'duplicate',
+          existing_item_id: duplicate.id,
+          message: `Ez az ügy már rögzítve van: ${duplicate.title} – ${formatHungarianDate(duplicate.due_date)}${duplicateTime}. Ha másik személynek vagy másik időpontra gondoltál, pontosítsd a mondatot.`,
+        })
       }
 
       const { data: item, error: itemError } = await db
