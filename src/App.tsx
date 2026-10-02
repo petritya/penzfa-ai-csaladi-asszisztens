@@ -79,6 +79,11 @@ export default function App() {
   const [flowBusy, setFlowBusy] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
   const [pushMessage, setPushMessage] = useState<string | null>(null)
+  const [briefingEnabled, setBriefingEnabled] = useState(true)
+  const [briefingTime, setBriefingTime] = useState('07:00')
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
+  const [settingsBusy, setSettingsBusy] = useState(false)
+  const [settingsMessage, setSettingsMessage] = useState<string | null>(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -92,6 +97,8 @@ export default function App() {
       setSession(nextSession)
       setLoadingSession(false)
       setSetupComplete(null)
+      setSettingsLoaded(false)
+      setSettingsMessage(null)
       setDraft(null)
       setUpdateDraft(null)
       setUpdateCandidates([])
@@ -112,6 +119,20 @@ export default function App() {
       .then((data) => setSetupComplete(Boolean(data.setup_complete)))
       .catch(() => setSetupComplete(false))
   }, [session, setupComplete])
+
+  useEffect(() => {
+    if (!session || setupComplete !== true || settingsLoaded) return
+
+    void invokeCore({ action: 'get_settings' })
+      .then((data) => {
+        setBriefingEnabled(Boolean(data.settings?.briefing_enabled))
+        setBriefingTime(String(data.settings?.briefing_time ?? '07:00:00').slice(0, 5))
+        setSettingsLoaded(true)
+      })
+      .catch(() => {
+        setSettingsLoaded(true)
+      })
+  }, [session, setupComplete, settingsLoaded])
 
   useEffect(() => {
     if (!session || !isPushConfigured()) return
@@ -207,6 +228,32 @@ export default function App() {
       )
     } finally {
       setPushBusy(false)
+    }
+  }
+
+
+  async function handleSaveBriefingSettings() {
+    setSettingsBusy(true)
+    setSettingsMessage(null)
+
+    try {
+      const data = await invokeCore({
+        action: 'update_settings',
+        briefing_enabled: briefingEnabled,
+        briefing_time: briefingTime,
+      })
+
+      setBriefingEnabled(Boolean(data.settings?.briefing_enabled))
+      setBriefingTime(String(data.settings?.briefing_time ?? briefingTime).slice(0, 5))
+      setSettingsMessage('A reggeli briefing beállításai elmentve.')
+    } catch (error) {
+      setSettingsMessage(
+        error instanceof Error
+          ? error.message
+          : 'Nem sikerült elmenteni a briefing beállításait.',
+      )
+    } finally {
+      setSettingsBusy(false)
     }
   }
 
@@ -503,6 +550,46 @@ export default function App() {
               </button>
               {pushMessage && <p className="muted">{pushMessage}</p>}
             </div>
+          )}
+
+
+          {setupComplete === true && (
+            <section className="confirmation">
+              <p className="eyebrow">Reggeli briefing</p>
+              <div className="stack compact-stack">
+                <label className="inline-control">
+                  <input
+                    type="checkbox"
+                    checked={briefingEnabled}
+                    onChange={(event) => setBriefingEnabled(event.target.checked)}
+                  />
+                  Kérek napi reggeli összefoglalót
+                </label>
+
+                <label>
+                  Briefing időpontja
+                  <input
+                    type="time"
+                    value={briefingTime}
+                    onChange={(event) => setBriefingTime(event.target.value)}
+                    disabled={!briefingEnabled}
+                  />
+                </label>
+
+                <div className="actions">
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={handleSaveBriefingSettings}
+                    disabled={settingsBusy || !settingsLoaded}
+                  >
+                    {settingsBusy ? 'Mentés…' : 'Briefing beállítás mentése'}
+                  </button>
+                </div>
+
+                {settingsMessage && <p className="muted">{settingsMessage}</p>}
+              </div>
+            </section>
           )}
 
           {setupComplete === false && (
