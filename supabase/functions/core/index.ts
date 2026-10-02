@@ -714,6 +714,59 @@ Deno.serve(async (req) => {
 
     const familyId = activeMembership.family_id
 
+    if (body?.action === 'get_settings') {
+      const { data: settings, error: settingsError } = await db
+        .from('user_settings')
+        .select('timezone, briefing_enabled, briefing_time, notify_partner_on_complete')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (settingsError) throw settingsError
+
+      return json({
+        settings: settings ?? {
+          timezone: 'Europe/Budapest',
+          briefing_enabled: true,
+          briefing_time: '07:00:00',
+          notify_partner_on_complete: false,
+        },
+      })
+    }
+
+    if (body?.action === 'update_settings') {
+      const briefingEnabled = Boolean(body?.briefing_enabled)
+      const briefingTime = String(body?.briefing_time ?? '').trim()
+
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(briefingTime)) {
+        return json({ error: 'A briefing időpontja HH:MM formátumú legyen.' }, 400)
+      }
+
+      const { data: settings, error: settingsError } = await db
+        .from('user_settings')
+        .upsert({
+          user_id: user.id,
+          briefing_enabled: briefingEnabled,
+          briefing_time: briefingTime,
+          updated_at: new Date().toISOString(),
+        })
+        .select('timezone, briefing_enabled, briefing_time, notify_partner_on_complete')
+        .single()
+
+      if (settingsError) throw settingsError
+
+      await db.from('activity_log').insert({
+        family_id: familyId,
+        actor_user_id: user.id,
+        action: 'user_settings_updated',
+        details: {
+          briefing_enabled: settings.briefing_enabled,
+          briefing_time: settings.briefing_time,
+        },
+      })
+
+      return json({ status: 'updated', settings })
+    }
+
     if (body?.action === 'interpret_create') {
       const message = String(body?.message ?? '').trim()
       if (!message) return json({ error: 'Az üzenet nem lehet üres.' }, 400)
