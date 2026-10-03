@@ -14,6 +14,8 @@ type WorkMode = 'create' | 'update' | 'complete' | 'query'
 type CreateDraft = {
   subject_member_id: string | null
   subject_display_name: string | null
+  responsible_user_id: string
+  responsible_display_name: string
   title: string
   item_type: 'task' | 'event' | 'deadline'
   notes: string | null
@@ -525,7 +527,13 @@ export default function App() {
         return
       }
 
-      setFlowMessage(`Rögzítve: ${data.item.title}`)
+      setFlowMessage(
+        data.assigned_to_other_owner
+          ? data.assignment_notification_sent
+            ? `Rögzítve: ${data.item.title}. A másik ügygazda értesítést kapott.`
+            : data.assignment_notification_warning ?? `Rögzítve: ${data.item.title}.`
+          : `Rögzítve: ${data.item.title}`,
+      )
       setNaturalMessage('')
       setDraft(null)
       setReminderFollowupOpen(false)
@@ -567,7 +575,14 @@ export default function App() {
         return
       }
 
-      setFlowMessage(`Rögzítve: ${createData.item.title}. Emlékeztető: ${updatedDraft.reminder_phrase}.`)
+      setFlowMessage(
+        createData.assigned_to_other_owner
+          ? createData.assignment_notification_sent
+            ? `Rögzítve: ${createData.item.title}. Emlékeztető: ${updatedDraft.reminder_phrase}. A másik ügygazda értesítést kapott.`
+            : createData.assignment_notification_warning
+              ?? `Rögzítve: ${createData.item.title}. Emlékeztető: ${updatedDraft.reminder_phrase}.`
+          : `Rögzítve: ${createData.item.title}. Emlékeztető: ${updatedDraft.reminder_phrase}.`,
+      )
       setNaturalMessage('')
       setDraft(null)
       setReminderFollowupOpen(false)
