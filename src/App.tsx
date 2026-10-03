@@ -206,6 +206,19 @@ export default function App() {
     const { data, error } = await supabase.functions.invoke('core', { body })
 
     if (error) {
+      const context = (error as { context?: Response }).context
+      if (context) {
+        try {
+          const payload = await context.clone().json()
+          if (payload?.error) throw new Error(String(payload.error))
+          if (payload?.message) throw new Error(String(payload.message))
+        } catch (contextError) {
+          if (contextError instanceof Error && contextError.message !== error.message) {
+            throw contextError
+          }
+        }
+      }
+
       throw new Error(error.message)
     }
 
