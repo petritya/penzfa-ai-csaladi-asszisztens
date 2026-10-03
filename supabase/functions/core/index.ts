@@ -436,6 +436,57 @@ function findHungarianWeekday(value: string) {
   return null
 }
 
+function resolvePastOrTodayDatePhrase(phrase: string | null, timeZone: string) {
+  if (!phrase) return null
+
+  const raw = phrase.trim()
+  const normalized = normalize(raw)
+  const today = localDateInTimezone(timeZone)
+  const [todayYear, todayMonth] = today.split('-').map(Number)
+
+  if (/\btegnapelott\b/.test(normalized)) return addDays(today, -2)
+  if (/\btegnap\b/.test(normalized)) return addDays(today, -1)
+  if (/\bma\b/.test(normalized)) return today
+
+  const explicitIso = raw.match(/\b(20\d{2}-\d{2}-\d{2})\b/)
+  if (explicitIso) {
+    return explicitIso[1] <= today ? explicitIso[1] : null
+  }
+
+  const explicitMonth = findHungarianMonth(raw)
+  const explicitDay = findDayOfMonth(raw)
+
+  if (explicitMonth !== null && explicitDay !== null) {
+    let candidate = makeIsoDate(todayYear, explicitMonth, explicitDay)
+    if (!candidate) return null
+
+    if (candidate > today) {
+      candidate = makeIsoDate(todayYear - 1, explicitMonth, explicitDay)
+    }
+
+    return candidate
+  }
+
+  if (explicitMonth === null && explicitDay !== null) {
+    let year = todayYear
+    let month = todayMonth
+    let candidate = makeIsoDate(year, month, explicitDay)
+
+    if (!candidate || candidate > today) {
+      month -= 1
+      if (month < 1) {
+        month = 12
+        year -= 1
+      }
+      candidate = makeIsoDate(year, month, explicitDay)
+    }
+
+    return candidate
+  }
+
+  return null
+}
+
 function resolveDatePhrase(phrase: string | null, timeZone: string) {
   if (!phrase) return null
 
@@ -2840,7 +2891,7 @@ Deno.serve(async (req) => {
       }
 
       const timeZone = settings?.timezone ?? 'Europe/Budapest'
-      const actualDate = resolveDatePhrase(datePhrase, timeZone)
+      const actualDate = resolvePastOrTodayDatePhrase(datePhrase, timeZone)
       const today = localDateInTimezone(timeZone)
 
       if (!actualDate) {
