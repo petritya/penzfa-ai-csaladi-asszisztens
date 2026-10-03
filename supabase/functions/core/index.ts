@@ -852,12 +852,21 @@ Deno.serve(async (req) => {
 
       const familyName = String(body?.family_name ?? '').trim()
       const displayName = String(body?.display_name ?? '').trim()
+      const secondOwnerEmail = String(body?.second_owner_email ?? '').trim().toLowerCase()
       const managedMembers = Array.isArray(body?.managed_members)
         ? body.managed_members.map((value: unknown) => String(value).trim()).filter(Boolean)
         : []
 
       if (!familyName || !displayName) {
         return json({ error: 'A család neve és a saját megjelenített név kötelező.' }, 400)
+      }
+
+      if (secondOwnerEmail && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(secondOwnerEmail)) {
+        return json({ error: 'A második ügygazda e-mail címe nem érvényes.' }, 400)
+      }
+
+      if (secondOwnerEmail && normalize(secondOwnerEmail) === normalize(user.email ?? '')) {
+        return json({ error: 'A második ügygazda e-mail címe nem lehet a saját e-mail címed.' }, 400)
       }
 
       const { data: family, error: familyError } = await db
@@ -889,15 +898,37 @@ Deno.serve(async (req) => {
         throw memberError
       }
 
+      if (secondOwnerEmail) {
+        const { error: invitationError } = await db
+          .from('family_owner_invitations')
+          .insert({
+            family_id: family.id,
+            email: secondOwnerEmail,
+            invited_by: user.id,
+          })
+
+        if (invitationError) {
+          await db.from('families').delete().eq('id', family.id)
+          throw invitationError
+        }
+      }
+
       await db.from('user_settings').upsert({ user_id: user.id })
       await db.from('activity_log').insert({
         family_id: family.id,
         actor_user_id: user.id,
         action: 'family_bootstrap_created',
-        details: { managed_members: managedMembers },
+        details: {
+          managed_members: managedMembers,
+          second_owner_invitation_created: Boolean(secondOwnerEmail),
+        },
       })
 
-      return json({ status: 'created', family_id: family.id })
+      return json({
+        status: 'created',
+        family_id: family.id,
+        second_owner_invitation_created: Boolean(secondOwnerEmail),
+      })
     }
 
     if (!activeMembership) {
