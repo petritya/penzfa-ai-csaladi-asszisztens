@@ -1062,14 +1062,6 @@ Deno.serve(async (req) => {
         if (responsibleUserId) return true
         if (interpretation.responsibility !== 'mine') return true
 
-        if (subjectId) {
-          return item.responsible_user_id === user.id
-        }
-
-        if (item.subject_member_id) {
-          return item.subject_member_id === activeMembership.id
-        }
-
         return item.responsible_user_id === user.id
       })
 
