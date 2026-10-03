@@ -53,6 +53,11 @@ type CompleteDraft = {
   confirmation_text: string
 }
 
+type FutureEventCompletionDraft = {
+  target_item_id: string
+  prompt: string
+}
+
 type FamilyStructure = {
   owners: Array<{
     id: string
@@ -101,6 +106,8 @@ export default function App() {
   const [updateChanges, setUpdateChanges] = useState<UpdateChanges | null>(null)
   const [completeDraft, setCompleteDraft] = useState<CompleteDraft | null>(null)
   const [completeCandidates, setCompleteCandidates] = useState<UpdateCandidate[]>([])
+  const [futureEventCompletion, setFutureEventCompletion] = useState<FutureEventCompletionDraft | null>(null)
+  const [futureEventDateText, setFutureEventDateText] = useState('')
   const [flowMessage, setFlowMessage] = useState<string | null>(null)
   const [flowError, setFlowError] = useState<string | null>(null)
   const [queryAnswer, setQueryAnswer] = useState<string | null>(null)
@@ -143,6 +150,8 @@ export default function App() {
       setUpdateChanges(null)
       setCompleteDraft(null)
       setCompleteCandidates([])
+      setFutureEventCompletion(null)
+      setFutureEventDateText('')
       setFlowMessage(null)
       setFlowError(null)
       setQueryAnswer(null)
@@ -434,6 +443,8 @@ export default function App() {
     setUpdateChanges(null)
     setCompleteDraft(null)
     setCompleteCandidates([])
+    setFutureEventCompletion(null)
+    setFutureEventDateText('')
     setQueryAnswer(null)
 
     try {
@@ -492,6 +503,14 @@ export default function App() {
 
       if (data.status === 'needs_confirmation') {
         setCompleteDraft(data.draft as CompleteDraft)
+        return
+      }
+
+      if (data.status === 'future_event_needs_date') {
+        setFutureEventCompletion({
+          target_item_id: String(data.candidate?.id ?? ''),
+          prompt: String(data.prompt ?? 'Ez az esemény még a jövőben van. Írd meg, mikor történt meg.'),
+        })
         return
       }
 
@@ -682,6 +701,13 @@ export default function App() {
       if (data.status === 'needs_confirmation') {
         setCompleteDraft(data.draft as CompleteDraft)
         setCompleteCandidates([])
+      } else if (data.status === 'future_event_needs_date') {
+        setFutureEventCompletion({
+          target_item_id: String(data.candidate?.id ?? targetItemId),
+          prompt: String(data.prompt ?? 'Ez az esemény még a jövőben van. Írd meg, mikor történt meg.'),
+        })
+        setFutureEventDateText('')
+        setCompleteCandidates([])
       } else {
         setFlowError(data.error ?? 'Nem sikerült előkészíteni a lezárást.')
       }
@@ -690,6 +716,39 @@ export default function App() {
     } finally {
       setFlowBusy(false)
     }
+  }
+
+  async function handlePrepareFutureEventComplete() {
+    if (!futureEventCompletion || !futureEventDateText.trim()) return
+
+    setFlowBusy(true)
+    setFlowError(null)
+    setFlowMessage(null)
+
+    try {
+      const data = await invokeCore({
+        action: 'prepare_future_event_complete',
+        target_item_id: futureEventCompletion.target_item_id,
+        date_phrase: futureEventDateText.trim(),
+      })
+
+      if (data.status === 'needs_confirmation') {
+        setCompleteDraft(data.draft as CompleteDraft)
+        setFutureEventCompletion(null)
+        setFutureEventDateText('')
+      } else {
+        setFlowError(data.error ?? 'Nem sikerült előkészíteni a lezárást.')
+      }
+    } catch (error) {
+      setFlowError(error instanceof Error ? error.message : 'Nem sikerült értelmezni az esemény dátumát.')
+    } finally {
+      setFlowBusy(false)
+    }
+  }
+
+  function handleCancelFutureEventComplete() {
+    setFutureEventCompletion(null)
+    setFutureEventDateText('')
   }
 
   async function handleConfirmComplete() {
@@ -714,6 +773,8 @@ export default function App() {
       )
       setNaturalMessage('')
       setCompleteDraft(null)
+      setFutureEventCompletion(null)
+      setFutureEventDateText('')
     } catch (error) {
       setFlowError(error instanceof Error ? error.message : 'Nem sikerült lezárni az ügyet.')
     } finally {
@@ -726,6 +787,8 @@ export default function App() {
 
     setCompleteDraft(null)
     setCompleteCandidates([])
+    setFutureEventCompletion(null)
+    setFutureEventDateText('')
 
     if (!pendingActionId) return
 
@@ -1193,6 +1256,39 @@ export default function App() {
                         {candidate.label}
                       </button>
                     ))}
+                  </div>
+                </section>
+              )}
+
+              {futureEventCompletion && (
+                <section className="confirmation">
+                  <p className="eyebrow">Jövőbeli esemény</p>
+                  <p>{futureEventCompletion.prompt}</p>
+                  <label>
+                    Mikor történt meg?
+                    <input
+                      value={futureEventDateText}
+                      onChange={(event) => setFutureEventDateText(event.target.value)}
+                      placeholder="Például: ma, tegnap, október 2-án"
+                    />
+                  </label>
+                  <div className="actions">
+                    <button
+                      className="primary-button"
+                      type="button"
+                      onClick={handlePrepareFutureEventComplete}
+                      disabled={flowBusy || !futureEventDateText.trim()}
+                    >
+                      Dátum megadása
+                    </button>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={handleCancelFutureEventComplete}
+                      disabled={flowBusy}
+                    >
+                      Mégse
+                    </button>
                   </div>
                 </section>
               )}
