@@ -63,7 +63,8 @@ export default function App() {
 
   const [familyName, setFamilyName] = useState('Család')
   const [displayName, setDisplayName] = useState('')
-  const [managedMembersText, setManagedMembersText] = useState('Bence, Anyu')
+  const [secondOwnerEmail, setSecondOwnerEmail] = useState('')
+  const [managedMembersText, setManagedMembersText] = useState('')
   const [setupComplete, setSetupComplete] = useState<boolean | null>(null)
 
   const [workMode, setWorkMode] = useState<WorkMode>('create')
@@ -274,6 +275,7 @@ export default function App() {
         action: 'bootstrap',
         family_name: familyName.trim(),
         display_name: displayName.trim(),
+        second_owner_email: secondOwnerEmail.trim(),
         managed_members: managedMembers,
       })
       setSetupComplete(true)
@@ -678,12 +680,23 @@ export default function App() {
               </label>
 
               <label>
-                Kezelt családtagok
+                Második ügygazda e-mailje (opcionális)
+                <input
+                  type="email"
+                  value={secondOwnerEmail}
+                  onChange={(event) => setSecondOwnerEmail(event.target.value)}
+                  placeholder="pelda@email.hu"
+                />
+              </label>
+
+              <label>
+                Érintett családtagok
                 <input
                   value={managedMembersText}
                   onChange={(event) => setManagedMembersText(event.target.value)}
-                  placeholder="Bence, Anyu"
+                  placeholder="Bence, Mamus"
                 />
+                <span className="muted">Vesszővel válaszd el őket. Ők nem kapnak hozzáférést a rendszerhez.</span>
               </label>
 
               <button className="primary-button" type="submit" disabled={flowBusy}>
