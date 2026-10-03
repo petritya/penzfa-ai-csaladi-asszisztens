@@ -970,6 +970,8 @@ Deno.serve(async (req) => {
       )
 
       let memberId: string
+      let transferredOpenItems = 0
+
       if (matchingManaged) {
         const { data: promoted, error: promoteError } = await db
           .from('family_members')
@@ -985,6 +987,17 @@ Deno.serve(async (req) => {
 
         if (promoteError) throw promoteError
         memberId = promoted.id
+
+        const { data: transferredItems, error: transferError } = await db
+          .from('items')
+          .update({ responsible_user_id: user.id })
+          .eq('family_id', invitation.family_id)
+          .eq('subject_member_id', matchingManaged.id)
+          .eq('status', 'open')
+          .select('id')
+
+        if (transferError) throw transferError
+        transferredOpenItems = transferredItems?.length ?? 0
       } else {
         const { data: inserted, error: insertError } = await db
           .from('family_members')
@@ -1020,13 +1033,17 @@ Deno.serve(async (req) => {
         family_id: invitation.family_id,
         actor_user_id: user.id,
         action: 'second_owner_joined',
-        details: { member_id: memberId },
+        details: {
+          member_id: memberId,
+          transferred_open_items: transferredOpenItems,
+        },
       })
 
       return json({
         status: 'accepted',
         family_id: invitation.family_id,
         member_id: memberId,
+        transferred_open_items: transferredOpenItems,
       })
     }
 
