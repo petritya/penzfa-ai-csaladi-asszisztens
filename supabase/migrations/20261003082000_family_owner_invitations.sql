@@ -27,6 +27,6 @@ alter table public.family_owner_invitations enable row level security;
 create policy family_owner_invitations_select
 on public.family_owner_invitations
 for select to authenticated
-using (public.is_family_user(family_id));
+using (private.is_family_user(family_id));
 
 -- Írás csak a Core Edge Functionön keresztül történik service role-lal.
