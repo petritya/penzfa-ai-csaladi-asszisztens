@@ -51,6 +51,20 @@ type CompleteDraft = {
   confirmation_text: string
 }
 
+type FamilyStructure = {
+  owners: Array<{
+    id: string
+    display_name: string
+    is_current_user: boolean
+  }>
+  managed_members: Array<{
+    id: string
+    display_name: string
+  }>
+  pending_second_owner_invitation: boolean
+  can_invite_second_owner: boolean
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [loadingSession, setLoadingSession] = useState(true)
@@ -66,6 +80,14 @@ export default function App() {
   const [secondOwnerEmail, setSecondOwnerEmail] = useState('')
   const [managedMembersText, setManagedMembersText] = useState('')
   const [setupComplete, setSetupComplete] = useState<boolean | null>(null)
+  const [pendingOwnerInvitation, setPendingOwnerInvitation] = useState(false)
+  const [invitationFamilyName, setInvitationFamilyName] = useState<string | null>(null)
+  const [inviteDisplayName, setInviteDisplayName] = useState('')
+  const [invitePassword, setInvitePassword] = useState('')
+  const [familyStructure, setFamilyStructure] = useState<FamilyStructure | null>(null)
+  const [ownerInviteEmail, setOwnerInviteEmail] = useState('')
+  const [ownerInviteBusy, setOwnerInviteBusy] = useState(false)
+  const [ownerInviteMessage, setOwnerInviteMessage] = useState<string | null>(null)
 
   const [workMode, setWorkMode] = useState<WorkMode>('create')
   const [naturalMessage, setNaturalMessage] = useState('')
@@ -101,6 +123,13 @@ export default function App() {
       setSession(nextSession)
       setLoadingSession(false)
       setSetupComplete(null)
+      setPendingOwnerInvitation(false)
+      setInvitationFamilyName(null)
+      setInviteDisplayName('')
+      setInvitePassword('')
+      setFamilyStructure(null)
+      setOwnerInviteEmail('')
+      setOwnerInviteMessage(null)
       setSettingsLoaded(false)
       setSettingsMessage(null)
       setDraft(null)
@@ -123,8 +152,15 @@ export default function App() {
     if (!session || setupComplete !== null) return
 
     void invokeCore({ action: 'setup_status' })
-      .then((data) => setSetupComplete(Boolean(data.setup_complete)))
-      .catch(() => setSetupComplete(false))
+      .then((data) => {
+        setSetupComplete(Boolean(data.setup_complete))
+        setPendingOwnerInvitation(Boolean(data.pending_owner_invitation))
+        setInvitationFamilyName(data.invitation_family_name ?? null)
+      })
+      .catch(() => {
+        setSetupComplete(false)
+        setPendingOwnerInvitation(false)
+      })
   }, [session, setupComplete])
 
   useEffect(() => {
@@ -140,6 +176,14 @@ export default function App() {
         setSettingsLoaded(true)
       })
   }, [session, setupComplete, settingsLoaded])
+
+  useEffect(() => {
+    if (!session || setupComplete !== true || familyStructure) return
+
+    void invokeCore({ action: 'get_family_structure' })
+      .then((data) => setFamilyStructure(data as FamilyStructure))
+      .catch(() => setFamilyStructure(null))
+  }, [session, setupComplete, familyStructure])
 
   useEffect(() => {
     if (!session || !isPushConfigured()) return
@@ -271,19 +315,92 @@ export default function App() {
     setFlowMessage(null)
 
     try {
-      await invokeCore({
+      const data = await invokeCore({
         action: 'bootstrap',
         family_name: familyName.trim(),
         display_name: displayName.trim(),
         second_owner_email: secondOwnerEmail.trim(),
         managed_members: managedMembers,
+        redirect_to: window.location.origin,
       })
       setSetupComplete(true)
-      setFlowMessage('A család alapadatai elkészültek.')
+      setFamilyStructure(null)
+      setFlowMessage(
+        data.second_owner_invitation_warning
+          ? `A család elkészült, de a második ügygazda meghívója nem ment ki: ${data.second_owner_invitation_warning}`
+          : data.second_owner_invitation_created
+            ? 'A család elkészült, a második ügygazda meghívója kiment.'
+            : 'A család alapadatai elkészültek.',
+      )
     } catch (error) {
       setFlowError(error instanceof Error ? error.message : 'Nem sikerült létrehozni a családot.')
     } finally {
       setFlowBusy(false)
+    }
+  }
+
+  async function handleAcceptOwnerInvitation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!session) return
+
+    setFlowBusy(true)
+    setFlowError(null)
+    setFlowMessage(null)
+
+    try {
+      if (invitePassword.trim()) {
+        if (invitePassword.length < 6) {
+          throw new Error('A jelszó legalább 6 karakter legyen.')
+        }
+
+        const { error: passwordError } = await supabase.auth.updateUser({
+          password: invitePassword,
+        })
+
+        if (passwordError) throw passwordError
+      }
+
+      await invokeCore({
+        action: 'accept_owner_invitation',
+        display_name: inviteDisplayName.trim(),
+      })
+
+      setPendingOwnerInvitation(false)
+      setInvitationFamilyName(null)
+      setSetupComplete(true)
+      setSettingsLoaded(false)
+      setFamilyStructure(null)
+      setInvitePassword('')
+      setFlowMessage('A meghívást elfogadtad. Mostantól ügygazdaként használod a családi asszisztenst.')
+    } catch (error) {
+      setFlowError(error instanceof Error ? error.message : 'Nem sikerült elfogadni a meghívást.')
+    } finally {
+      setFlowBusy(false)
+    }
+  }
+
+  async function handleInviteSecondOwner(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setOwnerInviteBusy(true)
+    setOwnerInviteMessage(null)
+    setFlowError(null)
+
+    try {
+      await invokeCore({
+        action: 'invite_second_owner',
+        email: ownerInviteEmail.trim(),
+        redirect_to: window.location.origin,
+      })
+
+      setOwnerInviteEmail('')
+      setOwnerInviteMessage('A meghívó elküldve. A második ügygazda elfogadására várunk.')
+      setFamilyStructure(null)
+    } catch (error) {
+      setOwnerInviteMessage(
+        error instanceof Error ? error.message : 'Nem sikerült elküldeni a meghívót.',
+      )
+    } finally {
+      setOwnerInviteBusy(false)
     }
   }
 
@@ -665,7 +782,43 @@ export default function App() {
             </section>
           )}
 
-          {setupComplete === false && (
+          {setupComplete === false && pendingOwnerInvitation && (
+            <form className="stack" onSubmit={handleAcceptOwnerInvitation}>
+              <h2>Ügygazda-meghívás elfogadása</h2>
+              <p className="muted">
+                Meghívást kaptál${invitationFamilyName ? ` a(z) ${invitationFamilyName} családhoz` : ''}.
+                Válassz egy nevet, amelyen a családi asszisztensben szerepelni szeretnél.
+              </p>
+
+              <label>
+                Megjelenített név / alias
+                <input
+                  value={inviteDisplayName}
+                  onChange={(event) => setInviteDisplayName(event.target.value)}
+                  placeholder="Például: Anya"
+                  required
+                />
+              </label>
+
+              <label>
+                Jelszó
+                <input
+                  type="password"
+                  value={invitePassword}
+                  onChange={(event) => setInvitePassword(event.target.value)}
+                  placeholder="Legalább 6 karakter"
+                  minLength={6}
+                  required
+                />
+              </label>
+
+              <button className="primary-button" type="submit" disabled={flowBusy}>
+                {flowBusy ? 'Csatlakozás…' : 'Meghívás elfogadása'}
+              </button>
+            </form>
+          )}
+
+          {setupComplete === false && !pendingOwnerInvitation && (
             <form className="stack" onSubmit={handleBootstrap}>
               <h2>Első család beállítása</h2>
 
@@ -707,6 +860,41 @@ export default function App() {
 
           {setupComplete === true && (
             <div className="stack">
+              {familyStructure && (
+                <section className="confirmation">
+                  <p className="eyebrow">Ügygazdák</p>
+                  <p>
+                    {familyStructure.owners.map((owner) =>
+                      owner.is_current_user ? `${owner.display_name} (te)` : owner.display_name
+                    ).join(', ')}
+                  </p>
+
+                  {familyStructure.pending_second_owner_invitation && (
+                    <p className="muted">A második ügygazda meghívása elküldve, elfogadásra vár.</p>
+                  )}
+
+                  {familyStructure.can_invite_second_owner && (
+                    <form className="stack compact-stack" onSubmit={handleInviteSecondOwner}>
+                      <label>
+                        Második ügygazda e-mailje
+                        <input
+                          type="email"
+                          value={ownerInviteEmail}
+                          onChange={(event) => setOwnerInviteEmail(event.target.value)}
+                          placeholder="pelda@email.hu"
+                          required
+                        />
+                      </label>
+                      <button className="secondary-button" type="submit" disabled={ownerInviteBusy}>
+                        {ownerInviteBusy ? 'Meghívás…' : 'Második ügygazda meghívása'}
+                      </button>
+                    </form>
+                  )}
+
+                  {ownerInviteMessage && <p className="muted">{ownerInviteMessage}</p>}
+                </section>
+              )}
+
               <div className="auth-tabs" aria-label="Művelet">
                 <button
                   className={workMode === 'create' ? 'tab active' : 'tab'}
