@@ -85,6 +85,24 @@ function json(data: unknown, status = 200) {
   })
 }
 
+async function sendOwnerInvite(
+  dbClient: any,
+  email: string,
+  redirectTo?: string | null,
+) {
+  const options = redirectTo
+    ? { redirectTo }
+    : undefined
+
+  const { data, error } = await dbClient.auth.admin.inviteUserByEmail(email, options)
+
+  if (error || !data?.user?.id) {
+    throw new Error(error?.message ?? 'Nem sikerült elküldeni a második ügygazda meghívóját.')
+  }
+
+  return data.user.id as string
+}
+
 function normalize(value: string) {
   return value
     .normalize('NFD')
@@ -839,9 +857,176 @@ Deno.serve(async (req) => {
       .maybeSingle()
 
     if (body?.action === 'setup_status') {
+      if (activeMembership) {
+        return json({
+          setup_complete: true,
+          family_id: activeMembership.family_id,
+          pending_owner_invitation: false,
+        })
+      }
+
+      let invitationQuery = db
+        .from('family_owner_invitations')
+        .select('id, family_id, status, families(name)')
+        .eq('status', 'pending')
+
+      if (user.id) {
+        invitationQuery = invitationQuery.eq('invited_user_id', user.id)
+      }
+
+      let { data: pendingInvitation, error: invitationLookupError } =
+        await invitationQuery.maybeSingle()
+
+      if ((!pendingInvitation || invitationLookupError) && user.email) {
+        const fallback = await db
+          .from('family_owner_invitations')
+          .select('id, family_id, status, families(name)')
+          .eq('status', 'pending')
+          .ilike('email', user.email)
+          .maybeSingle()
+
+        pendingInvitation = fallback.data
+        invitationLookupError = fallback.error
+      }
+
+      if (invitationLookupError) throw invitationLookupError
+
       return json({
-        setup_complete: Boolean(activeMembership),
-        family_id: activeMembership?.family_id ?? null,
+        setup_complete: false,
+        family_id: null,
+        pending_owner_invitation: Boolean(pendingInvitation),
+        invitation_family_id: pendingInvitation?.family_id ?? null,
+        invitation_family_name: (pendingInvitation as any)?.families?.name ?? null,
+      })
+    }
+
+    if (body?.action === 'accept_owner_invitation') {
+      if (activeMembership) {
+        return json({ status: 'already_active', family_id: activeMembership.family_id })
+      }
+
+      const displayName = String(body?.display_name ?? '').trim()
+      if (!displayName) {
+        return json({ error: 'A megjelenített név kötelező.' }, 400)
+      }
+
+      let invitationQuery = db
+        .from('family_owner_invitations')
+        .select('id, family_id, email, invited_user_id, status')
+        .eq('status', 'pending')
+
+      if (user.id) invitationQuery = invitationQuery.eq('invited_user_id', user.id)
+
+      let { data: invitation, error: invitationError } = await invitationQuery.maybeSingle()
+
+      if ((!invitation || invitationError) && user.email) {
+        const fallback = await db
+          .from('family_owner_invitations')
+          .select('id, family_id, email, invited_user_id, status')
+          .eq('status', 'pending')
+          .ilike('email', user.email)
+          .maybeSingle()
+
+        invitation = fallback.data
+        invitationError = fallback.error
+      }
+
+      if (invitationError) throw invitationError
+      if (!invitation) {
+        return json({ error: 'Nem találtam érvényes ügygazda-meghívást ehhez a fiókhoz.' }, 404)
+      }
+
+      const { count: activeOwnerCount, error: ownerCountError } = await db
+        .from('family_members')
+        .select('id', { count: 'exact', head: true })
+        .eq('family_id', invitation.family_id)
+        .eq('member_kind', 'active')
+
+      if (ownerCountError) throw ownerCountError
+      if ((activeOwnerCount ?? 0) >= 2) {
+        return json({ error: 'Ebben a családban már megvan a két ügygazda.' }, 409)
+      }
+
+      const { data: familyMembers, error: familyMembersError } = await db
+        .from('family_members')
+        .select('id, display_name, member_kind, user_id')
+        .eq('family_id', invitation.family_id)
+
+      if (familyMembersError) throw familyMembersError
+
+      const nameKey = normalize(displayName)
+      const existingActiveName = (familyMembers ?? []).find((member) =>
+        member.member_kind === 'active'
+        && normalize(member.display_name) === nameKey
+      )
+
+      if (existingActiveName) {
+        return json({ error: 'Ez a megjelenített név már egy másik ügygazdához tartozik.' }, 409)
+      }
+
+      const matchingManaged = (familyMembers ?? []).find((member) =>
+        member.member_kind === 'managed'
+        && normalize(member.display_name) === nameKey
+      )
+
+      let memberId: string
+      if (matchingManaged) {
+        const { data: promoted, error: promoteError } = await db
+          .from('family_members')
+          .update({
+            member_kind: 'active',
+            user_id: user.id,
+          })
+          .eq('id', matchingManaged.id)
+          .eq('family_id', invitation.family_id)
+          .eq('member_kind', 'managed')
+          .select('id')
+          .single()
+
+        if (promoteError) throw promoteError
+        memberId = promoted.id
+      } else {
+        const { data: inserted, error: insertError } = await db
+          .from('family_members')
+          .insert({
+            family_id: invitation.family_id,
+            user_id: user.id,
+            display_name: displayName,
+            member_kind: 'active',
+          })
+          .select('id')
+          .single()
+
+        if (insertError) throw insertError
+        memberId = inserted.id
+      }
+
+      await db.from('user_settings').upsert({ user_id: user.id })
+
+      const { error: acceptError } = await db
+        .from('family_owner_invitations')
+        .update({
+          status: 'accepted',
+          accepted_by: user.id,
+          accepted_at: new Date().toISOString(),
+          email: null,
+        })
+        .eq('id', invitation.id)
+        .eq('status', 'pending')
+
+      if (acceptError) throw acceptError
+
+      await db.from('activity_log').insert({
+        family_id: invitation.family_id,
+        actor_user_id: user.id,
+        action: 'second_owner_joined',
+        details: { member_id: memberId },
+      })
+
+      return json({
+        status: 'accepted',
+        family_id: invitation.family_id,
+        member_id: memberId,
       })
     }
 
@@ -898,18 +1083,44 @@ Deno.serve(async (req) => {
         throw memberError
       }
 
+      let secondOwnerInvitationCreated = false
+      let secondOwnerInvitationWarning: string | null = null
+
       if (secondOwnerEmail) {
-        const { error: invitationError } = await db
+        const { data: invitation, error: invitationError } = await db
           .from('family_owner_invitations')
           .insert({
             family_id: family.id,
             email: secondOwnerEmail,
             invited_by: user.id,
           })
+          .select('id')
+          .single()
 
-        if (invitationError) {
-          await db.from('families').delete().eq('id', family.id)
-          throw invitationError
+        if (invitationError) throw invitationError
+
+        try {
+          const invitedUserId = await sendOwnerInvite(
+            db,
+            secondOwnerEmail,
+            String(body?.redirect_to ?? '').trim() || null,
+          )
+
+          const { error: linkError } = await db
+            .from('family_owner_invitations')
+            .update({ invited_user_id: invitedUserId })
+            .eq('id', invitation.id)
+
+          if (linkError) throw linkError
+          secondOwnerInvitationCreated = true
+        } catch (error) {
+          await db
+            .from('family_owner_invitations')
+            .delete()
+            .eq('id', invitation.id)
+
+          secondOwnerInvitationWarning =
+            error instanceof Error ? error.message : 'A meghívót nem sikerült elküldeni.'
         }
       }
 
@@ -920,14 +1131,15 @@ Deno.serve(async (req) => {
         action: 'family_bootstrap_created',
         details: {
           managed_members: managedMembers,
-          second_owner_invitation_created: Boolean(secondOwnerEmail),
+          second_owner_invitation_created: secondOwnerInvitationCreated,
         },
       })
 
       return json({
         status: 'created',
         family_id: family.id,
-        second_owner_invitation_created: Boolean(secondOwnerEmail),
+        second_owner_invitation_created: secondOwnerInvitationCreated,
+        second_owner_invitation_warning: secondOwnerInvitationWarning,
       })
     }
 
@@ -936,6 +1148,121 @@ Deno.serve(async (req) => {
     }
 
     const familyId = activeMembership.family_id
+
+    if (body?.action === 'get_family_structure') {
+      const [{ data: members, error: membersError }, { data: pendingInvite, error: pendingInviteError }] =
+        await Promise.all([
+          db
+            .from('family_members')
+            .select('id, display_name, member_kind, user_id')
+            .eq('family_id', familyId)
+            .order('created_at', { ascending: true }),
+          db
+            .from('family_owner_invitations')
+            .select('id, status, created_at')
+            .eq('family_id', familyId)
+            .eq('status', 'pending')
+            .maybeSingle(),
+        ])
+
+      if (membersError) throw membersError
+      if (pendingInviteError) throw pendingInviteError
+
+      const owners = (members ?? [])
+        .filter((member) => member.member_kind === 'active')
+        .map((member) => ({
+          id: member.id,
+          display_name: member.display_name,
+          is_current_user: member.user_id === user.id,
+        }))
+
+      const managed = (members ?? [])
+        .filter((member) => member.member_kind === 'managed')
+        .map((member) => ({
+          id: member.id,
+          display_name: member.display_name,
+        }))
+
+      return json({
+        owners,
+        managed_members: managed,
+        pending_second_owner_invitation: Boolean(pendingInvite),
+        can_invite_second_owner: owners.length < 2 && !pendingInvite,
+      })
+    }
+
+    if (body?.action === 'invite_second_owner') {
+      const email = String(body?.email ?? '').trim().toLowerCase()
+      if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+        return json({ error: 'Adj meg egy érvényes e-mail címet.' }, 400)
+      }
+
+      if (normalize(email) === normalize(user.email ?? '')) {
+        return json({ error: 'A saját e-mail címedet nem hívhatod meg második ügygazdaként.' }, 400)
+      }
+
+      const { count: ownerCount, error: ownerCountError } = await db
+        .from('family_members')
+        .select('id', { count: 'exact', head: true })
+        .eq('family_id', familyId)
+        .eq('member_kind', 'active')
+
+      if (ownerCountError) throw ownerCountError
+      if ((ownerCount ?? 0) >= 2) {
+        return json({ error: 'Ebben a családban már megvan a két ügygazda.' }, 409)
+      }
+
+      const { data: existingPending, error: pendingError } = await db
+        .from('family_owner_invitations')
+        .select('id')
+        .eq('family_id', familyId)
+        .eq('status', 'pending')
+        .maybeSingle()
+
+      if (pendingError) throw pendingError
+      if (existingPending) {
+        return json({ error: 'Már van kiküldött, elfogadásra váró ügygazda-meghívó.' }, 409)
+      }
+
+      const { data: invitation, error: invitationError } = await db
+        .from('family_owner_invitations')
+        .insert({
+          family_id: familyId,
+          email,
+          invited_by: user.id,
+        })
+        .select('id')
+        .single()
+
+      if (invitationError) throw invitationError
+
+      try {
+        const invitedUserId = await sendOwnerInvite(
+          db,
+          email,
+          String(body?.redirect_to ?? '').trim() || null,
+        )
+
+        const { error: linkError } = await db
+          .from('family_owner_invitations')
+          .update({ invited_user_id: invitedUserId })
+          .eq('id', invitation.id)
+
+        if (linkError) throw linkError
+      } catch (error) {
+        await db.from('family_owner_invitations').delete().eq('id', invitation.id)
+        throw error
+      }
+
+      await db.from('activity_log').insert({
+        family_id: familyId,
+        actor_user_id: user.id,
+        action: 'second_owner_invited',
+        details: {},
+      })
+
+      return json({ status: 'invited' })
+    }
 
     if (body?.action === 'get_settings') {
       const { data: settings, error: settingsError } = await db
