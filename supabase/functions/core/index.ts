@@ -1046,7 +1046,7 @@ Deno.serve(async (req) => {
         return json({ error: 'A család neve és a saját megjelenített név kötelező.' }, 400)
       }
 
-      if (secondOwnerEmail && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(secondOwnerEmail)) {
+      if (secondOwnerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(secondOwnerEmail)) {
         return json({ error: 'A második ügygazda e-mail címe nem érvényes.' }, 400)
       }
 
@@ -1193,7 +1193,7 @@ Deno.serve(async (req) => {
 
     if (body?.action === 'invite_second_owner') {
       const email = String(body?.email ?? '').trim().toLowerCase()
-      if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         return json({ error: 'Adj meg egy érvényes e-mail címet.' }, 400)
       }
 
