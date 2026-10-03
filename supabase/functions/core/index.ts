@@ -979,6 +979,7 @@ async function interpretQueryWithOpenAI(
         'Te egy magyar nyelvű családi asszisztens lekérdezés-értelmező rétege vagy.',
         'Csak a keresési szándékot strukturáld. Ne kérdezz adatbázist és ne számolj relatív dátumot.',
         'status=open: nyitott vagy jövőbeli ügyek; done: elintézett/kész előzmények; all: csak ha a kérdés tényleg mindkettőt kéri.',
+        'Az "utoljára", "legutóbb", "legutóbbi" múltbeli kérdéseknél status=done legyen.',
         'responsibility=mine, ha a felhasználó kifejezetten a saját felelősségi körére kérdez (pl. "ami hozzám tartozik", "az én feladataim"). Egyébként family.',
         `Aktív felnőttek: ${activeMemberNames.length ? activeMemberNames.join(', ') : 'nincs'}.`,
         `Kezelt családtagok: ${managedMemberNames.length ? managedMemberNames.join(', ') : 'nincs'}.`,
@@ -1692,8 +1693,17 @@ Deno.serve(async (req) => {
         return true
       })
 
+      const asksForLatestDone = interpretation.status === 'done'
+        && /\\b(utoljara|legutobb|legutobbi)\\b/.test(normalize(message))
+
       filtered.sort((a, b) => {
         if (interpretation.status === 'done') {
+          if (asksForLatestDone) {
+            const aDate = a.due_date ?? (a.completed_at ? dateInTimezone(a.completed_at, timeZone) : '')
+            const bDate = b.due_date ?? (b.completed_at ? dateInTimezone(b.completed_at, timeZone) : '')
+            const dateCompare = String(bDate).localeCompare(String(aDate))
+            if (dateCompare !== 0) return dateCompare
+          }
           return String(b.completed_at ?? '').localeCompare(String(a.completed_at ?? ''))
         }
 
@@ -1720,13 +1730,27 @@ Deno.serve(async (req) => {
       const queriedOtherOwnerName = responsibleUserId && responsibleUserId !== user.id
         ? responsibleNameByUserId.get(responsibleUserId) ?? null
         : null
-      const visible = filtered.slice(0, 20)
+      const visible = asksForLatestDone ? filtered.slice(0, 1) : filtered.slice(0, 20)
 
       if (!visible.length) {
         return json({
           status: 'ok',
           count: 0,
           answer: 'Nem találtam a kérdésednek megfelelő ügyet.',
+          interpretation,
+        })
+      }
+
+      if (asksForLatestDone) {
+        const item = visible[0]
+        const occurrenceDate = item.due_date ?? (item.completed_at ? dateInTimezone(item.completed_at, timeZone) : null)
+        const timeText = item.due_time ? ` ${String(item.due_time).slice(0, 5)}` : ''
+        const when = occurrenceDate ? `${formatHungarianDate(occurrenceDate)}${timeText}` : 'dátum nélkül'
+        return json({
+          status: 'ok',
+          count: 1,
+          total_matches: filtered.length,
+          answer: `Legutóbb ezt találtam: ${item.title} – ${when}.`,
           interpretation,
         })
       }
