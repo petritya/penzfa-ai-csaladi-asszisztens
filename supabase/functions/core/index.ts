@@ -153,6 +153,48 @@ async function sendAssignmentPush(
   return { sent: true, notification_id: data.id }
 }
 
+async function sendCompletionPush(
+  userId: string,
+  completerName: string,
+  itemTitle: string,
+  subjectName: string | null,
+) {
+  const appId = Deno.env.get('ONESIGNAL_APP_ID')
+  const restApiKey = Deno.env.get('ONESIGNAL_REST_API_KEY')
+
+  if (!appId || !restApiKey) {
+    return { sent: false, error: 'A push szolgáltatás nincs beállítva.' }
+  }
+
+  const subjectPrefix = subjectName ? `${subjectName}: ` : ''
+  const message = `${completerName} elintézte: ${subjectPrefix}${itemTitle}.`
+
+  const response = await fetch('https://api.onesignal.com/notifications', {
+    method: 'POST',
+    headers: {
+      Authorization: `Key ${restApiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      app_id: appId,
+      include_aliases: { external_id: [userId] },
+      target_channel: 'push',
+      headings: { en: 'Pénzfa – ügy elintézve' },
+      contents: { en: message },
+    }),
+  })
+
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok || !data?.id) {
+    return {
+      sent: false,
+      error: data?.errors ?? data?.error ?? `OneSignal HTTP ${response.status}`,
+    }
+  }
+
+  return { sent: true, notification_id: data.id }
+}
+
 function normalize(value: string) {
   return value
     .normalize('NFD')
@@ -1420,6 +1462,7 @@ Deno.serve(async (req) => {
     if (body?.action === 'update_settings') {
       const briefingEnabled = Boolean(body?.briefing_enabled)
       const briefingTime = String(body?.briefing_time ?? '').trim()
+      const notifyPartnerOnComplete = Boolean(body?.notify_partner_on_complete)
 
       if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(briefingTime)) {
         return json({ error: 'A briefing időpontja HH:MM formátumú legyen.' }, 400)
@@ -1431,6 +1474,7 @@ Deno.serve(async (req) => {
           user_id: user.id,
           briefing_enabled: briefingEnabled,
           briefing_time: briefingTime,
+          notify_partner_on_complete: notifyPartnerOnComplete,
           updated_at: new Date().toISOString(),
         })
         .select('timezone, briefing_enabled, briefing_time, notify_partner_on_complete')
@@ -1445,6 +1489,7 @@ Deno.serve(async (req) => {
         details: {
           briefing_enabled: settings.briefing_enabled,
           briefing_time: settings.briefing_time,
+          notify_partner_on_complete: settings.notify_partner_on_complete,
         },
       })
 
@@ -2600,6 +2645,47 @@ Deno.serve(async (req) => {
         })
         .eq('id', pending.id)
 
+      let partnerNotificationSent: boolean | null = null
+      let partnerNotificationWarning: string | null = null
+
+      const [{ data: actorSettings }, { data: partner }, { data: subjectMember }] = await Promise.all([
+        db
+          .from('user_settings')
+          .select('notify_partner_on_complete')
+          .eq('user_id', user.id)
+          .maybeSingle(),
+        db
+          .from('family_members')
+          .select('user_id, display_name')
+          .eq('family_id', familyId)
+          .eq('member_kind', 'active')
+          .neq('user_id', user.id)
+          .not('user_id', 'is', null)
+          .maybeSingle(),
+        updatedItem.subject_member_id
+          ? db
+              .from('family_members')
+              .select('display_name')
+              .eq('id', updatedItem.subject_member_id)
+              .eq('family_id', familyId)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
+      ])
+
+      if (actorSettings?.notify_partner_on_complete && partner?.user_id) {
+        const delivery = await sendCompletionPush(
+          partner.user_id,
+          activeMembership.display_name,
+          updatedItem.title,
+          subjectMember?.display_name ?? null,
+        )
+
+        partnerNotificationSent = delivery.sent
+        if (!delivery.sent) {
+          partnerNotificationWarning = 'Az ügy készre lett jelölve, de a másik ügygazda push értesítése nem kézbesíthető.'
+        }
+      }
+
       await db.from('activity_log').insert({
         family_id: familyId,
         actor_user_id: user.id,
@@ -2608,10 +2694,16 @@ Deno.serve(async (req) => {
         details: {
           before: pending.payload?.before ?? null,
           completed_at: completedAt,
+          partner_notification_sent: partnerNotificationSent,
         },
       })
 
-      return json({ status: 'completed', item: updatedItem })
+      return json({
+        status: 'completed',
+        item: updatedItem,
+        partner_notification_sent: partnerNotificationSent,
+        partner_notification_warning: partnerNotificationWarning,
+      })
     }
 
     return json({ error: 'Ismeretlen művelet.' }, 400)
