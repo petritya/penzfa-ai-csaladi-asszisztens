@@ -31,6 +31,7 @@ type UpdateInterpretation = {
   intent: 'update'
   target_title: string
   subject_name: string | null
+  responsible_name: string | null
   target_date_phrase: string | null
   new_date_phrase: string | null
   new_time: string | null
@@ -43,6 +44,7 @@ type UpdateCandidate = {
   due_date: string | null
   due_time: string | null
   subject_display_name: string | null
+  responsible_display_name: string | null
 }
 
 type UpdateDraft = {
@@ -55,6 +57,7 @@ type CompleteInterpretation = {
   intent: 'complete'
   target_title: string
   subject_name: string | null
+  responsible_name: string | null
   target_date_phrase: string | null
 }
 
@@ -664,7 +667,10 @@ function updateCandidateLabel(candidate: UpdateCandidate) {
   const subject = candidate.subject_display_name ? `${candidate.subject_display_name}: ` : ''
   const date = candidate.due_date ? formatHungarianDate(candidate.due_date) : 'dátum nélkül'
   const time = candidate.due_time ? ` ${String(candidate.due_time).slice(0, 5)}` : ''
-  return `${subject}${candidate.title} – ${date}${time}`
+  const responsible = candidate.responsible_display_name
+    ? ` – ügygazda: ${candidate.responsible_display_name}`
+    : ''
+  return `${subject}${candidate.title} – ${date}${time}${responsible}`
 }
 
 function extractOutputText(response: any) {
@@ -766,6 +772,7 @@ async function interpretWithOpenAI(
 async function interpretUpdateWithOpenAI(
   message: string,
   memberNames: string[],
+  activeOwnerNames: string[],
 ): Promise<UpdateInterpretation> {
   const apiKey = Deno.env.get('OPENAI_API_KEY')
   if (!apiKey) throw new Error('OPENAI_API_KEY nincs beállítva a Supabase Edge Function secretjei között.')
@@ -783,8 +790,13 @@ async function interpretUpdateWithOpenAI(
         'A felhasználó egy már létező családi ügyet akar módosítani.',
         'Ne módosíts adatbázist és ne találj ki hiányzó adatot.',
         'A target_title legyen rövid, alapalakú megnevezés, amely alapján a meglévő ügy megkereshető, például "Fodrász".',
-        'A subject_name lehetőleg a megadott családtag-nevek egyikének alapalakja legyen.',
+        'A subject_name azt jelenti, hogy kire vonatkozik az ügy.',
         `Ismert családtagok: ${memberNames.length ? memberNames.join(', ') : 'nincs'}.`,
+        `Aktív ügygazdák: ${activeOwnerNames.length ? activeOwnerNames.join(', ') : 'nincs'}.`,
+        'A responsible_name azt jelenti, hogy melyik aktív ügygazda felelős a módosítandó ügyért.',
+        'Ha a felhasználó egy aktív ügygazda saját feladatára hivatkozik, responsible_name legyen az ő neve; ne tedd automatikusan subject_name mezőbe.',
+        'Ha kezelt családtag ügyére hivatkozik, subject_name legyen a családtag neve.',
+        'Ha egyik sem derül ki egyértelműen, mindkettő legyen null.',
         'A target_date_phrase csak akkor legyen kitöltve, ha a felhasználó a régi eseményt dátummal azonosítja.',
         'A new_date_phrase csak az új dátumra vonatkozó természetes nyelvű kifejezés legyen.',
         'Ha azt mondja, hogy ugyanazon a napon marad, a new_date_phrase legyen null.',
@@ -804,6 +816,7 @@ async function interpretUpdateWithOpenAI(
               intent: { type: 'string', enum: ['update'] },
               target_title: { type: 'string' },
               subject_name: { type: ['string', 'null'] },
+              responsible_name: { type: ['string', 'null'] },
               target_date_phrase: { type: ['string', 'null'] },
               new_date_phrase: { type: ['string', 'null'] },
               new_time: { type: ['string', 'null'] },
@@ -813,6 +826,7 @@ async function interpretUpdateWithOpenAI(
               'intent',
               'target_title',
               'subject_name',
+              'responsible_name',
               'target_date_phrase',
               'new_date_phrase',
               'new_time',
@@ -837,6 +851,7 @@ async function interpretUpdateWithOpenAI(
 async function interpretCompleteWithOpenAI(
   message: string,
   memberNames: string[],
+  activeOwnerNames: string[],
 ): Promise<CompleteInterpretation> {
   const apiKey = Deno.env.get('OPENAI_API_KEY')
   if (!apiKey) throw new Error('OPENAI_API_KEY nincs beállítva a Supabase Edge Function secretjei között.')
@@ -854,8 +869,13 @@ async function interpretCompleteWithOpenAI(
         'A felhasználó azt jelzi, hogy egy már létező nyitott ügy elkészült vagy el lett intézve.',
         'Ne módosíts adatbázist és ne találj ki hiányzó adatot.',
         'A target_title legyen rövid, alapalakú megnevezés, amely alapján a meglévő ügy megkereshető.',
-        'A subject_name lehetőleg a megadott családtag-nevek egyikének alapalakja legyen.',
+        'A subject_name azt jelenti, hogy kire vonatkozik az ügy.',
         `Ismert családtagok: ${memberNames.length ? memberNames.join(', ') : 'nincs'}.`,
+        `Aktív ügygazdák: ${activeOwnerNames.length ? activeOwnerNames.join(', ') : 'nincs'}.`,
+        'A responsible_name azt jelenti, hogy melyik aktív ügygazda felelős a lezárandó ügyért.',
+        'Ha a felhasználó egy aktív ügygazda saját feladatára hivatkozik, responsible_name legyen az ő neve; ne tedd automatikusan subject_name mezőbe.',
+        'Ha kezelt családtag ügyére hivatkozik, subject_name legyen a családtag neve.',
+        'Ha egyik sem derül ki egyértelműen, mindkettő legyen null.',
         'A target_date_phrase csak akkor legyen kitöltve, ha a felhasználó dátummal azonosítja, melyik ügy készült el.',
       ].join('\n'),
       input: message,
@@ -871,9 +891,10 @@ async function interpretCompleteWithOpenAI(
               intent: { type: 'string', enum: ['complete'] },
               target_title: { type: 'string' },
               subject_name: { type: ['string', 'null'] },
+              responsible_name: { type: ['string', 'null'] },
               target_date_phrase: { type: ['string', 'null'] },
             },
-            required: ['intent', 'target_title', 'subject_name', 'target_date_phrase'],
+            required: ['intent', 'target_title', 'subject_name', 'responsible_name', 'target_date_phrase'],
           },
         },
       },
@@ -2064,6 +2085,9 @@ Deno.serve(async (req) => {
       const interpretation = await interpretUpdateWithOpenAI(
         message,
         (members ?? []).map((member) => member.display_name),
+        (members ?? [])
+          .filter((member) => member.member_kind === 'active' && member.user_id)
+          .map((member) => member.display_name),
       )
 
       const timeZone = settings?.timezone ?? 'Europe/Budapest'
@@ -2105,9 +2129,28 @@ Deno.serve(async (req) => {
         subjectId = subject.id
       }
 
+      let responsibleUserId: string | null = null
+      if (interpretation.responsible_name) {
+        const wanted = normalize(interpretation.responsible_name)
+        const responsible = (members ?? []).find((member) =>
+          member.member_kind === 'active'
+          && member.user_id
+          && normalize(member.display_name) === wanted
+        ) ?? null
+
+        if (!responsible?.user_id) {
+          return json({
+            error: `Nem találtam ilyen aktív ügygazdát: ${interpretation.responsible_name}.`,
+            code: 'RESPONSIBLE_NEEDS_CLARIFICATION',
+          })
+        }
+
+        responsibleUserId = responsible.user_id
+      }
+
       const { data: openItems, error: itemsError } = await db
         .from('items')
-        .select('id, title, due_date, due_time, subject_member_id')
+        .select('id, title, due_date, due_time, subject_member_id, responsible_user_id')
         .eq('family_id', familyId)
         .eq('status', 'open')
         .order('due_date', { ascending: true, nullsFirst: false })
@@ -2118,6 +2161,7 @@ Deno.serve(async (req) => {
 
       let matches = (openItems ?? []).filter((item) => {
         if (subjectId && item.subject_member_id !== subjectId) return false
+        if (responsibleUserId && item.responsible_user_id !== responsibleUserId) return false
         if (targetDate && item.due_date !== targetDate) return false
 
         const itemTitle = normalize(item.title)
@@ -2126,6 +2170,11 @@ Deno.serve(async (req) => {
       })
 
       const memberNameById = new Map((members ?? []).map((member) => [member.id, member.display_name]))
+      const responsibleNameByUserId = new Map(
+        (members ?? [])
+          .filter((member) => member.member_kind === 'active' && member.user_id)
+          .map((member) => [member.user_id, member.display_name]),
+      )
       const candidates: UpdateCandidate[] = matches.map((item) => ({
         id: item.id,
         title: item.title,
@@ -2133,6 +2182,9 @@ Deno.serve(async (req) => {
         due_time: item.due_time,
         subject_display_name: item.subject_member_id
           ? memberNameById.get(item.subject_member_id) ?? null
+          : null,
+        responsible_display_name: item.responsible_user_id
+          ? responsibleNameByUserId.get(item.responsible_user_id) ?? null
           : null,
       }))
 
@@ -2421,6 +2473,9 @@ Deno.serve(async (req) => {
       const interpretation = await interpretCompleteWithOpenAI(
         message,
         (members ?? []).map((member) => member.display_name),
+        (members ?? [])
+          .filter((member) => member.member_kind === 'active' && member.user_id)
+          .map((member) => member.display_name),
       )
 
       const timeZone = settings?.timezone ?? 'Europe/Budapest'
@@ -2450,9 +2505,28 @@ Deno.serve(async (req) => {
         subjectId = subject.id
       }
 
+      let responsibleUserId: string | null = null
+      if (interpretation.responsible_name) {
+        const wanted = normalize(interpretation.responsible_name)
+        const responsible = (members ?? []).find((member) =>
+          member.member_kind === 'active'
+          && member.user_id
+          && normalize(member.display_name) === wanted
+        ) ?? null
+
+        if (!responsible?.user_id) {
+          return json({
+            error: `Nem találtam ilyen aktív ügygazdát: ${interpretation.responsible_name}.`,
+            code: 'RESPONSIBLE_NEEDS_CLARIFICATION',
+          })
+        }
+
+        responsibleUserId = responsible.user_id
+      }
+
       const { data: openItems, error: itemsError } = await db
         .from('items')
-        .select('id, title, due_date, due_time, subject_member_id')
+        .select('id, title, due_date, due_time, subject_member_id, responsible_user_id')
         .eq('family_id', familyId)
         .eq('status', 'open')
         .order('due_date', { ascending: true, nullsFirst: false })
@@ -2463,6 +2537,7 @@ Deno.serve(async (req) => {
 
       const matches = (openItems ?? []).filter((item) => {
         if (subjectId && item.subject_member_id !== subjectId) return false
+        if (responsibleUserId && item.responsible_user_id !== responsibleUserId) return false
         if (targetDate && item.due_date !== targetDate) return false
 
         const itemTitle = normalize(item.title)
@@ -2471,6 +2546,11 @@ Deno.serve(async (req) => {
       })
 
       const memberNameById = new Map((members ?? []).map((member) => [member.id, member.display_name]))
+      const responsibleNameByUserId = new Map(
+        (members ?? [])
+          .filter((member) => member.member_kind === 'active' && member.user_id)
+          .map((member) => [member.user_id, member.display_name]),
+      )
       const candidates: UpdateCandidate[] = matches.map((item) => ({
         id: item.id,
         title: item.title,
@@ -2478,6 +2558,9 @@ Deno.serve(async (req) => {
         due_time: item.due_time,
         subject_display_name: item.subject_member_id
           ? memberNameById.get(item.subject_member_id) ?? null
+          : null,
+        responsible_display_name: item.responsible_user_id
+          ? responsibleNameByUserId.get(item.responsible_user_id) ?? null
           : null,
       }))
 
@@ -2534,7 +2617,7 @@ Deno.serve(async (req) => {
 
       const { data: item } = await db
         .from('items')
-        .select('id, title, due_date, due_time, subject_member_id')
+        .select('id, title, due_date, due_time, subject_member_id, responsible_user_id')
         .eq('id', targetItemId)
         .eq('family_id', familyId)
         .eq('status', 'open')
@@ -2551,12 +2634,23 @@ Deno.serve(async (req) => {
             .maybeSingle()
         : { data: null }
 
+      const { data: responsibleMember } = item.responsible_user_id
+        ? await db
+            .from('family_members')
+            .select('display_name')
+            .eq('family_id', familyId)
+            .eq('member_kind', 'active')
+            .eq('user_id', item.responsible_user_id)
+            .maybeSingle()
+        : { data: null }
+
       const candidate: UpdateCandidate = {
         id: item.id,
         title: item.title,
         due_date: item.due_date,
         due_time: item.due_time,
         subject_display_name: subject?.display_name ?? null,
+        responsible_display_name: responsibleMember?.display_name ?? null,
       }
 
       const { data: pending, error: pendingError } = await db
