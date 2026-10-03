@@ -109,6 +109,7 @@ export default function App() {
   const [pushMessage, setPushMessage] = useState<string | null>(null)
   const [briefingEnabled, setBriefingEnabled] = useState(true)
   const [briefingTime, setBriefingTime] = useState('07:00')
+  const [notifyPartnerOnComplete, setNotifyPartnerOnComplete] = useState(false)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [settingsBusy, setSettingsBusy] = useState(false)
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null)
@@ -172,6 +173,7 @@ export default function App() {
       .then((data) => {
         setBriefingEnabled(Boolean(data.settings?.briefing_enabled))
         setBriefingTime(String(data.settings?.briefing_time ?? '07:00:00').slice(0, 5))
+        setNotifyPartnerOnComplete(Boolean(data.settings?.notify_partner_on_complete))
         setSettingsLoaded(true)
       })
       .catch(() => {
@@ -307,11 +309,13 @@ export default function App() {
         action: 'update_settings',
         briefing_enabled: briefingEnabled,
         briefing_time: briefingTime,
+        notify_partner_on_complete: notifyPartnerOnComplete,
       })
 
       setBriefingEnabled(Boolean(data.settings?.briefing_enabled))
       setBriefingTime(String(data.settings?.briefing_time ?? briefingTime).slice(0, 5))
-      setSettingsMessage('A reggeli briefing beállításai elmentve.')
+      setNotifyPartnerOnComplete(Boolean(data.settings?.notify_partner_on_complete))
+      setSettingsMessage('A beállítások elmentve.')
     } catch (error) {
       setSettingsMessage(
         error instanceof Error
@@ -701,7 +705,13 @@ export default function App() {
         pending_action_id: completeDraft.pending_action_id,
       })
 
-      setFlowMessage(`Készre jelölve: ${data.item.title}`)
+      setFlowMessage(
+        data.partner_notification_sent
+          ? `Készre jelölve: ${data.item.title}. A másik ügygazda értesítést kapott.`
+          : data.partner_notification_warning
+            ? `Készre jelölve: ${data.item.title}. ${data.partner_notification_warning}`
+            : `Készre jelölve: ${data.item.title}`,
+      )
       setNaturalMessage('')
       setCompleteDraft(null)
     } catch (error) {
@@ -794,6 +804,15 @@ export default function App() {
                   />
                 </label>
 
+                <label className="inline-control">
+                  <input
+                    type="checkbox"
+                    checked={notifyPartnerOnComplete}
+                    onChange={(event) => setNotifyPartnerOnComplete(event.target.checked)}
+                  />
+                  Ha készre jelölök egy ügyet, szólj a másik ügygazdának
+                </label>
+
                 <div className="actions">
                   <button
                     className="secondary-button"
@@ -801,7 +820,7 @@ export default function App() {
                     onClick={handleSaveBriefingSettings}
                     disabled={settingsBusy || !settingsLoaded}
                   >
-                    {settingsBusy ? 'Mentés…' : 'Briefing beállítás mentése'}
+                    {settingsBusy ? 'Mentés…' : 'Beállítások mentése'}
                   </button>
                 </div>
 
