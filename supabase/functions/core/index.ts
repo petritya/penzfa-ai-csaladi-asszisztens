@@ -255,6 +255,47 @@ function explicitAssignedOwnerFromMessage(
   return null
 }
 
+function referencedOwnerTaskFromMessage(
+  message: string,
+  activeOwners: Array<{ id: string; display_name: string; user_id: string | null }>,
+) {
+  const text = normalize(message)
+
+  for (const owner of activeOwners) {
+    if (!owner.user_id) continue
+    const ownerKey = normalize(owner.display_name).replace(/[^a-z0-9]+/g, ' ').trim()
+    if (!ownerKey) continue
+
+    const ownerToken = `\\b${ownerKey.split(/\\s+/).join('\\s+')}\\b`
+    const pattern = new RegExp(
+      `${ownerToken}[^.!?]{0,60}\\b(?:ugy(?:e|et|ei|eit)|feladat(?:a|at|ai|ait)|teendo(?:je|jet|i|it))\\b`,
+    )
+
+    if (pattern.test(text)) return owner
+  }
+
+  return null
+}
+
+function fuzzyTitleMatches(itemTitle: string, targetTitle: string) {
+  const item = normalize(itemTitle)
+  const target = normalize(targetTitle)
+
+  if (!target) return false
+  if (item.includes(target) || target.includes(item)) return true
+
+  const itemTokens = item.split(/\\s+/).filter((token) => token.length >= 4)
+  const targetTokens = target.split(/\\s+/).filter((token) => token.length >= 4)
+
+  return targetTokens.some((targetToken) =>
+    itemTokens.some((itemToken) =>
+      itemToken === targetToken
+      || (itemToken.length >= 5 && targetToken.startsWith(itemToken))
+      || (targetToken.length >= 5 && itemToken.startsWith(targetToken))
+    ),
+  )
+}
+
 async function findExactOpenDuplicate(
   dbClient: any,
   familyId: string,
@@ -797,6 +838,7 @@ async function interpretUpdateWithOpenAI(
         'Ha a felhasználó egy aktív ügygazda saját feladatára hivatkozik, responsible_name legyen az ő neve; ne tedd automatikusan subject_name mezőbe.',
         'Ha kezelt családtag ügyére hivatkozik, subject_name legyen a családtag neve.',
         'Ha egyik sem derül ki egyértelműen, mindkettő legyen null.',
+        'Példa: "Anya szerelős ügyét tedd keddre" => responsible_name=Anya, subject_name=null, target_title=szerelő.',
         'A target_date_phrase csak akkor legyen kitöltve, ha a felhasználó a régi eseményt dátummal azonosítja.',
         'A new_date_phrase csak az új dátumra vonatkozó természetes nyelvű kifejezés legyen.',
         'Ha azt mondja, hogy ugyanazon a napon marad, a new_date_phrase legyen null.',
@@ -876,6 +918,7 @@ async function interpretCompleteWithOpenAI(
         'Ha a felhasználó egy aktív ügygazda saját feladatára hivatkozik, responsible_name legyen az ő neve; ne tedd automatikusan subject_name mezőbe.',
         'Ha kezelt családtag ügyére hivatkozik, subject_name legyen a családtag neve.',
         'Ha egyik sem derül ki egyértelműen, mindkettő legyen null.',
+        'Példa: "Anya szerelős ügye kész" => responsible_name=Anya, subject_name=null, target_title=szerelő.',
         'A target_date_phrase csak akkor legyen kitöltve, ha a felhasználó dátummal azonosítja, melyik ügy készült el.',
       ].join('\n'),
       input: message,
@@ -2148,6 +2191,15 @@ Deno.serve(async (req) => {
         responsibleUserId = responsible.user_id
       }
 
+      const ownerTaskReference = referencedOwnerTaskFromMessage(
+        message,
+        (members ?? []).filter((member) => member.member_kind === 'active' && member.user_id),
+      )
+      if (ownerTaskReference?.user_id) {
+        responsibleUserId = ownerTaskReference.user_id
+        if (subjectId === ownerTaskReference.id) subjectId = null
+      }
+
       const { data: openItems, error: itemsError } = await db
         .from('items')
         .select('id, title, due_date, due_time, subject_member_id, responsible_user_id')
@@ -2164,8 +2216,8 @@ Deno.serve(async (req) => {
         if (responsibleUserId && item.responsible_user_id !== responsibleUserId) return false
         if (targetDate && item.due_date !== targetDate) return false
 
+        if (fuzzyTitleMatches(item.title, targetTitle)) return true
         const itemTitle = normalize(item.title)
-        if (itemTitle.includes(targetTitle) || targetTitle.includes(itemTitle)) return true
         return targetTokens.some((token) => itemTitle.includes(token))
       })
 
@@ -2524,6 +2576,15 @@ Deno.serve(async (req) => {
         responsibleUserId = responsible.user_id
       }
 
+      const ownerTaskReference = referencedOwnerTaskFromMessage(
+        message,
+        (members ?? []).filter((member) => member.member_kind === 'active' && member.user_id),
+      )
+      if (ownerTaskReference?.user_id) {
+        responsibleUserId = ownerTaskReference.user_id
+        if (subjectId === ownerTaskReference.id) subjectId = null
+      }
+
       const { data: openItems, error: itemsError } = await db
         .from('items')
         .select('id, title, due_date, due_time, subject_member_id, responsible_user_id')
@@ -2540,8 +2601,8 @@ Deno.serve(async (req) => {
         if (responsibleUserId && item.responsible_user_id !== responsibleUserId) return false
         if (targetDate && item.due_date !== targetDate) return false
 
+        if (fuzzyTitleMatches(item.title, targetTitle)) return true
         const itemTitle = normalize(item.title)
-        if (itemTitle.includes(targetTitle) || targetTitle.includes(itemTitle)) return true
         return targetTokens.some((token) => itemTitle.includes(token))
       })
 
