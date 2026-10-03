@@ -786,7 +786,8 @@ export default function App() {
             <form className="stack" onSubmit={handleAcceptOwnerInvitation}>
               <h2>Ügygazda-meghívás elfogadása</h2>
               <p className="muted">
-                Meghívást kaptál${invitationFamilyName ? ` a(z) ${invitationFamilyName} családhoz` : ''}.
+                Meghívást kaptál
+                {invitationFamilyName ? ` a(z) ${invitationFamilyName} családhoz` : ''}.
                 Válassz egy nevet, amelyen a családi asszisztensben szerepelni szeretnél.
               </p>
 
