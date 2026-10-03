@@ -4,6 +4,7 @@ type CreateInterpretation = {
   intent: 'create'
   title: string
   subject_name: string | null
+  responsible_name: string | null
   date_phrase: string | null
   time: string | null
   reminder_phrase: string | null
@@ -14,6 +15,8 @@ type CreateInterpretation = {
 type CreateDraft = {
   subject_member_id: string | null
   subject_display_name: string | null
+  responsible_user_id: string
+  responsible_display_name: string
   title: string
   item_type: 'task' | 'event' | 'deadline'
   notes: string | null
@@ -103,6 +106,53 @@ async function sendOwnerInvite(
   return data.user.id as string
 }
 
+async function sendAssignmentPush(
+  userId: string,
+  assignerName: string,
+  itemTitle: string,
+  subjectName: string | null,
+  dueDate: string | null,
+  dueTime: string | null,
+) {
+  const appId = Deno.env.get('ONESIGNAL_APP_ID')
+  const restApiKey = Deno.env.get('ONESIGNAL_REST_API_KEY')
+
+  if (!appId || !restApiKey) {
+    return { sent: false, error: 'A push szolgáltatás nincs beállítva.' }
+  }
+
+  const subjectPrefix = subjectName ? `${subjectName}: ` : ''
+  const dateText = dueDate ? formatHungarianDate(dueDate) : null
+  const timeText = dueTime ? ` ${String(dueTime).slice(0, 5)}` : ''
+  const when = dateText ? ` – ${dateText}${timeText}` : ''
+  const message = `${assignerName} új ügyet adott neked: ${subjectPrefix}${itemTitle}${when}.`
+
+  const response = await fetch('https://api.onesignal.com/notifications', {
+    method: 'POST',
+    headers: {
+      Authorization: `Key ${restApiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      app_id: appId,
+      include_aliases: { external_id: [userId] },
+      target_channel: 'push',
+      headings: { en: 'Pénzfa – új ügy' },
+      contents: { en: message },
+    }),
+  })
+
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok || !data?.id) {
+    return {
+      sent: false,
+      error: data?.errors ?? data?.error ?? `OneSignal HTTP ${response.status}`,
+    }
+  }
+
+  return { sent: true, notification_id: data.id }
+}
+
 function normalize(value: string) {
   return value
     .normalize('NFD')
@@ -122,10 +172,11 @@ async function findExactOpenDuplicate(
   dueDate: string | null,
   dueTime: string | null,
   subjectMemberId: string | null,
+  responsibleUserId: string,
 ) {
   let query = dbClient
     .from('items')
-    .select('id, title, due_date, due_time, subject_member_id')
+    .select('id, title, due_date, due_time, subject_member_id, responsible_user_id')
     .eq('family_id', familyId)
     .eq('status', 'open')
 
@@ -145,6 +196,7 @@ async function findExactOpenDuplicate(
     return duplicateTitleKey(item.title) === wantedTitle
       && itemTime === wantedTime
       && (item.subject_member_id ?? null) === wantedSubject
+      && item.responsible_user_id === responsibleUserId
   }) ?? null
 }
 
@@ -542,6 +594,7 @@ function extractOutputText(response: any) {
 async function interpretWithOpenAI(
   message: string,
   memberNames: string[],
+  activeOwnerNames: string[],
 ): Promise<CreateInterpretation> {
   const apiKey = Deno.env.get('OPENAI_API_KEY')
   if (!apiKey) throw new Error('OPENAI_API_KEY nincs beállítva a Supabase Edge Function secretjei között.')
@@ -559,8 +612,14 @@ async function interpretWithOpenAI(
         'Kizárólag strukturáld a felhasználó új bejegyzését. Ne írj adatbázisba és ne számolj ki relatív dátumot.',
         'A date_phrase mezőbe az eredeti relatív vagy konkrét dátumkifejezést tedd, például: "jövő kedden".',
         'A time mezőt HH:MM formára normalizálhatod, ha az időpont egyértelmű.',
-        'A subject_name lehetőleg a megadott családtag-nevek egyikének alapalakja legyen.',
+        'A subject_name azt jelenti, hogy kire vonatkozik az ügy. Lehetőleg a megadott családtag-nevek egyikének alapalakja legyen.',
         `Ismert családtagok: ${memberNames.length ? memberNames.join(', ') : 'nincs'}.`,
+        `Aktív ügygazdák: ${activeOwnerNames.length ? activeOwnerNames.join(', ') : 'nincs'}.`,
+        'A responsible_name csak akkor legyen kitöltve, ha a felhasználó KIFEJEZETTEN a másik aktív ügygazdának osztja ki az ügyet vagy megnevezi, hogy ki intézze. Egyébként legyen null, mert az alapértelmezett ügygazda a rögzítő felhasználó.',
+        'Ne következtesd ki az ügygazdát pusztán abból, hogy valaki az ügy érintettje.',
+        'Példa: "Anyának hétfőn fodrásza van" => subject_name=Anya, responsible_name=null.',
+        'Példa: "Adj Anyának egy ügyet: hétfőn hívja fel a szerelőt" => subject_name=null, responsible_name=Anya.',
+        'Példa: "Anya intézze Mamus gyógyszerét pénteken" => subject_name=Mamus, responsible_name=Anya.',
         'A reminder_phrase maradjon természetes nyelvű, például: "három nappal előtte".',
         'A title rövid, természetes magyar megnevezés legyen.',
       ].join('\n'),
@@ -577,6 +636,7 @@ async function interpretWithOpenAI(
               intent: { type: 'string', enum: ['create'] },
               title: { type: 'string' },
               subject_name: { type: ['string', 'null'] },
+              responsible_name: { type: ['string', 'null'] },
               date_phrase: { type: ['string', 'null'] },
               time: { type: ['string', 'null'] },
               reminder_phrase: { type: ['string', 'null'] },
@@ -587,6 +647,7 @@ async function interpretWithOpenAI(
               'intent',
               'title',
               'subject_name',
+              'responsible_name',
               'date_phrase',
               'time',
               'reminder_phrase',
@@ -1559,6 +1620,9 @@ Deno.serve(async (req) => {
       const interpretation = await interpretWithOpenAI(
         message,
         (members ?? []).map((member) => member.display_name),
+        (members ?? [])
+          .filter((member) => member.member_kind === 'active' && member.user_id)
+          .map((member) => member.display_name),
       )
 
       const timeZone = settings?.timezone ?? 'Europe/Budapest'
@@ -1589,6 +1653,29 @@ Deno.serve(async (req) => {
         }
       }
 
+      let responsible = null
+      if (interpretation.responsible_name) {
+        const wanted = normalize(interpretation.responsible_name)
+        responsible = (members ?? []).find((member) =>
+          member.member_kind === 'active'
+          && member.user_id
+          && normalize(member.display_name) === wanted
+        ) ?? null
+
+        if (!responsible?.user_id) {
+          return json({
+            error: `Nem találtam ilyen aktív ügygazdát: ${interpretation.responsible_name}.`,
+            code: 'RESPONSIBLE_NEEDS_CLARIFICATION',
+            known_owners: (members ?? [])
+              .filter((member) => member.member_kind === 'active')
+              .map((member) => member.display_name),
+          })
+        }
+      }
+
+      const responsibleUserId = responsible?.user_id ?? user.id
+      const responsibleDisplayName = responsible?.display_name ?? activeMembership.display_name
+
       const reminderOffsetDays = reminderDaysBefore(interpretation.reminder_phrase)
       let firstReminderAt: string | null = null
 
@@ -1615,19 +1702,24 @@ Deno.serve(async (req) => {
       const dateText = formatHungarianDate(dueDate)
       const timeText = dueTime ? ` ${dueTime}` : ''
       const subjectText = subject ? `${subject.display_name}: ` : ''
+      const responsibleText = responsibleUserId !== user.id
+        ? ` Ügygazda: ${responsibleDisplayName}.`
+        : ''
       let confirmationText: string
 
       if (interpretation.reminder_phrase) {
-        confirmationText = `${subjectText}${interpretation.title} – ${dateText}${timeText}. Emlékeztetés: ${interpretation.reminder_phrase}. Rögzítsem?`
+        confirmationText = `${subjectText}${interpretation.title} – ${dateText}${timeText}.${responsibleText} Emlékeztetés: ${interpretation.reminder_phrase}. Rögzítsem?`
       } else if (dueDate) {
-        confirmationText = `${subjectText}${interpretation.title} – ${dateText}${timeText}. Emlékeztetőt nem adtál meg, ezért csak az esedékesség napjának reggeli briefingjében szólok. Így rögzítsem?`
+        confirmationText = `${subjectText}${interpretation.title} – ${dateText}${timeText}.${responsibleText} Emlékeztetőt nem adtál meg, ezért csak az esedékesség napjának reggeli briefingjében szólok. Így rögzítsem?`
       } else {
-        confirmationText = `${subjectText}${interpretation.title}. Dátumot és emlékeztetőt nem adtál meg, ezért automatikus értesítés nem készül. Így rögzítsem?`
+        confirmationText = `${subjectText}${interpretation.title}.${responsibleText} Dátumot és emlékeztetőt nem adtál meg, ezért automatikus értesítés nem készül. Így rögzítsem?`
       }
 
       const draft: CreateDraft = {
         subject_member_id: subject?.id ?? null,
         subject_display_name: subject?.display_name ?? null,
+        responsible_user_id: responsibleUserId,
+        responsible_display_name: responsibleDisplayName,
         title: interpretation.title,
         item_type: interpretation.item_type,
         notes: interpretation.notes,
@@ -1645,6 +1737,7 @@ Deno.serve(async (req) => {
         draft.due_date,
         draft.due_time,
         draft.subject_member_id,
+        draft.responsible_user_id,
       )
 
       if (duplicate) {
@@ -1704,6 +1797,9 @@ Deno.serve(async (req) => {
       }
 
       const subjectText = draft.subject_display_name ? `${draft.subject_display_name}: ` : ''
+      const responsibleText = draft.responsible_user_id !== user.id
+        ? ` Ügygazda: ${draft.responsible_display_name}.`
+        : ''
       const dateText = formatHungarianDate(draft.due_date)
       const timeText = draft.due_time ? ` ${String(draft.due_time).slice(0, 5)}` : ''
 
@@ -1711,7 +1807,7 @@ Deno.serve(async (req) => {
         ...draft,
         first_reminder_at: firstReminderAt,
         reminder_phrase: reminderPhrase,
-        confirmation_text: `${subjectText}${draft.title} – ${dateText}${timeText}. Emlékeztetés: ${reminderPhrase}. Rögzítsem?`,
+        confirmation_text: `${subjectText}${draft.title} – ${dateText}${timeText}.${responsibleText} Emlékeztetés: ${reminderPhrase}. Rögzítsem?`,
       }
 
       return json({ status: 'needs_confirmation', draft: updatedDraft })
@@ -1734,6 +1830,19 @@ Deno.serve(async (req) => {
         if (!subject) return json({ error: 'A megadott családtag nem ehhez a családhoz tartozik.' }, 400)
       }
 
+      const responsibleUserId = draft.responsible_user_id ?? user.id
+      const { data: responsibleMember } = await db
+        .from('family_members')
+        .select('id, display_name, user_id')
+        .eq('family_id', familyId)
+        .eq('member_kind', 'active')
+        .eq('user_id', responsibleUserId)
+        .maybeSingle()
+
+      if (!responsibleMember?.user_id) {
+        return json({ error: 'A megadott ügygazda nem aktív tagja ennek a családnak.' }, 400)
+      }
+
       const duplicate = await findExactOpenDuplicate(
         db,
         familyId,
@@ -1741,6 +1850,7 @@ Deno.serve(async (req) => {
         draft.due_date,
         draft.due_time,
         draft.subject_member_id,
+        draft.responsible_user_id ?? user.id,
       )
 
       if (duplicate) {
@@ -1757,7 +1867,7 @@ Deno.serve(async (req) => {
         .insert({
           family_id: familyId,
           subject_member_id: draft.subject_member_id,
-          responsible_user_id: user.id,
+          responsible_user_id: responsibleUserId,
           item_type: draft.item_type,
           title: draft.title,
           notes: draft.notes,
@@ -1783,6 +1893,25 @@ Deno.serve(async (req) => {
         }
       }
 
+      let assignmentNotificationSent: boolean | null = null
+      let assignmentNotificationWarning: string | null = null
+
+      if (responsibleUserId !== user.id) {
+        const delivery = await sendAssignmentPush(
+          responsibleUserId,
+          activeMembership.display_name,
+          item.title,
+          draft.subject_display_name,
+          item.due_date,
+          item.due_time,
+        )
+
+        assignmentNotificationSent = delivery.sent
+        if (!delivery.sent) {
+          assignmentNotificationWarning = 'Az ügy rögzítve lett, de a címzett push értesítése nem kézbesíthető. Ellenőrizze, hogy nála engedélyezve vannak-e az értesítések.'
+        }
+      }
+
       await db.from('activity_log').insert({
         family_id: familyId,
         actor_user_id: user.id,
@@ -1792,10 +1921,19 @@ Deno.serve(async (req) => {
           due_date: item.due_date,
           due_time: item.due_time,
           reminder_phrase: draft.reminder_phrase,
+          responsible_user_id: responsibleUserId,
+          assigned_to_other_owner: responsibleUserId !== user.id,
+          assignment_notification_sent: assignmentNotificationSent,
         },
       })
 
-      return json({ status: 'created', item })
+      return json({
+        status: 'created',
+        item,
+        assigned_to_other_owner: responsibleUserId !== user.id,
+        assignment_notification_sent: assignmentNotificationSent,
+        assignment_notification_warning: assignmentNotificationWarning,
+      })
     }
 
 
