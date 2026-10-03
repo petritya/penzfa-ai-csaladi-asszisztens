@@ -497,8 +497,15 @@ function queryItemLine(
   responsibleName: string | null,
   timeZone: string,
   showResponsible = false,
+  ownerPrefixName: string | null = null,
 ) {
-  const subject = memberName ? `${memberName}: ` : ''
+  const ownerPrefix = ownerPrefixName ? `${ownerPrefixName}: ` : ''
+  const subject = memberName
+    && (!ownerPrefixName || normalize(memberName) !== normalize(ownerPrefixName))
+      ? ownerPrefixName
+        ? `${memberName} – `
+        : `${memberName}: `
+      : ''
   const time = item.due_time ? ` ${String(item.due_time).slice(0, 5)}` : ''
   const responsible = showResponsible && responsibleName
     ? ` – felelős: ${responsibleName}`
@@ -508,10 +515,10 @@ function queryItemLine(
     const completedDate = item.completed_at
       ? dateInTimezone(item.completed_at, timeZone)
       : null
-    return `✓ ${subject}${item.title}${completedDate ? ` – elintézve: ${formatHungarianDate(completedDate)}` : ''}${responsible}`
+    return `✓ ${ownerPrefix}${subject}${item.title}${completedDate ? ` – elintézve: ${formatHungarianDate(completedDate)}` : ''}${responsible}`
   }
 
-  return `• ${subject}${item.title}${item.due_date ? ` – ${formatHungarianDate(item.due_date)}${time}` : ' – dátum nélkül'}${responsible}`
+  return `• ${ownerPrefix}${subject}${item.title}${item.due_date ? ` – ${formatHungarianDate(item.due_date)}${time}` : ' – dátum nélkül'}${responsible}`
 }
 
 function updateCandidateLabel(candidate: UpdateCandidate) {
@@ -1484,6 +1491,10 @@ Deno.serve(async (req) => {
         && !responsibleUserId
         && interpretation.responsibility === 'family',
       )
+      const isOwnQuery = interpretation.responsibility === 'mine' && !responsibleUserId
+      const queriedOtherOwnerName = responsibleUserId && responsibleUserId !== user.id
+        ? responsibleNameByUserId.get(responsibleUserId) ?? null
+        : null
       const visible = filtered.slice(0, 20)
 
       if (!visible.length) {
@@ -1495,17 +1506,25 @@ Deno.serve(async (req) => {
         })
       }
 
-      const lines = visible.map((item) =>
-        queryItemLine(
+      const lines = visible.map((item) => {
+        const rawSubjectName = item.subject_member_id
+          ? memberNameById.get(item.subject_member_id) ?? null
+          : null
+        const subjectName = isOwnQuery && item.subject_member_id === activeMembership.id
+          ? null
+          : rawSubjectName
+
+        return queryItemLine(
           item,
-          item.subject_member_id ? memberNameById.get(item.subject_member_id) ?? null : null,
+          subjectName,
           item.responsible_user_id
             ? responsibleNameByUserId.get(item.responsible_user_id) ?? null
             : null,
           timeZone,
           showResponsible,
-        ),
-      )
+          queriedOtherOwnerName,
+        )
+      })
 
       const more = filtered.length > visible.length
         ? `\n+ még ${filtered.length - visible.length} találat`
