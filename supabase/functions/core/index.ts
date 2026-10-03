@@ -165,6 +165,31 @@ function duplicateTitleKey(value: string) {
   return normalize(value).replace(/[^a-z0-9]+/g, '')
 }
 
+function explicitAssignedOwnerFromMessage(
+  message: string,
+  activeOwners: Array<{ display_name: string; user_id: string | null }>,
+) {
+  const text = normalize(message)
+
+  for (const owner of activeOwners) {
+    if (!owner.user_id) continue
+    const ownerKey = normalize(owner.display_name)
+    const ownerToken = `\\b${ownerKey}[a-z]*\\b`
+
+    const assignPatterns = [
+      new RegExp(`\\badj\\s+${ownerToken}[^.!?]*(?:\\begy\\s+)?\\bugy(?:et|et:)?\\b`),
+      new RegExp(`\\boszd\\s+ki\\s+${ownerToken}\\b`),
+      new RegExp(`${ownerToken}[^.!?]*\\b(?:intezze|intezzen|csinalja|vegezze)\\b`),
+    ]
+
+    if (assignPatterns.some((pattern) => pattern.test(text))) {
+      return owner
+    }
+  }
+
+  return null
+}
+
 async function findExactOpenDuplicate(
   dbClient: any,
   familyId: string,
@@ -1670,6 +1695,19 @@ Deno.serve(async (req) => {
               .filter((member) => member.member_kind === 'active')
               .map((member) => member.display_name),
           })
+        }
+      }
+
+      const explicitAssignedOwner = explicitAssignedOwnerFromMessage(
+        message,
+        (members ?? []).filter((member) => member.member_kind === 'active'),
+      )
+
+      if (explicitAssignedOwner?.user_id) {
+        responsible = explicitAssignedOwner
+
+        if (subject?.id === explicitAssignedOwner.id) {
+          subject = null
         }
       }
 
