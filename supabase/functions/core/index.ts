@@ -1694,7 +1694,7 @@ Deno.serve(async (req) => {
       })
 
       const asksForLatestDone = interpretation.status === 'done'
-        && /\\b(utoljara|legutobb|legutobbi)\\b/.test(normalize(message))
+        && /\b(utoljara|legutobb|legutobbi)\b/.test(normalize(message))
 
       filtered.sort((a, b) => {
         if (interpretation.status === 'done') {
