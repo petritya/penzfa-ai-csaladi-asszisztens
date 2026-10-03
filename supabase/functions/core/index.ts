@@ -170,20 +170,40 @@ function explicitAssignedOwnerFromMessage(
   activeOwners: Array<{ display_name: string; user_id: string | null }>,
 ) {
   const text = normalize(message)
+  const words = text
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
 
   for (const owner of activeOwners) {
     if (!owner.user_id) continue
-    const ownerKey = normalize(owner.display_name)
-    const ownerToken = `\\b${ownerKey}[a-z]*\\b`
 
-    const assignPatterns = [
-      new RegExp(`\\badj\\s+${ownerToken}[^.!?]*(?:\\begy\\s+)?\\bugy(?:et|et:)?\\b`),
+    const ownerKey = normalize(owner.display_name)
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim()
+
+    const ownerWords = ownerKey.split(/\s+/).filter(Boolean)
+    if (!ownerWords.length) continue
+
+    const ownerToken = `\\b${ownerWords.join('\\s+')}\\b`
+    const explicitAssignPatterns = [
+      new RegExp(`\\badj\\s+${ownerToken}[^.!?]*(?:\\begy\\s+)?\\bugy(?:et)?\\b`),
       new RegExp(`\\boszd\\s+ki\\s+${ownerToken}\\b`),
       new RegExp(`${ownerToken}[^.!?]*\\b(?:intezze|intezzen|csinalja|vegezze)\\b`),
     ]
 
-    if (assignPatterns.some((pattern) => pattern.test(text))) {
+    if (explicitAssignPatterns.some((pattern) => pattern.test(text))) {
       return owner
+    }
+
+    // MVP nyelvi szabály:
+    // ha egy aktív ügygazda neve ragozatlanul, a mondat eleji alanyi
+    // pozícióban szerepel, ő az ügygazda.
+    // Pl. "Anya hétfőn hívja fel a szerelőt."
+    for (let start = 0; start <= Math.min(4, words.length - ownerWords.length); start += 1) {
+      const slice = words.slice(start, start + ownerWords.length).join(' ')
+      if (slice === ownerKey) return owner
     }
   }
 
@@ -640,10 +660,14 @@ async function interpretWithOpenAI(
         'A subject_name azt jelenti, hogy kire vonatkozik az ügy. Lehetőleg a megadott családtag-nevek egyikének alapalakja legyen.',
         `Ismert családtagok: ${memberNames.length ? memberNames.join(', ') : 'nincs'}.`,
         `Aktív ügygazdák: ${activeOwnerNames.length ? activeOwnerNames.join(', ') : 'nincs'}.`,
-        'A responsible_name csak akkor legyen kitöltve, ha a felhasználó KIFEJEZETTEN a másik aktív ügygazdának osztja ki az ügyet vagy megnevezi, hogy ki intézze. Egyébként legyen null, mert az alapértelmezett ügygazda a rögzítő felhasználó.',
-        'Ne következtesd ki az ügygazdát pusztán abból, hogy valaki az ügy érintettje.',
+        'A responsible_name azt jelenti, hogy melyik aktív ügygazda intézi a feladatot.',
+        'Ha egy aktív ügygazda a mondat nyelvtani alanya, responsible_name legyen az ő neve. Ilyenkor ne tedd őt subject_name mezőbe csak azért, mert a neve szerepel a mondatban.',
+        'Ha egy kezelt családtag a mondat alanya vagy az ügy rá vonatkozik, subject_name legyen az ő neve, responsible_name pedig maradjon null; ilyenkor a rögzítő ügygazda intézi.',
+        'Ha nincs megnevezett aktív ügygazda alanyként vagy felelősként, responsible_name legyen null, mert az alapértelmezett ügygazda a rögzítő felhasználó.',
+        'Példa: "Anya hétfőn hívja fel a szerelőt" => subject_name=null, responsible_name=Anya.',
+        'Példa: "Hétfőn Anya hívja fel a szerelőt" => subject_name=null, responsible_name=Anya.',
         'Példa: "Anyának hétfőn fodrásza van" => subject_name=Anya, responsible_name=null.',
-        'Példa: "Adj Anyának egy ügyet: hétfőn hívja fel a szerelőt" => subject_name=null, responsible_name=Anya.',
+        'Példa: "Mamus hétfőn megy orvoshoz" => subject_name=Mamus, responsible_name=null.',
         'Példa: "Anya intézze Mamus gyógyszerét pénteken" => subject_name=Mamus, responsible_name=Anya.',
         'A reminder_phrase maradjon természetes nyelvű, például: "három nappal előtte".',
         'A title rövid, természetes magyar megnevezés legyen.',
