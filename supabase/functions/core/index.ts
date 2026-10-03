@@ -45,6 +45,7 @@ type UpdateCandidate = {
   due_time: string | null
   subject_display_name: string | null
   responsible_display_name: string | null
+  item_type?: 'task' | 'event' | 'deadline'
 }
 
 type UpdateDraft = {
@@ -2232,7 +2233,7 @@ Deno.serve(async (req) => {
 
       const { data: openItems, error: itemsError } = await db
         .from('items')
-        .select('id, title, due_date, due_time, subject_member_id, responsible_user_id')
+        .select('id, title, due_date, due_time, subject_member_id, responsible_user_id, item_type')
         .eq('family_id', familyId)
         .eq('status', 'open')
         .order('due_date', { ascending: true, nullsFirst: false })
@@ -2653,6 +2654,7 @@ Deno.serve(async (req) => {
         responsible_display_name: item.responsible_user_id
           ? responsibleNameByUserId.get(item.responsible_user_id) ?? null
           : null,
+        item_type: item.item_type,
       }))
 
       if (candidates.length === 0) {
@@ -2674,6 +2676,20 @@ Deno.serve(async (req) => {
       }
 
       const candidate = candidates[0]
+      const today = localDateInTimezone(timeZone)
+
+      if (candidate.item_type === 'event' && candidate.due_date && candidate.due_date > today) {
+        return json({
+          status: 'future_event_needs_date',
+          candidate: {
+            ...candidate,
+            label: updateCandidateLabel(candidate),
+          },
+          prompt:
+            `Ez az esemény ${formatHungarianDate(candidate.due_date)} napra van rögzítve, ami még a jövőben van. ` +
+            'Ha már korábban megtörtént, írd meg, mikor.',
+        })
+      }
 
       const { data: pending, error: pendingError } = await db
         .from('pending_actions')
@@ -2708,7 +2724,7 @@ Deno.serve(async (req) => {
 
       const { data: item } = await db
         .from('items')
-        .select('id, title, due_date, due_time, subject_member_id, responsible_user_id')
+        .select('id, title, due_date, due_time, subject_member_id, responsible_user_id, item_type')
         .eq('id', targetItemId)
         .eq('family_id', familyId)
         .eq('status', 'open')
@@ -2742,6 +2758,28 @@ Deno.serve(async (req) => {
         due_time: item.due_time,
         subject_display_name: subject?.display_name ?? null,
         responsible_display_name: responsibleMember?.display_name ?? null,
+        item_type: item.item_type,
+      }
+
+      const { data: settings } = await db
+        .from('user_settings')
+        .select('timezone')
+        .eq('user_id', user.id)
+        .maybeSingle()
+      const timeZone = settings?.timezone ?? 'Europe/Budapest'
+      const today = localDateInTimezone(timeZone)
+
+      if (candidate.item_type === 'event' && candidate.due_date && candidate.due_date > today) {
+        return json({
+          status: 'future_event_needs_date',
+          candidate: {
+            ...candidate,
+            label: updateCandidateLabel(candidate),
+          },
+          prompt:
+            `Ez az esemény ${formatHungarianDate(candidate.due_date)} napra van rögzítve, ami még a jövőben van. ` +
+            'Ha már korábban megtörtént, írd meg, mikor.',
+        })
       }
 
       const { data: pending, error: pendingError } = await db
@@ -2769,6 +2807,115 @@ Deno.serve(async (req) => {
           pending_action_id: pending.id,
           target_item_id: item.id,
           confirmation_text: `Ezt találtam: ${updateCandidateLabel(candidate)}. Jelöljem késznek?`,
+        },
+      })
+    }
+
+    if (body?.action === 'prepare_future_event_complete') {
+      const targetItemId = String(body?.target_item_id ?? '')
+      const datePhrase = String(body?.date_phrase ?? '').trim()
+
+      if (!targetItemId || !datePhrase) {
+        return json({ error: 'Írd meg, mikor történt meg az esemény.' }, 400)
+      }
+
+      const [{ data: item }, { data: settings }] = await Promise.all([
+        db
+          .from('items')
+          .select('id, title, due_date, due_time, subject_member_id, responsible_user_id, item_type')
+          .eq('id', targetItemId)
+          .eq('family_id', familyId)
+          .eq('status', 'open')
+          .maybeSingle(),
+        db
+          .from('user_settings')
+          .select('timezone')
+          .eq('user_id', user.id)
+          .maybeSingle(),
+      ])
+
+      if (!item) return json({ error: 'A kiválasztott ügy már nem található.' }, 404)
+      if (item.item_type !== 'event') {
+        return json({ error: 'Ehhez az ügyhöz nincs szükség eseménydátum-pontosításra.' }, 400)
+      }
+
+      const timeZone = settings?.timezone ?? 'Europe/Budapest'
+      const actualDate = resolveDatePhrase(datePhrase, timeZone)
+      const today = localDateInTimezone(timeZone)
+
+      if (!actualDate) {
+        return json({
+          error: 'A dátumot nem tudtam biztonságosan értelmezni. Írd például: ma, tegnap vagy október 2-án.',
+          code: 'ACTUAL_DATE_NEEDS_CLARIFICATION',
+        }, 400)
+      }
+
+      if (actualDate > today) {
+        return json({
+          error: 'Jövőbeli dátummal az esemény még nem jelölhető késznek.',
+          code: 'ACTUAL_DATE_IN_FUTURE',
+        }, 400)
+      }
+
+      const [{ data: subject }, { data: responsibleMember }] = await Promise.all([
+        item.subject_member_id
+          ? db
+              .from('family_members')
+              .select('display_name')
+              .eq('id', item.subject_member_id)
+              .eq('family_id', familyId)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
+        item.responsible_user_id
+          ? db
+              .from('family_members')
+              .select('display_name')
+              .eq('family_id', familyId)
+              .eq('member_kind', 'active')
+              .eq('user_id', item.responsible_user_id)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
+      ])
+
+      const candidate: UpdateCandidate = {
+        id: item.id,
+        title: item.title,
+        due_date: item.due_date,
+        due_time: item.due_time,
+        subject_display_name: subject?.display_name ?? null,
+        responsible_display_name: responsibleMember?.display_name ?? null,
+        item_type: item.item_type,
+      }
+
+      const { data: pending, error: pendingError } = await db
+        .from('pending_actions')
+        .insert({
+          family_id: familyId,
+          actor_user_id: user.id,
+          intent: 'complete',
+          target_item_id: item.id,
+          payload: {
+            before: {
+              title: item.title,
+              due_date: item.due_date,
+              due_time: item.due_time ? String(item.due_time).slice(0, 5) : null,
+            },
+            due_date_override: actualDate,
+            clear_due_time: true,
+          },
+        })
+        .select('id')
+        .single()
+      if (pendingError) throw pendingError
+
+      return json({
+        status: 'needs_confirmation',
+        draft: {
+          pending_action_id: pending.id,
+          target_item_id: item.id,
+          confirmation_text:
+            `Ezt találtam: ${updateCandidateLabel(candidate)}. ` +
+            `A dátumát ${formatHungarianDate(actualDate)} napra módosítsam és jelöljem késznek?`,
         },
       })
     }
@@ -2801,12 +2948,19 @@ Deno.serve(async (req) => {
 
       const completedAt = new Date().toISOString()
 
+      const completionUpdate: Record<string, unknown> = {
+        status: 'done',
+        completed_at: completedAt,
+      }
+
+      if (pending.payload?.due_date_override) {
+        completionUpdate.due_date = pending.payload.due_date_override
+        if (pending.payload?.clear_due_time) completionUpdate.due_time = null
+      }
+
       const { data: updatedItem, error: updateError } = await db
         .from('items')
-        .update({
-          status: 'done',
-          completed_at: completedAt,
-        })
+        .update(completionUpdate)
         .eq('id', pending.target_item_id)
         .eq('family_id', familyId)
         .eq('status', 'open')
@@ -2879,6 +3033,7 @@ Deno.serve(async (req) => {
         details: {
           before: pending.payload?.before ?? null,
           completed_at: completedAt,
+          occurrence_date_corrected_to: pending.payload?.due_date_override ?? null,
           partner_notification_sent: partnerNotificationSent,
         },
       })
