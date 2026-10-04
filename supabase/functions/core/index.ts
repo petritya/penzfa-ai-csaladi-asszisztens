@@ -2077,9 +2077,10 @@ Deno.serve(async (req) => {
         }
 
         const reminderDate = addDays(dueDate, -reminderOffsetDays)
+        const reminderTime = dueTime ?? reminderBriefingTime
         firstReminderAt = localDateTimeToUtcIso(
           reminderDate,
-          reminderBriefingTime,
+          reminderTime,
           reminderTimeZone,
         )
 
@@ -2180,7 +2181,10 @@ Deno.serve(async (req) => {
         }, 400)
       }
 
-      const firstReminderAt = localDateTimeToUtcIso(reminderDate, briefingTime, timeZone)
+      const reminderTime = draft.due_time
+        ? String(draft.due_time).slice(0, 5)
+        : briefingTime
+      const firstReminderAt = localDateTimeToUtcIso(reminderDate, reminderTime, timeZone)
 
       if (new Date(firstReminderAt).getTime() <= Date.now()) {
         return json({
