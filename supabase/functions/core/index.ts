@@ -1,5 +1,10 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.117.2'
 
+type IntentInterpretation = {
+  intent: 'create' | 'update' | 'complete' | 'query' | 'clarify'
+  clarification: string | null
+}
+
 type CreateInterpretation = {
   intent: 'create'
   title: string
@@ -777,6 +782,70 @@ function extractOutputText(response: any) {
   return null
 }
 
+async function interpretIntentWithOpenAI(
+  message: string,
+): Promise<IntentInterpretation> {
+  const apiKey = Deno.env.get('OPENAI_API_KEY')
+  if (!apiKey) throw new Error('OPENAI_API_KEY nincs beállítva a Supabase Edge Function secretjei között.')
+
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'gpt-5.6-luna',
+      instructions: [
+        'Te egy magyar nyelvű családi asszisztens szándékfelismerő rétege vagy.',
+        'Csak azt döntsd el, hogy a felhasználó új ügyet rögzít, meglévőt módosít, készre jelez, vagy kérdez/keres.',
+        'create: új feladat, esemény vagy határidő rögzítése. Nincs arra utalás, hogy már meglévő ügyet változtat.',
+        'update: egy már meglévő ügy dátumát, idejét, címét vagy más adatát akarja módosítani.',
+        'complete: azt jelzi, hogy valamit elintézett, megtörtént, kész van vagy már túl van rajta.',
+        'query: kérdez, listát kér, előzményt keres, időpontot vagy állapotot szeretne megtudni.',
+        'clarify: csak akkor, ha a mondatból tényleg nem dönthető el biztonságosan a fenti négy közül.',
+        'Ha clarify, a clarification egyetlen rövid magyar pontosító kérdés legyen. Máskor legyen null.',
+        'Példa: "Jövő kedden fogorvoshoz megyek." => create.',
+        'Példa: "A szerelőt tedd szerdára." => update.',
+        'Példa: "Voltam a fogorvosnál." => complete.',
+        'Példa: "A villanyszámlát befizettem." => complete.',
+        'Példa: "Mikor voltam utoljára fogorvosnál?" => query.',
+        'Példa: "Milyen ügyeim vannak holnap?" => query.',
+        'Példa: "Fogorvos." => clarify.',
+        'Ne írj adatbázisba, ne keress rekordot, és ne hajts végre műveletet.',
+      ].join('\n'),
+      input: message,
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'family_assistant_intent',
+          strict: true,
+          schema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              intent: {
+                type: 'string',
+                enum: ['create', 'update', 'complete', 'query', 'clarify'],
+              },
+              clarification: { type: ['string', 'null'] },
+            },
+            required: ['intent', 'clarification'],
+          },
+        },
+      },
+    }),
+  })
+
+  const data = await response.json()
+  if (!response.ok) throw new Error(data?.error?.message ?? 'OpenAI API hiba.')
+
+  const outputText = extractOutputText(data)
+  if (!outputText) throw new Error('Az AI nem adott értelmezhető szándékfelismerési választ.')
+
+  return JSON.parse(outputText) as IntentInterpretation
+}
+
 async function interpretWithOpenAI(
   message: string,
   memberNames: string[],
@@ -1447,6 +1516,26 @@ Deno.serve(async (req) => {
     }
 
     const familyId = activeMembership.family_id
+
+    if (body?.action === 'interpret_intent') {
+      const message = String(body?.message ?? '').trim()
+      if (!message) return json({ error: 'Az üzenet nem lehet üres.' }, 400)
+
+      const interpretation = await interpretIntentWithOpenAI(message)
+
+      if (interpretation.intent === 'clarify') {
+        return json({
+          status: 'needs_clarification',
+          question: interpretation.clarification
+            ?? 'Ezt új ügyként szeretnéd rögzíteni, vagy egy meglévő ügyre gondolsz?',
+        })
+      }
+
+      return json({
+        status: 'ok',
+        intent: interpretation.intent,
+      })
+    }
 
     if (body?.action === 'get_family_structure') {
       const [{ data: members, error: membersError }, { data: pendingInvite, error: pendingInviteError }] =
