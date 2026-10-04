@@ -1904,7 +1904,7 @@ Deno.serve(async (req) => {
           status: 'ok',
           count: 1,
           total_matches: filtered.length,
-          answer: `Legutóbb ezt találtam: ${item.title} – ${when}.`,
+          answer: `${item.title} – ${when}.`,
           interpretation,
         })
       }
