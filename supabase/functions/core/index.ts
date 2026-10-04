@@ -1857,6 +1857,7 @@ Deno.serve(async (req) => {
       })
 
       const memberNameById = new Map(memberList.map((member) => [member.id, member.display_name]))
+      const memberById = new Map(memberList.map((member) => [member.id, member]))
       const responsibleNameByUserId = new Map(
         memberList
           .filter((member) => member.member_kind === 'active' && member.user_id)
@@ -1900,7 +1901,19 @@ Deno.serve(async (req) => {
         const rawSubjectName = item.subject_member_id
           ? memberNameById.get(item.subject_member_id) ?? null
           : null
-        const subjectName = isOwnQuery && item.subject_member_id === activeMembership.id
+        const subjectMember = item.subject_member_id
+          ? memberById.get(item.subject_member_id) ?? null
+          : null
+        const subjectIsSameOwner = Boolean(
+          subjectMember?.member_kind === 'active'
+          && subjectMember?.user_id
+          && item.responsible_user_id
+          && subjectMember.user_id === item.responsible_user_id,
+        )
+        const subjectName = (
+          subjectIsSameOwner
+          || (isOwnQuery && item.subject_member_id === activeMembership.id)
+        )
           ? null
           : rawSubjectName
         const itemResponsibleName = item.responsible_user_id
