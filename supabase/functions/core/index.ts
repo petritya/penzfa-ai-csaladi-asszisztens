@@ -724,9 +724,19 @@ function resolveQueryDateRange(
   return date ? { start: date, end: date } : null
 }
 
+function doneHistoryDate(item: any, timeZone: string) {
+  if (item.item_type === 'event') {
+    return item.due_date ?? (item.completed_at ? dateInTimezone(item.completed_at, timeZone) : null)
+  }
+
+  return item.completed_at
+    ? dateInTimezone(item.completed_at, timeZone)
+    : item.due_date ?? null
+}
+
 function queryItemDate(item: any, timeZone: string) {
-  if (item.status === 'done' && item.completed_at) {
-    return dateInTimezone(item.completed_at, timeZone)
+  if (item.status === 'done') {
+    return doneHistoryDate(item, timeZone)
   }
   return item.due_date ?? null
 }
@@ -1787,7 +1797,7 @@ Deno.serve(async (req) => {
 
       let itemsQuery = db
         .from('items')
-        .select('id, title, notes, due_date, due_time, status, subject_member_id, responsible_user_id, completed_at, created_at')
+        .select('id, title, notes, item_type, due_date, due_time, status, subject_member_id, responsible_user_id, completed_at, created_at')
         .eq('family_id', familyId)
         .neq('status', 'deleted')
         .limit(200)
@@ -1840,8 +1850,8 @@ Deno.serve(async (req) => {
       filtered.sort((a, b) => {
         if (interpretation.status === 'done') {
           if (asksForLatestDone) {
-            const aDate = a.due_date ?? (a.completed_at ? dateInTimezone(a.completed_at, timeZone) : '')
-            const bDate = b.due_date ?? (b.completed_at ? dateInTimezone(b.completed_at, timeZone) : '')
+            const aDate = doneHistoryDate(a, timeZone) ?? ''
+            const bDate = doneHistoryDate(b, timeZone) ?? ''
             const dateCompare = String(bDate).localeCompare(String(aDate))
             if (dateCompare !== 0) return dateCompare
           }
@@ -1885,9 +1895,11 @@ Deno.serve(async (req) => {
 
       if (asksForLatestDone) {
         const item = visible[0]
-        const occurrenceDate = item.due_date ?? (item.completed_at ? dateInTimezone(item.completed_at, timeZone) : null)
-        const timeText = item.due_time ? ` ${String(item.due_time).slice(0, 5)}` : ''
-        const when = occurrenceDate ? `${formatHungarianDate(occurrenceDate)}${timeText}` : 'dátum nélkül'
+        const historyDate = doneHistoryDate(item, timeZone)
+        const timeText = item.item_type === 'event' && item.due_time
+          ? ` ${String(item.due_time).slice(0, 5)}`
+          : ''
+        const when = historyDate ? `${formatHungarianDate(historyDate)}${timeText}` : 'dátum nélkül'
         return json({
           status: 'ok',
           count: 1,
