@@ -2053,6 +2053,17 @@ Deno.serve(async (req) => {
       const responsibleUserId = responsible?.user_id ?? user.id
       const responsibleDisplayName = responsible?.display_name ?? activeMembership.display_name
 
+      const { data: responsibleSettings } = await db
+        .from('user_settings')
+        .select('timezone, briefing_time')
+        .eq('user_id', responsibleUserId)
+        .maybeSingle()
+
+      const reminderTimeZone = responsibleSettings?.timezone ?? timeZone
+      const reminderBriefingTime = String(
+        responsibleSettings?.briefing_time ?? briefingTime,
+      ).slice(0, 5)
+
       const reminderOffsetDays = reminderDaysBefore(interpretation.reminder_phrase)
       let firstReminderAt: string | null = null
 
@@ -2066,7 +2077,11 @@ Deno.serve(async (req) => {
         }
 
         const reminderDate = addDays(dueDate, -reminderOffsetDays)
-        firstReminderAt = localDateTimeToUtcIso(reminderDate, briefingTime, timeZone)
+        firstReminderAt = localDateTimeToUtcIso(
+          reminderDate,
+          reminderBriefingTime,
+          reminderTimeZone,
+        )
 
         if (new Date(firstReminderAt).getTime() <= Date.now()) {
           return json({
@@ -2146,10 +2161,11 @@ Deno.serve(async (req) => {
         }, 400)
       }
 
+      const reminderOwnerUserId = draft.responsible_user_id ?? user.id
       const { data: settings } = await db
         .from('user_settings')
         .select('timezone, briefing_time')
-        .eq('user_id', user.id)
+        .eq('user_id', reminderOwnerUserId)
         .maybeSingle()
 
       const timeZone = settings?.timezone ?? 'Europe/Budapest'
