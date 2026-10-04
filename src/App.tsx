@@ -9,7 +9,7 @@ import {
 } from './lib/onesignal'
 
 type AuthMode = 'sign-in' | 'sign-up'
-type WorkMode = 'create' | 'update' | 'complete' | 'query'
+type WorkMode = 'assistant' | 'create' | 'update' | 'complete' | 'query'
 
 type CreateDraft = {
   subject_member_id: string | null
@@ -96,7 +96,7 @@ export default function App() {
   const [ownerInviteBusy, setOwnerInviteBusy] = useState(false)
   const [ownerInviteMessage, setOwnerInviteMessage] = useState<string | null>(null)
 
-  const [workMode, setWorkMode] = useState<WorkMode>('create')
+  const [workMode, setWorkMode] = useState<WorkMode>('assistant')
   const [naturalMessage, setNaturalMessage] = useState('')
   const [draft, setDraft] = useState<CreateDraft | null>(null)
   const [reminderFollowupOpen, setReminderFollowupOpen] = useState(false)
@@ -448,12 +448,32 @@ export default function App() {
     setQueryAnswer(null)
 
     try {
+      let effectiveMode: Exclude<WorkMode, 'assistant'> =
+        workMode === 'assistant' ? 'query' : workMode
+
+      if (workMode === 'assistant') {
+        const intentData = await invokeCore({
+          action: 'interpret_intent',
+          message: naturalMessage.trim(),
+        })
+
+        if (intentData.status === 'needs_clarification') {
+          setQueryAnswer(
+            intentData.question
+              ?? 'Pontosítsd kérlek, hogy új ügyet szeretnél rögzíteni, meglévőt módosítani, lezárni vagy keresni.',
+          )
+          return
+        }
+
+        effectiveMode = intentData.intent as Exclude<WorkMode, 'assistant'>
+      }
+
       const action =
-        workMode === 'create'
+        effectiveMode === 'create'
           ? 'interpret_create'
-          : workMode === 'update'
+          : effectiveMode === 'update'
             ? 'interpret_update'
-            : workMode === 'complete'
+            : effectiveMode === 'complete'
               ? 'interpret_complete'
               : 'query_items'
 
@@ -462,12 +482,12 @@ export default function App() {
         message: naturalMessage.trim(),
       })
 
-      if (workMode === 'query') {
+      if (effectiveMode === 'query') {
         setQueryAnswer(data.answer ?? 'Nem találtam választ.')
         return
       }
 
-      if (workMode === 'create') {
+      if (effectiveMode === 'create') {
         if (data.status === 'duplicate') {
           setFlowError(data.message ?? 'Ez az ügy már szerepel a nyitott ügyek között.')
           return
@@ -477,7 +497,7 @@ export default function App() {
         return
       }
 
-      if (workMode === 'update') {
+      if (effectiveMode === 'update') {
         if (data.status === 'needs_confirmation') {
           setUpdateDraft(data.draft as UpdateDraft)
           return
@@ -1008,6 +1028,28 @@ export default function App() {
 
               <div className="auth-tabs" aria-label="Művelet">
                 <button
+                  className={workMode === 'assistant' ? 'tab active' : 'tab'}
+                  type="button"
+                  onClick={() => {
+                    setWorkMode('assistant')
+                    setDraft(null)
+                    setReminderFollowupOpen(false)
+                    setReminderFollowupText('')
+                    setUpdateDraft(null)
+                    setUpdateCandidates([])
+                    setUpdateChanges(null)
+                    setCompleteDraft(null)
+                    setCompleteCandidates([])
+                    setFutureEventCompletion(null)
+                    setFutureEventDateText('')
+                    setQueryAnswer(null)
+                    setFlowError(null)
+                    setFlowMessage(null)
+                  }}
+                >
+                  Asszisztens
+                </button>
+                <button
                   className={workMode === 'create' ? 'tab active' : 'tab'}
                   type="button"
                   onClick={() => {
@@ -1083,22 +1125,26 @@ export default function App() {
 
               <form className="stack" onSubmit={handleInterpret}>
                 <h2>
-                  {workMode === 'create'
-                    ? 'Új ügy rögzítése'
-                    : workMode === 'update'
-                      ? 'Meglévő ügy módosítása'
-                      : workMode === 'complete'
-                        ? 'Ügy készre jelölése'
-                        : 'Keresés és előzmények'}
+                  {workMode === 'assistant'
+                    ? 'Mondd el, miben segítsek'
+                    : workMode === 'create'
+                      ? 'Új ügy rögzítése'
+                      : workMode === 'update'
+                        ? 'Meglévő ügy módosítása'
+                        : workMode === 'complete'
+                          ? 'Ügy készre jelölése'
+                          : 'Keresés és előzmények'}
                 </h2>
                 <p className="muted">
-                  {workMode === 'create'
-                    ? 'Írd le természetesen, mit kell észben tartani.'
-                    : workMode === 'update'
-                      ? 'Írd le természetesen, mit szeretnél módosítani.'
-                      : workMode === 'complete'
-                        ? 'Írd le természetesen, mit intéztél el.'
-                        : 'Kérdezz rá a nyitott ügyekre vagy a korábbi, elintézett bejegyzésekre.'}
+                  {workMode === 'assistant'
+                    ? 'Írd le természetesen. Az asszisztens eldönti, hogy új ügy, módosítás, lezárás vagy keresés következik.'
+                    : workMode === 'create'
+                      ? 'Írd le természetesen, mit kell észben tartani.'
+                      : workMode === 'update'
+                        ? 'Írd le természetesen, mit szeretnél módosítani.'
+                        : workMode === 'complete'
+                          ? 'Írd le természetesen, mit intéztél el.'
+                          : 'Kérdezz rá a nyitott ügyekre vagy a korábbi, elintézett bejegyzésekre.'}
                 </p>
 
                 <textarea
@@ -1106,27 +1152,37 @@ export default function App() {
                   value={naturalMessage}
                   onChange={(event) => setNaturalMessage(event.target.value)}
                   placeholder={
-                    workMode === 'create'
-                      ? 'Bencének jövő kedden 16:30-kor fogorvosa van, három nappal előtte szólj.'
-                      : workMode === 'update'
-                        ? 'Anya fodrászát áttették jövő keddre 11-re.'
-                        : workMode === 'complete'
-                          ? 'A biztosítást befizettem.'
-                          : 'Mi van holnap? / Mikor megy Anya fodrászhoz? / Mit intéztem el ezen a héten?'
+                    workMode === 'assistant'
+                      ? 'Például: Jövő kedden fogorvos. / A szerelőt tedd szerdára. / Voltam a fogorvosnál. / Mi van holnap?'
+                      : workMode === 'create'
+                        ? 'Bencének jövő kedden 16:30-kor fogorvosa van, három nappal előtte szólj.'
+                        : workMode === 'update'
+                          ? 'Anya fodrászát áttették jövő keddre 11-re.'
+                          : workMode === 'complete'
+                            ? 'A biztosítást befizettem.'
+                            : 'Mi van holnap? / Mikor megy Anya fodrászhoz? / Mit intéztem el ezen a héten?'
                   }
                   required
                 />
 
                 <button className="primary-button" type="submit" disabled={flowBusy}>
                   {flowBusy
-                    ? workMode === 'query' ? 'Keresés…' : 'Értelmezés…'
-                    : workMode === 'query' ? 'Keresés' : 'Értelmezés'}
+                    ? workMode === 'query'
+                      ? 'Keresés…'
+                      : workMode === 'assistant'
+                        ? 'Értelmezés…'
+                        : 'Értelmezés…'
+                    : workMode === 'query'
+                      ? 'Keresés'
+                      : workMode === 'assistant'
+                        ? 'Küldés'
+                        : 'Értelmezés'}
                 </button>
               </form>
 
               {queryAnswer && (
                 <section className="confirmation">
-                  <p className="eyebrow">Találatok</p>
+                  <p className="eyebrow">{workMode === 'assistant' ? 'Asszisztens' : 'Találatok'}</p>
                   <p className="query-answer">{queryAnswer}</p>
                 </section>
               )}
