@@ -314,7 +314,10 @@ Deno.serve(async (req) => {
         if (daysRemaining > 0) {
           const nextDaysBefore = daysRemaining <= 1 ? 0 : Math.ceil(daysRemaining / 2)
           const nextDate = addDays(item.due_date, -nextDaysBefore)
-          nextNotificationAt = localDateTimeToUtcIso(nextDate, briefingTime, timeZone)
+          const nextTime = item.due_time
+            ? String(item.due_time).slice(0, 5)
+            : briefingTime
+          nextNotificationAt = localDateTimeToUtcIso(nextDate, nextTime, timeZone)
         }
 
         await db
