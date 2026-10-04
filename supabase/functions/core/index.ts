@@ -1903,16 +1903,26 @@ Deno.serve(async (req) => {
         const subjectName = isOwnQuery && item.subject_member_id === activeMembership.id
           ? null
           : rawSubjectName
+        const itemResponsibleName = item.responsible_user_id
+          ? responsibleNameByUserId.get(item.responsible_user_id) ?? null
+          : null
+        const ownerPrefixName = queriedOtherOwnerName
+          ?? (
+            interpretation.responsibility === 'family'
+            && !responsibleUserId
+            && item.responsible_user_id
+            && item.responsible_user_id !== user.id
+              ? itemResponsibleName
+              : null
+          )
 
         return queryItemLine(
           item,
           subjectName,
-          item.responsible_user_id
-            ? responsibleNameByUserId.get(item.responsible_user_id) ?? null
-            : null,
+          itemResponsibleName,
           timeZone,
           showResponsible,
-          queriedOtherOwnerName,
+          ownerPrefixName,
         )
       })
 
