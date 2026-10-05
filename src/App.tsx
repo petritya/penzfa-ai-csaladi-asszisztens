@@ -59,6 +59,15 @@ export default function App() {
   const [familyName, setFamilyName] = useState<string | null>(null)
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([])
   const [familyError, setFamilyError] = useState<string | null>(null)
+  const [familyRefreshKey, setFamilyRefreshKey] = useState(0)
+
+  const [setupFamilyName, setSetupFamilyName] = useState('')
+  const [setupDisplayName, setSetupDisplayName] = useState('')
+  const [setupManagedMembers, setSetupManagedMembers] = useState('')
+  const [setupSecondOwnerEmail, setSetupSecondOwnerEmail] = useState('')
+  const [setupBusy, setSetupBusy] = useState(false)
+  const [setupError, setSetupError] = useState<string | null>(null)
+  const [setupMessage, setSetupMessage] = useState<string | null>(null)
 
   const [createMessage, setCreateMessage] = useState('')
   const [createDraft, setCreateDraft] = useState<CreateDraft | null>(null)
@@ -160,7 +169,60 @@ export default function App() {
     return () => {
       cancelled = true
     }
-  }, [session])
+  }, [session, familyRefreshKey])
+
+  async function handleFamilySetup(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!supabase) return
+
+    const familyName = setupFamilyName.trim()
+    const displayName = setupDisplayName.trim()
+
+    if (!familyName || !displayName) return
+
+    const managedMembers = setupManagedMembers
+      .split(/[,
+]/)
+      .map((name) => name.trim())
+      .filter(Boolean)
+
+    setSetupBusy(true)
+    setSetupError(null)
+    setSetupMessage(null)
+
+    const { data, error } = await supabase.functions.invoke('core', {
+      body: {
+        action: 'bootstrap',
+        family_name: familyName,
+        display_name: displayName,
+        managed_members: managedMembers,
+        second_owner_email: setupSecondOwnerEmail.trim() || null,
+        redirect_to: window.location.origin,
+      },
+    })
+
+    setSetupBusy(false)
+
+    if (error) {
+      setSetupError(error.message)
+      return
+    }
+
+    if (data?.status === 'created' || data?.status === 'exists') {
+      if (data?.second_owner_invitation_warning) {
+        setSetupMessage(
+          `A család elkészült, de a második ügygazda meghívása nem sikerült: ${data.second_owner_invitation_warning}`,
+        )
+      } else {
+        setSetupMessage('A család elkészült.')
+      }
+
+      setFamilyRefreshKey((value) => value + 1)
+      return
+    }
+
+    setSetupError(data?.error ?? 'A családot most nem sikerült létrehozni.')
+  }
 
   async function handleMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -621,6 +683,71 @@ export default function App() {
           </p>
 
           {familyError && <p className="notice error">{familyError}</p>}
+
+          {!familyLoading && !familyName && !familyError && (
+            <section className="setup-block" aria-label="Család létrehozása">
+              <h2>Család létrehozása</h2>
+              <p className="capture-help">
+                Elsőként add meg, hogyan hívjuk a családot és téged. A többi mező opcionális.
+              </p>
+
+              <form className="setup-form" onSubmit={handleFamilySetup}>
+                <label>
+                  Család neve
+                  <input
+                    type="text"
+                    value={setupFamilyName}
+                    onChange={(event) => setSetupFamilyName(event.target.value)}
+                    placeholder="Például: Család"
+                    required
+                  />
+                </label>
+
+                <label>
+                  Saját megszólítás
+                  <input
+                    type="text"
+                    value={setupDisplayName}
+                    onChange={(event) => setSetupDisplayName(event.target.value)}
+                    placeholder="Például: Apa"
+                    required
+                  />
+                </label>
+
+                <label>
+                  Kezelt családtagok
+                  <textarea
+                    value={setupManagedMembers}
+                    onChange={(event) => setSetupManagedMembers(event.target.value)}
+                    placeholder="Például: Mamus, Bence"
+                    rows={2}
+                  />
+                  <small>Vesszővel vagy új sorral válaszd el a neveket.</small>
+                </label>
+
+                <label>
+                  Második ügygazda e-mailje
+                  <input
+                    type="email"
+                    value={setupSecondOwnerEmail}
+                    onChange={(event) => setSetupSecondOwnerEmail(event.target.value)}
+                    placeholder="Opcionális"
+                  />
+                </label>
+
+                <button
+                  className="primary-button"
+                  type="submit"
+                  disabled={setupBusy || !setupFamilyName.trim() || !setupDisplayName.trim()}
+                >
+                  {setupBusy ? 'Létrehozás…' : 'Család létrehozása'}
+                </button>
+              </form>
+
+              {setupMessage && <p className="notice success">{setupMessage}</p>}
+              {setupError && <p className="notice error">{setupError}</p>}
+            </section>
+          )}
 
           {familyName && (
             <section className="capture-block capture-primary" aria-label="Kommunikáció">
