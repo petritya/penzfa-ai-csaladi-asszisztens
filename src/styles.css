@@ -167,6 +167,54 @@ h2 {
   margin: 0 0 18px;
 }
 
+.setup-block {
+  margin: 0 0 20px;
+  padding: 18px;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.setup-form {
+  display: grid;
+  gap: 14px;
+}
+
+.setup-form label {
+  display: grid;
+  gap: 7px;
+  font-weight: 700;
+}
+
+.setup-form input,
+.setup-form textarea {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 12px 13px;
+  background: #fff;
+  color: #0f172a;
+  outline: none;
+}
+
+.setup-form textarea {
+  resize: vertical;
+}
+
+.setup-form input:focus,
+.setup-form textarea:focus {
+  border-color: #64748b;
+  box-shadow: 0 0 0 3px rgba(100, 116, 139, 0.14);
+}
+
+.setup-form small {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.setup-block .notice {
+  margin-top: 12px;
+}
+
 .capture-block {
   margin: 0 0 20px;
 }
