@@ -1740,6 +1740,18 @@ Deno.serve(async (req) => {
 
     const familyId = activeMembership.family_id
 
+    if (body?.action === 'push_config') {
+      const appId = Deno.env.get('ONESIGNAL_APP_ID')
+      if (!appId) {
+        return json({ enabled: false, error: 'A push szolgáltatás nincs beállítva.' })
+      }
+
+      return json({
+        enabled: true,
+        app_id: appId,
+      })
+    }
+
     if (body?.action === 'interpret_intent') {
       const message = String(body?.message ?? '').trim()
       if (!message) return json({ error: 'Az üzenet nem lehet üres.' }, 400)
