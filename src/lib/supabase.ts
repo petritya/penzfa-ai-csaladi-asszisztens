@@ -5,6 +5,4 @@ const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | un
 
 export const hasSupabaseConfig = Boolean(supabaseUrl && supabaseKey)
 
-export const supabase = hasSupabaseConfig
-  ? createClient(supabaseUrl!, supabaseKey!)
-  : null
+export const supabase = createClient(supabaseUrl!, supabaseKey!)
