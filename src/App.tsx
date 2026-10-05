@@ -311,7 +311,6 @@ export default function App() {
           {familyName && (
             <section className="capture-block capture-primary" aria-label="Kommunikáció">
               <h2>Mit intézzünk?</h2>
-              <h2>Új ügy</h2>
               <p className="capture-help">
                 Írd be vagy diktáld természetesen. Például: „Mamusnak jövő kedden 10-kor kontroll.”
               </p>
