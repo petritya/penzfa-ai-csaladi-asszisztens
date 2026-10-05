@@ -2586,6 +2586,7 @@ Deno.serve(async (req) => {
 
       let assignmentNotificationSent: boolean | null = null
       let assignmentNotificationWarning: string | null = null
+      let assignmentNotificationError: unknown = null
 
       if (responsibleUserId !== user.id) {
         const delivery = await sendAssignmentPush(
@@ -2599,6 +2600,7 @@ Deno.serve(async (req) => {
 
         assignmentNotificationSent = delivery.sent
         if (!delivery.sent) {
+          assignmentNotificationError = delivery.error ?? null
           assignmentNotificationWarning = 'Az ügy rögzítve lett, de a címzett push értesítése nem kézbesíthető. Ellenőrizze, hogy nála engedélyezve vannak-e az értesítések.'
         }
       }
@@ -2615,6 +2617,7 @@ Deno.serve(async (req) => {
           responsible_user_id: responsibleUserId,
           assigned_to_other_owner: responsibleUserId !== user.id,
           assignment_notification_sent: assignmentNotificationSent,
+          assignment_notification_error: assignmentNotificationError,
         },
       })
 
