@@ -1,12 +1,12 @@
 import { FormEvent, useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { supabase } from './lib/supabase'
+import { hasSupabaseConfig, supabase } from './lib/supabase'
 
 type AuthMode = 'sign-in' | 'sign-up'
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
-  const [loadingSession, setLoadingSession] = useState(true)
+  const [loadingSession, setLoadingSession] = useState(hasSupabaseConfig)
   const [mode, setMode] = useState<AuthMode>('sign-in')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -15,6 +15,8 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!supabase) return
+
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
       setLoadingSession(false)
@@ -32,6 +34,8 @@ export default function App() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!supabase) return
+
     setSubmitting(true)
     setMessage(null)
     setErrorMessage(null)
@@ -59,12 +63,32 @@ export default function App() {
   }
 
   async function handleSignOut() {
+    if (!supabase) return
+
     setErrorMessage(null)
     const { error } = await supabase.auth.signOut()
 
     if (error) {
       setErrorMessage(error.message)
     }
+  }
+
+  if (!hasSupabaseConfig) {
+    return (
+      <main className="shell">
+        <section className="card">
+          <p className="eyebrow">Pénzfa</p>
+          <h1>Beállítás szükséges</h1>
+          <p className="lead">
+            A Cloudflare deployból hiányzik a Supabase projekt URL-je vagy publishable key-je.
+          </p>
+          <p className="notice error">
+            Add hozzá a VITE_SUPABASE_URL és VITE_SUPABASE_PUBLISHABLE_KEY környezeti változókat,
+            majd indíts új deployt.
+          </p>
+        </section>
+      </main>
+    )
   }
 
   if (loadingSession) {
