@@ -1006,7 +1006,11 @@ async function interpretWithOpenAI(
         'Példa: "Mamus hétfőn megy orvoshoz" => subject_name=Mamus, responsible_name=null.',
         'Példa: "Anya intézze Mamus gyógyszerét pénteken" => subject_name=Mamus, responsible_name=Anya.',
         'A reminder_phrase maradjon a teljes természetes nyelvű emlékeztetési kérés, például: "három nappal előtte", "hétfőn 18 órakor" vagy "egy nappal előtte 18:30-kor".',
-        'A title rövid, természetes magyar megnevezés legyen.',
+        'A title az eredeti felhasználói megfogalmazás lényegi ügymegnevezését őrizze meg; ne fogalmazd át szinonimával és ne változtasd meg a jelentést.',
+        'A title-ből csak a külön mezőkbe kerülő személynevet, dátumot, időpontot, emlékeztetést és felelősségi kifejezést hagyd el.',
+        'Ne tegyél hozzá birtokos ragot vagy új főnevet csak azért, hogy szebben hangozzon.',
+        'Példa: "Mamusnak október 20-án 14:20-kor próba kontroll" => title="próba kontroll", subject_name="Mamus".',
+        'Példa: "Anyának pénteken fodrász" => title="fodrász", subject_name="Anya".',
       ].join('\n'),
       input: message,
       text: {
