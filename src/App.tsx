@@ -82,6 +82,13 @@ function getOneSignalClient(appId: string) {
         })
         resolve(oneSignal)
       } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+
+        if (message.toLowerCase().includes('already initialized')) {
+          resolve(oneSignal)
+          return
+        }
+
         oneSignalClientPromise = null
         reject(error)
       }
