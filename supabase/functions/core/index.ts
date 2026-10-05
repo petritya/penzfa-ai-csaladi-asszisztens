@@ -83,7 +83,7 @@ type CompleteDraft = {
 
 type QueryInterpretation = {
   intent: 'query'
-  status: 'open' | 'done' | 'all'
+  status: 'open' | 'done' | 'deleted' | 'all'
   responsibility: 'mine' | 'family'
   subject_name: string | null
   responsible_name: string | null
@@ -855,6 +855,10 @@ function queryItemLine(
     return `✓ ${ownerPrefix}${subject}${item.title}${completedDate ? ` – elintézve: ${formatHungarianDate(completedDate)}` : ''}${responsible}`
   }
 
+  if (item.status === 'deleted') {
+    return `× ${ownerPrefix}${subject}${item.title}${item.due_date ? ` – eredetileg: ${formatHungarianDate(item.due_date)}${time}` : ''} – törölve${responsible}`
+  }
+
   return `• ${ownerPrefix}${subject}${item.title}${item.due_date ? ` – ${formatHungarianDate(item.due_date)}${time}` : ' – dátum nélkül'}${responsible}`
 }
 
@@ -1261,7 +1265,7 @@ async function interpretQueryWithOpenAI(
       instructions: [
         'Te egy magyar nyelvű családi asszisztens lekérdezés-értelmező rétege vagy.',
         'Csak a keresési szándékot strukturáld. Ne kérdezz adatbázist és ne számolj relatív dátumot.',
-        'status=open: nyitott vagy jövőbeli ügyek; done: elintézett/kész előzmények; all: csak ha a kérdés tényleg mindkettőt kéri.',
+        'status=open: nyitott vagy jövőbeli ügyek; done: elintézett/kész előzmények; deleted: törölt vagy visszavont ügyek; all: csak ha a kérdés tényleg a nyitott és kész ügyeket együtt kéri. A törölt ügyek csak kifejezett kérésre legyenek deleted státuszúak.',
         'Az "utoljára", "legutóbb", "legutóbbi" múltbeli kérdéseknél status=done legyen.',
         'responsibility=mine, ha a felhasználó kifejezetten a saját felelősségi körére kérdez (pl. "ami hozzám tartozik", "az én feladataim"). Egyébként family.',
         `Aktív felnőttek: ${activeMemberNames.length ? activeMemberNames.join(', ') : 'nincs'}.`,
@@ -1279,6 +1283,7 @@ async function interpretQueryWithOpenAI(
         '"Mikor megy Anya fodrászhoz?" => open, family, subject_name=Anya, responsible_name=null, keywords=fodrász, none.',
         '"Milyen nyitott ügyeim vannak?" => open, mine, subject_name=null, responsible_name=null, none.',
         '"Mit intéztem el ezen a héten?" => done, mine, subject_name=null, responsible_name=null, this_week.',
+        '"Milyen törölt ügyeim vannak?" => deleted, mine, subject_name=null, responsible_name=null, none.',
         '"Mamusnak milyen ügyei vannak?" => open, family, subject_name=Mamus, responsible_name=null, none.',
         '"Mamus melyik ügyei tartoznak hozzám?" => open, mine, subject_name=Mamus, responsible_name=null, none.',
         '"Mamus melyik ügyei tartoznak Anyához?" => open, family, subject_name=Mamus, responsible_name=Anya, none.',
@@ -1294,7 +1299,7 @@ async function interpretQueryWithOpenAI(
             additionalProperties: false,
             properties: {
               intent: { type: 'string', enum: ['query'] },
-              status: { type: 'string', enum: ['open', 'done', 'all'] },
+              status: { type: 'string', enum: ['open', 'done', 'deleted', 'all'] },
               responsibility: { type: 'string', enum: ['mine', 'family'] },
               subject_name: { type: ['string', 'null'] },
               responsible_name: { type: ['string', 'null'] },
@@ -1951,11 +1956,15 @@ Deno.serve(async (req) => {
         .from('items')
         .select('id, title, notes, item_type, due_date, due_time, status, subject_member_id, responsible_user_id, completed_at, created_at')
         .eq('family_id', familyId)
-        .neq('status', 'deleted')
         .limit(200)
 
-      if (interpretation.status !== 'all') {
-        itemsQuery = itemsQuery.eq('status', interpretation.status)
+      if (interpretation.status === 'deleted') {
+        itemsQuery = itemsQuery.eq('status', 'deleted')
+      } else {
+        itemsQuery = itemsQuery.neq('status', 'deleted')
+        if (interpretation.status !== 'all') {
+          itemsQuery = itemsQuery.eq('status', interpretation.status)
+        }
       }
 
       if (subjectId) {
