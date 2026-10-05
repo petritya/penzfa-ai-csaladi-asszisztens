@@ -241,6 +241,16 @@ export default function App() {
       setPushStatus('loading')
       setPushError(null)
 
+      const { data: refreshedAuth, error: refreshError } = await supabase!.auth.refreshSession()
+
+      if (cancelled) return
+
+      if (refreshError || !refreshedAuth.session) {
+        setPushStatus('error')
+        setPushError('A munkamenetet nem sikerült frissíteni. Jelentkezz be újra.')
+        return
+      }
+
       const { data, error } = await supabase!.functions.invoke('core', {
         body: { action: 'push_config' },
       })
@@ -257,7 +267,7 @@ export default function App() {
 
       try {
         const oneSignal = await getOneSignalClient(data.app_id)
-        await oneSignal.login(session!.user.id)
+        await oneSignal.login(refreshedAuth.session.user.id)
 
         if (cancelled) return
 
