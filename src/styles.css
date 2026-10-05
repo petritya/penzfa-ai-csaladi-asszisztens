@@ -355,6 +355,35 @@ h2 {
   font-weight: 700;
 }
 
+.push-settings {
+  display: grid;
+  gap: 10px;
+  margin: -10px 0 20px;
+  padding: 14px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.push-settings div {
+  display: grid;
+  gap: 4px;
+}
+
+.push-settings small {
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.push-settings .push-enabled {
+  color: #166534;
+  font-weight: 700;
+}
+
+.push-settings .secondary-button {
+  justify-self: start;
+}
+
 @media (max-width: 520px) {
   .shell {
     padding: 14px;
