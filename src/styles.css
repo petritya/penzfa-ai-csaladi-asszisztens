@@ -15,7 +15,8 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 
@@ -153,6 +154,64 @@ h2 {
 
 .family-block {
   margin: 0 0 18px;
+}
+
+.capture-block {
+  margin: 24px 0;
+  padding-top: 22px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.capture-help {
+  margin: -4px 0 12px;
+  color: #64748b;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.capture-form {
+  display: grid;
+  gap: 10px;
+}
+
+.capture-form textarea {
+  width: 100%;
+  min-height: 92px;
+  resize: vertical;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 12px 13px;
+  background: #fff;
+  color: #0f172a;
+  outline: none;
+  line-height: 1.45;
+}
+
+.capture-form textarea:focus {
+  border-color: #64748b;
+  box-shadow: 0 0 0 3px rgba(100, 116, 139, 0.14);
+}
+
+.confirmation-card {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.confirmation-card p {
+  margin: 7px 0 14px;
+  line-height: 1.5;
+}
+
+.confirmation-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.capture-block .notice {
+  margin-top: 12px;
 }
 
 .member-list {
