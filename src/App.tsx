@@ -1121,7 +1121,7 @@ export default function App() {
               <form className="stack" onSubmit={handleInterpret}>
                 <h2>Mondd el, miben segítsek</h2>
                 <p className="muted">
-                  Írd le természetesen. Az asszisztens eldönti, hogy új ügy, módosítás, lezárás vagy keresés következik.
+                  Írd le természetesen. Az asszisztens eldönti, hogy új ügy, módosítás, lezárás, törlés vagy keresés következik.
                 </p>
 
                 <textarea
