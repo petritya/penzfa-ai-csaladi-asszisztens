@@ -248,18 +248,22 @@ export default function App() {
       setPushStatus('loading')
       setPushError(null)
 
-      const { data: refreshedAuth, error: refreshError } = await supabase!.auth.refreshSession()
+      const { data: authData } = await supabase!.auth.getSession()
+      const currentSession = authData.session
 
       if (cancelled) return
 
-      if (refreshError || !refreshedAuth.session) {
+      if (!currentSession) {
         setPushStatus('error')
-        setPushError('A munkamenetet nem sikerült frissíteni. Jelentkezz be újra.')
+        setPushError('Nincs aktív munkamenet. Jelentkezz be újra.')
         return
       }
 
       const { data, error } = await supabase!.functions.invoke('core', {
         body: { action: 'push_config' },
+        headers: {
+          Authorization: `Bearer ${currentSession.access_token}`,
+        },
       })
 
       if (cancelled) return
@@ -274,7 +278,7 @@ export default function App() {
 
       try {
         const oneSignal = await getOneSignalClient(data.app_id)
-        await oneSignal.login(refreshedAuth.session.user.id)
+        await oneSignal.login(currentSession.user.id)
 
         if (cancelled) return
 
@@ -297,7 +301,7 @@ export default function App() {
     return () => {
       cancelled = true
     }
-  }, [session, familyName])
+  }, [session?.user.id, familyName])
 
   async function handleEnablePush() {
     if (!session || !pushAppId) return
