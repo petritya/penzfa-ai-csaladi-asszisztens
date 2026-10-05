@@ -33,6 +33,12 @@ type CompleteDraft = {
   confirmation_text: string
 }
 
+type UpdateDraft = {
+  pending_action_id: string
+  target_item_id: string
+  confirmation_text: string
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [loadingSession, setLoadingSession] = useState(hasSupabaseConfig)
@@ -54,6 +60,7 @@ export default function App() {
   const [createError, setCreateError] = useState<string | null>(null)
   const [createSuccess, setCreateSuccess] = useState<string | null>(null)
   const [completeDraft, setCompleteDraft] = useState<CompleteDraft | null>(null)
+  const [updateDraft, setUpdateDraft] = useState<UpdateDraft | null>(null)
   const [assistantAnswer, setAssistantAnswer] = useState<string | null>(null)
 
   useEffect(() => {
@@ -158,6 +165,7 @@ export default function App() {
     setCreateBusy(true)
     setCreateDraft(null)
     setCompleteDraft(null)
+    setUpdateDraft(null)
     setCreateError(null)
     setCreateSuccess(null)
     setAssistantAnswer(null)
@@ -251,6 +259,53 @@ export default function App() {
       return
     }
 
+    if (intentData?.intent === 'update') {
+      const { data, error } = await supabase.functions.invoke('core', {
+        body: {
+          action: 'interpret_update',
+          message,
+        },
+      })
+
+      setCreateBusy(false)
+
+      if (error) {
+        setCreateError(error.message)
+        return
+      }
+
+      if (data?.status === 'needs_confirmation' && data?.draft) {
+        setUpdateDraft(data.draft as UpdateDraft)
+        return
+      }
+
+      if (data?.status === 'choose_target') {
+        const labels = (data.candidates ?? [])
+          .map((candidate: { label?: string }) => candidate.label)
+          .filter(Boolean)
+          .join('\n• ')
+
+        setAssistantAnswer(
+          labels
+            ? `Több egyező nyitott ügyet találtam. Pontosítsd, melyikre gondolsz:\n• ${labels}`
+            : 'Több egyező nyitott ügyet találtam. Kérlek, pontosíts.',
+        )
+        return
+      }
+
+      if (data?.status === 'needs_change_details') {
+        setAssistantAnswer(
+          data.error ?? 'Megtaláltam az ügyet. Mondd meg, mire szeretnéd módosítani.',
+        )
+        return
+      }
+
+      setAssistantAnswer(
+        data?.error ?? 'Nem találtam egyértelműen a módosítandó ügyet.',
+      )
+      return
+    }
+
     if (intentData?.intent !== 'create') {
       setCreateBusy(false)
       setAssistantAnswer(
@@ -284,6 +339,38 @@ export default function App() {
     }
 
     setCreateError(data?.error ?? 'Az ügyet most nem sikerült értelmezni.')
+  }
+
+  async function handleConfirmUpdate() {
+    if (!supabase || !updateDraft) return
+
+    setCreateBusy(true)
+    setCreateError(null)
+    setCreateSuccess(null)
+    setAssistantAnswer(null)
+
+    const { data, error } = await supabase.functions.invoke('core', {
+      body: {
+        action: 'confirm_update',
+        pending_action_id: updateDraft.pending_action_id,
+      },
+    })
+
+    setCreateBusy(false)
+
+    if (error) {
+      setCreateError(error.message)
+      return
+    }
+
+    if (data?.status === 'updated') {
+      setCreateSuccess(`Módosítva: ${data.item?.title ?? 'ügy'}`)
+      setCreateMessage('')
+      setUpdateDraft(null)
+      return
+    }
+
+    setCreateError(data?.error ?? 'Az ügyet most nem sikerült módosítani.')
   }
 
   async function handleConfirmComplete() {
@@ -362,6 +449,7 @@ export default function App() {
   function handleCancelCreate() {
     setCreateDraft(null)
     setCompleteDraft(null)
+    setUpdateDraft(null)
     setCreateError(null)
     setCreateSuccess(null)
     setAssistantAnswer(null)
@@ -467,6 +555,7 @@ export default function App() {
                     setCreateMessage(event.target.value)
                     setCreateDraft(null)
                     setCompleteDraft(null)
+                    setUpdateDraft(null)
                     setCreateError(null)
                     setCreateSuccess(null)
                     setAssistantAnswer(null)
@@ -489,6 +578,31 @@ export default function App() {
                 <div className="assistant-answer">
                   <strong>Válasz:</strong>
                   <p>{assistantAnswer}</p>
+                </div>
+              )}
+
+              {updateDraft && (
+                <div className="confirmation-card">
+                  <strong>Megerősítés:</strong>
+                  <p>{updateDraft.confirmation_text}</p>
+                  <div className="confirmation-actions">
+                    <button
+                      className="primary-button"
+                      type="button"
+                      onClick={handleConfirmUpdate}
+                      disabled={createBusy}
+                    >
+                      Igen, módosítsd
+                    </button>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={handleCancelCreate}
+                      disabled={createBusy}
+                    >
+                      Mégse
+                    </button>
+                  </div>
                 </div>
               )}
 
