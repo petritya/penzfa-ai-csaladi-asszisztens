@@ -9,7 +9,7 @@ import {
 } from './lib/onesignal'
 
 type AuthMode = 'sign-in' | 'sign-up'
-type RoutedMode = 'create' | 'update' | 'complete' | 'query'
+type RoutedMode = 'create' | 'update' | 'complete' | 'delete' | 'query'
 
 type CreateDraft = {
   subject_member_id: string | null
@@ -48,6 +48,12 @@ type UpdateChanges = {
 }
 
 type CompleteDraft = {
+  pending_action_id: string
+  target_item_id: string
+  confirmation_text: string
+}
+
+type DeleteDraft = {
   pending_action_id: string
   target_item_id: string
   confirmation_text: string
@@ -105,6 +111,8 @@ export default function App() {
   const [updateChanges, setUpdateChanges] = useState<UpdateChanges | null>(null)
   const [completeDraft, setCompleteDraft] = useState<CompleteDraft | null>(null)
   const [completeCandidates, setCompleteCandidates] = useState<UpdateCandidate[]>([])
+  const [deleteDraft, setDeleteDraft] = useState<DeleteDraft | null>(null)
+  const [deleteCandidates, setDeleteCandidates] = useState<UpdateCandidate[]>([])
   const [futureEventCompletion, setFutureEventCompletion] = useState<FutureEventCompletionDraft | null>(null)
   const [futureEventDateText, setFutureEventDateText] = useState('')
   const [flowMessage, setFlowMessage] = useState<string | null>(null)
@@ -149,6 +157,8 @@ export default function App() {
       setUpdateChanges(null)
       setCompleteDraft(null)
       setCompleteCandidates([])
+      setDeleteDraft(null)
+      setDeleteCandidates([])
       setFutureEventCompletion(null)
       setFutureEventDateText('')
       setFlowMessage(null)
@@ -442,6 +452,8 @@ export default function App() {
     setUpdateChanges(null)
     setCompleteDraft(null)
     setCompleteCandidates([])
+    setDeleteDraft(null)
+    setDeleteCandidates([])
     setFutureEventCompletion(null)
     setFutureEventDateText('')
     setQueryAnswer(null)
@@ -455,7 +467,7 @@ export default function App() {
       if (intentData.status === 'needs_clarification') {
         setQueryAnswer(
           intentData.question
-            ?? 'Pontosítsd kérlek, hogy új ügyet szeretnél rögzíteni, meglévőt módosítani, lezárni vagy keresni.',
+            ?? 'Pontosítsd kérlek, hogy új ügyet szeretnél rögzíteni, módosítani, lezárni, törölni vagy keresni.',
         )
         return
       }
@@ -469,7 +481,9 @@ export default function App() {
             ? 'interpret_update'
             : effectiveMode === 'complete'
               ? 'interpret_complete'
-              : 'query_items'
+              : effectiveMode === 'delete'
+                ? 'interpret_delete'
+                : 'query_items'
 
       const data = await invokeCore({
         action,
@@ -510,6 +524,24 @@ export default function App() {
 
         if (data.status === 'no_match') {
           setFlowError(data.error ?? 'Nem találtam megfelelő ügyet.')
+        }
+
+        return
+      }
+
+      if (effectiveMode === 'delete') {
+        if (data.status === 'needs_confirmation') {
+          setDeleteDraft(data.draft as DeleteDraft)
+          return
+        }
+
+        if (data.status === 'choose_target') {
+          setDeleteCandidates(data.candidates as UpdateCandidate[])
+          return
+        }
+
+        if (data.status === 'no_match') {
+          setFlowError(data.error ?? 'Nem találtam megfelelő nyitott ügyet.')
         }
 
         return
@@ -688,6 +720,72 @@ export default function App() {
     setUpdateDraft(null)
     setUpdateCandidates([])
     setUpdateChanges(null)
+
+    if (!pendingActionId) return
+
+    try {
+      await invokeCore({
+        action: 'cancel_pending',
+        pending_action_id: pendingActionId,
+      })
+    } catch {
+      // A felhasználói felületen már megszakítottuk a műveletet.
+    }
+  }
+
+
+  async function handleChooseDeleteTarget(targetItemId: string) {
+    setFlowBusy(true)
+    setFlowError(null)
+
+    try {
+      const data = await invokeCore({
+        action: 'prepare_delete_target',
+        target_item_id: targetItemId,
+      })
+
+      if (data.status === 'needs_confirmation') {
+        setDeleteDraft(data.draft as DeleteDraft)
+        setDeleteCandidates([])
+      } else {
+        setFlowError(data.error ?? 'Nem sikerült előkészíteni a törlést.')
+      }
+    } catch (error) {
+      setFlowError(error instanceof Error ? error.message : 'Nem sikerült kiválasztani az ügyet.')
+    } finally {
+      setFlowBusy(false)
+    }
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteDraft) return
+
+    setFlowBusy(true)
+    setFlowError(null)
+    setFlowMessage(null)
+
+    try {
+      const data = await invokeCore({
+        action: 'confirm_delete',
+        pending_action_id: deleteDraft.pending_action_id,
+      })
+
+      setFlowMessage(`Törölve: ${data.item.title}`)
+      setNaturalMessage('')
+      setDeleteDraft(null)
+      setDeleteCandidates([])
+    } catch (error) {
+      setFlowError(error instanceof Error ? error.message : 'Nem sikerült törölni az ügyet.')
+    } finally {
+      setFlowBusy(false)
+    }
+  }
+
+  async function handleCancelDelete() {
+    const pendingActionId = deleteDraft?.pending_action_id
+
+    setDeleteDraft(null)
+    setDeleteCandidates([])
 
     if (!pendingActionId) return
 
@@ -1148,6 +1246,42 @@ export default function App() {
                       Igen, módosítsd
                     </button>
                     <button className="secondary-button" type="button" onClick={handleCancelUpdate} disabled={flowBusy}>
+                      Mégse
+                    </button>
+                  </div>
+                </section>
+              )}
+
+
+              {deleteCandidates.length > 0 && (
+                <section className="confirmation">
+                  <p className="eyebrow">Több lehetséges ügyet találtam</p>
+                  <p>Melyiket töröljem?</p>
+                  <div className="candidate-list">
+                    {deleteCandidates.map((candidate) => (
+                      <button
+                        className="secondary-button candidate-button"
+                        type="button"
+                        key={candidate.id}
+                        onClick={() => handleChooseDeleteTarget(candidate.id)}
+                        disabled={flowBusy}
+                      >
+                        {candidate.label}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {deleteDraft && (
+                <section className="confirmation">
+                  <p className="eyebrow">Törlés visszaigazolása</p>
+                  <p>{deleteDraft.confirmation_text}</p>
+                  <div className="actions">
+                    <button className="primary-button" type="button" onClick={handleConfirmDelete} disabled={flowBusy}>
+                      Igen, töröld
+                    </button>
+                    <button className="secondary-button" type="button" onClick={handleCancelDelete} disabled={flowBusy}>
                       Mégse
                     </button>
                   </div>
