@@ -503,6 +503,10 @@ function resolveDatePhrase(phrase: string | null, timeZone: string) {
   const today = localDateInTimezone(timeZone)
   const [todayYear, todayMonth] = today.split('-').map(Number)
 
+  if (/\bholnaputan\b/.test(normalized)) return addDays(today, 2)
+  if (/\bholnap\b/.test(normalized)) return addDays(today, 1)
+  if (/\bma\b/.test(normalized)) return today
+
   const explicitMonth = findHungarianMonth(raw)
   const explicitDay = findDayOfMonth(raw)
 
@@ -516,27 +520,6 @@ function resolveDatePhrase(phrase: string | null, timeZone: string) {
     }
     return candidate
   }
-
-  if (explicitMonth === null && explicitDay !== null) {
-    let year = todayYear
-    let month = todayMonth
-    let candidate = makeIsoDate(year, month, explicitDay)
-
-    if (!candidate || candidate < today) {
-      month += 1
-      if (month > 12) {
-        month = 1
-        year += 1
-      }
-      candidate = makeIsoDate(year, month, explicitDay)
-    }
-
-    return candidate
-  }
-
-  if (/\bholnaputan\b/.test(normalized)) return addDays(today, 2)
-  if (/\bholnap\b/.test(normalized)) return addDays(today, 1)
-  if (/\bma\b/.test(normalized)) return today
 
   const weeksWithWeekdayMatch = normalized.match(
     /\b(\d+|egy|ket|ketto|harom|negy|ot|hat|het|nyolc|kilenc|tiz)\s+het\s+mulva\b/,
@@ -565,6 +548,24 @@ function resolveDatePhrase(phrase: string | null, timeZone: string) {
   }
 
   const targetWeekday = weekdayInPhrase
+
+  if (targetWeekday === null && explicitMonth === null && explicitDay !== null) {
+    let year = todayYear
+    let month = todayMonth
+    let candidate = makeIsoDate(year, month, explicitDay)
+
+    if (!candidate || candidate < today) {
+      month += 1
+      if (month > 12) {
+        month = 1
+        year += 1
+      }
+      candidate = makeIsoDate(year, month, explicitDay)
+    }
+
+    return candidate
+  }
+
   if (targetWeekday === null) return null
 
   const todayWeekday = weekdayOf(today)
