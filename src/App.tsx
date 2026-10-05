@@ -181,8 +181,7 @@ export default function App() {
     if (!familyName || !displayName) return
 
     const managedMembers = setupManagedMembers
-      .split(/[,
-]/)
+      .split(/[,\n]/)
       .map((name) => name.trim())
       .filter(Boolean)
 
