@@ -224,6 +224,21 @@ function duplicateTitleKey(value: string) {
   return normalize(value).replace(/[^a-z0-9]+/g, '')
 }
 
+function isClearlyQueryMessage(message: string) {
+  const text = normalize(message)
+    .replace(/[^a-z0-9?]+/g, ' ')
+    .trim()
+
+  const queryPatterns = [
+    /\b(mik|mi|milyen|melyik|melyek|mikor|mennyi|hany|hol)\b/,
+    /\b(van e|vannak e|volt e|voltak e)\b/,
+    /\b(mutass|sorold|listazd|keresd meg)\b/,
+    /\b(nyitott|aktualis|mai|holnapi|heti)\s+ugy(?:eink|ek|em|eim)?\b/,
+  ]
+
+  return message.includes('?') || queryPatterns.some((pattern) => pattern.test(text))
+}
+
 function stripSubjectPrefixFromTitle(title: string, subjectName: string) {
   const titleWords = title.trim().split(/\s+/).filter(Boolean)
   const subjectWords = subjectName.trim().split(/\s+/).filter(Boolean)
@@ -937,6 +952,9 @@ async function interpretIntentWithOpenAI(
         'Példa: "A szerelős ügy már nem aktuális, vedd ki." => delete.',
         'Példa: "Mikor voltam utoljára fogorvosnál?" => query.',
         'Példa: "Milyen ügyeim vannak holnap?" => query.',
+        'Példa: "Mik a nyitott ügyeink?" => query.',
+        'Példa: "Sorold fel a nyitott ügyeinket." => query.',
+        'Elsőbbségi szabály: ha a felhasználó információt kér, listát kér, kérdést tesz fel vagy meglévő ügyekről érdeklődik, az query, nem create.',
         'Példa: "Fogorvos." => clarify.',
         'Ne írj adatbázisba, ne keress rekordot, és ne hajts végre műveletet.',
       ].join('\n'),
@@ -969,7 +987,16 @@ async function interpretIntentWithOpenAI(
   const outputText = extractOutputText(data)
   if (!outputText) throw new Error('Az AI nem adott értelmezhető szándékfelismerési választ.')
 
-  return JSON.parse(outputText) as IntentInterpretation
+  const interpretation = JSON.parse(outputText) as IntentInterpretation
+
+  if (interpretation.intent === 'create' && isClearlyQueryMessage(message)) {
+    return {
+      intent: 'query',
+      clarification: null,
+    }
+  }
+
+  return interpretation
 }
 
 async function interpretWithOpenAI(
