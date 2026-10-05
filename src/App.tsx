@@ -712,6 +712,10 @@ export default function App() {
       setCreateSuccess(`Rögzítve: ${data.item?.title ?? createDraft.title}`)
       setCreateMessage('')
       setCreateDraft(null)
+
+      if (data.assignment_notification_warning) {
+        setAssistantAnswer(data.assignment_notification_warning)
+      }
       return
     }
 
