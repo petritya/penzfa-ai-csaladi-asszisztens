@@ -868,6 +868,7 @@ function queryItemDate(item: any, timeZone: string) {
 function queryItemLine(
   item: any,
   memberName: string | null,
+  memberKind: 'active' | 'managed' | null,
   responsibleName: string | null,
   timeZone: string,
   showResponsible = false,
@@ -876,9 +877,11 @@ function queryItemLine(
   const ownerPrefix = ownerPrefixName ? `${ownerPrefixName}: ` : ''
   const subject = memberName
     && (!ownerPrefixName || normalize(memberName) !== normalize(ownerPrefixName))
-      ? ownerPrefixName
-        ? `${memberName} – `
-        : `${memberName}: `
+      ? memberKind === 'managed'
+        ? `${memberName} ügyében: `
+        : ownerPrefixName
+          ? `${memberName} – `
+          : `${memberName}: `
       : ''
   const time = item.due_time ? ` ${String(item.due_time).slice(0, 5)}` : ''
   const responsible = showResponsible && responsibleName
@@ -2158,6 +2161,7 @@ Deno.serve(async (req) => {
         return queryItemLine(
           item,
           subjectName,
+          subjectMember?.member_kind ?? null,
           itemResponsibleName,
           timeZone,
           showResponsible,
