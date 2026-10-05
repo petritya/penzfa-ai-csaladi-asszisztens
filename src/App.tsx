@@ -494,7 +494,7 @@ export default function App() {
 
               {completeDraft && (
                 <div className="confirmation-card">
-                  <strong>Ezt találtam:</strong>
+                  <strong>Megerősítés:</strong>
                   <p>{completeDraft.confirmation_text}</p>
                   <div className="confirmation-actions">
                     <button
