@@ -196,11 +196,22 @@ h2 {
   box-shadow: 0 0 0 3px rgba(100, 116, 139, 0.14);
 }
 
+.assistant-answer,
 .confirmation-card {
   margin-top: 14px;
   padding: 14px;
   border-radius: 12px;
   background: #f8fafc;
+}
+
+.assistant-answer p {
+  margin: 7px 0 0;
+  white-space: pre-line;
+  line-height: 1.5;
+}
+
+.confirmation-card {
+  margin-top: 14px;
 }
 
 .confirmation-card p {
