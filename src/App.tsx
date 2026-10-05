@@ -45,6 +45,52 @@ type DeleteDraft = {
   confirmation_text: string
 }
 
+type PushStatus = 'idle' | 'loading' | 'ready' | 'enabled' | 'blocked' | 'unsupported' | 'error'
+
+type OneSignalClient = {
+  init: (options: {
+    appId: string
+    serviceWorkerPath: string
+    serviceWorkerParam: { scope: string }
+  }) => Promise<void>
+  login: (externalId: string) => Promise<void> | void
+  logout: () => Promise<void> | void
+  Notifications: {
+    requestPermission: () => Promise<void>
+  }
+}
+
+type OneSignalWindow = Window & {
+  OneSignalDeferred?: Array<(client: OneSignalClient) => void | Promise<void>>
+}
+
+let oneSignalClientPromise: Promise<OneSignalClient> | null = null
+
+function getOneSignalClient(appId: string) {
+  if (oneSignalClientPromise) return oneSignalClientPromise
+
+  oneSignalClientPromise = new Promise<OneSignalClient>((resolve, reject) => {
+    const oneSignalWindow = window as OneSignalWindow
+    oneSignalWindow.OneSignalDeferred = oneSignalWindow.OneSignalDeferred ?? []
+
+    oneSignalWindow.OneSignalDeferred.push(async (oneSignal) => {
+      try {
+        await oneSignal.init({
+          appId,
+          serviceWorkerPath: 'onesignal/OneSignalSDKWorker.js',
+          serviceWorkerParam: { scope: '/onesignal/' },
+        })
+        resolve(oneSignal)
+      } catch (error) {
+        oneSignalClientPromise = null
+        reject(error)
+      }
+    })
+  })
+
+  return oneSignalClientPromise
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [loadingSession, setLoadingSession] = useState(hasSupabaseConfig)
@@ -68,6 +114,11 @@ export default function App() {
   const [setupBusy, setSetupBusy] = useState(false)
   const [setupError, setSetupError] = useState<string | null>(null)
   const [setupMessage, setSetupMessage] = useState<string | null>(null)
+
+  const [pushStatus, setPushStatus] = useState<PushStatus>('idle')
+  const [pushAppId, setPushAppId] = useState<string | null>(null)
+  const [pushBusy, setPushBusy] = useState(false)
+  const [pushError, setPushError] = useState<string | null>(null)
 
   const [createMessage, setCreateMessage] = useState('')
   const [createDraft, setCreateDraft] = useState<CreateDraft | null>(null)
@@ -170,6 +221,92 @@ export default function App() {
       cancelled = true
     }
   }, [session, familyRefreshKey])
+
+  useEffect(() => {
+    if (!supabase || !session || !familyName) {
+      setPushStatus('idle')
+      setPushAppId(null)
+      setPushError(null)
+      return
+    }
+
+    let cancelled = false
+
+    async function preparePush() {
+      if (typeof Notification === 'undefined') {
+        if (!cancelled) setPushStatus('unsupported')
+        return
+      }
+
+      setPushStatus('loading')
+      setPushError(null)
+
+      const { data, error } = await supabase!.functions.invoke('core', {
+        body: { action: 'push_config' },
+      })
+
+      if (cancelled) return
+
+      if (error || !data?.enabled || !data?.app_id) {
+        setPushStatus('error')
+        setPushError(error?.message ?? data?.error ?? 'A push szolgáltatás nem érhető el.')
+        return
+      }
+
+      setPushAppId(data.app_id)
+
+      try {
+        const oneSignal = await getOneSignalClient(data.app_id)
+        await oneSignal.login(session!.user.id)
+
+        if (cancelled) return
+
+        if (Notification.permission === 'granted') {
+          setPushStatus('enabled')
+        } else if (Notification.permission === 'denied') {
+          setPushStatus('blocked')
+        } else {
+          setPushStatus('ready')
+        }
+      } catch (error) {
+        if (cancelled) return
+        setPushStatus('error')
+        setPushError(error instanceof Error ? error.message : 'A push inicializálása nem sikerült.')
+      }
+    }
+
+    preparePush()
+
+    return () => {
+      cancelled = true
+    }
+  }, [session, familyName])
+
+  async function handleEnablePush() {
+    if (!session || !pushAppId) return
+
+    setPushBusy(true)
+    setPushError(null)
+
+    try {
+      const oneSignal = await getOneSignalClient(pushAppId)
+      await oneSignal.login(session.user.id)
+      await oneSignal.Notifications.requestPermission()
+
+      if (Notification.permission === 'granted') {
+        setPushStatus('enabled')
+      } else if (Notification.permission === 'denied') {
+        setPushStatus('blocked')
+      } else {
+        setPushStatus('ready')
+      }
+    } catch (error) {
+      setPushStatus('error')
+      setPushError(error instanceof Error ? error.message : 'Az értesítések bekapcsolása nem sikerült.')
+    } finally {
+      setPushBusy(false)
+    }
+  }
 
   async function handleFamilySetup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -631,6 +768,16 @@ export default function App() {
     if (!supabase) return
 
     setErrorMessage(null)
+
+    if (pushAppId) {
+      try {
+        const oneSignal = await getOneSignalClient(pushAppId)
+        await oneSignal.logout()
+      } catch {
+        // A kijelentkezést a push leválasztási hiba nem blokkolhatja.
+      }
+    }
+
     const { error } = await supabase.auth.signOut()
 
     if (error) {
@@ -916,6 +1063,31 @@ export default function App() {
               <dd>{session.user.email ?? 'Ismeretlen e-mail'}</dd>
             </div>
           </dl>
+
+          {familyName && (
+            <section className="push-settings" aria-label="Értesítések">
+              <div>
+                <strong>Értesítések</strong>
+                {pushStatus === 'loading' && <small>Ellenőrzés…</small>}
+                {pushStatus === 'enabled' && <small className="push-enabled">Bekapcsolva ezen az eszközön.</small>}
+                {pushStatus === 'blocked' && <small>Az értesítések le vannak tiltva a böngésző/PWA beállításaiban.</small>}
+                {pushStatus === 'unsupported' && <small>Ez a böngésző vagy eszköz nem támogatja a webes push értesítéseket.</small>}
+                {pushStatus === 'error' && <small>{pushError ?? 'A push szolgáltatás nem érhető el.'}</small>}
+                {pushStatus === 'ready' && <small>Kapcsold be, hogy ezen az eszközön megérkezzenek a családi értesítések.</small>}
+              </div>
+
+              {pushStatus === 'ready' && (
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={handleEnablePush}
+                  disabled={pushBusy}
+                >
+                  {pushBusy ? 'Bekapcsolás…' : 'Értesítések bekapcsolása'}
+                </button>
+              )}
+            </section>
+          )}
 
           {errorMessage && <p className="notice error">{errorMessage}</p>}
 
