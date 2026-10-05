@@ -47,4 +47,4 @@ A közvetlen kliensírás tudatosan korlátozott: a Core üzleti módosításai 
 3. `npm install`
 4. `npm run dev`
 
-A Supabase projekt összekötése után a migráció alkalmazható.
+A Supabase projekt összekötve; a Cloudflare build a Vite környezeti változókat használja.
