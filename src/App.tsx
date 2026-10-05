@@ -85,7 +85,7 @@ function getOneSignalClient(appId: string) {
       try {
         await oneSignal.init({
           appId,
-          serviceWorkerPath: '/onesignal/OneSignalSDKWorker.js',
+          serviceWorkerPath: 'onesignal/OneSignalSDKWorker.js',
           serviceWorkerParam: { scope: '/onesignal/' },
         })
         resolve(oneSignal)
