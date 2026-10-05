@@ -569,7 +569,12 @@ function resolveDatePhrase(phrase: string | null, timeZone: string) {
 
   const todayWeekday = weekdayOf(today)
 
-  if (normalized.includes('jovo het') || normalized.includes('kovetkezo het')) {
+  if (
+    normalized.includes('jovo het')
+    || normalized.includes('kovetkezo het')
+    || /\bjovo\b/.test(normalized)
+    || /\bkovetkezo\b/.test(normalized)
+  ) {
     const daysToNextMonday = ((1 - todayWeekday + 7) % 7) || 7
     const targetOffsetFromMonday = (targetWeekday - 1 + 7) % 7
     return addDays(today, daysToNextMonday + targetOffsetFromMonday)
