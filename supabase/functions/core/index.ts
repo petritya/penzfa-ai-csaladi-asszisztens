@@ -1,7 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.117.2'
 
 type IntentInterpretation = {
-  intent: 'create' | 'update' | 'complete' | 'query' | 'clarify'
+  intent: 'create' | 'update' | 'complete' | 'delete' | 'query' | 'clarify'
   clarification: string | null
 }
 
@@ -61,6 +61,14 @@ type UpdateDraft = {
 
 type CompleteInterpretation = {
   intent: 'complete'
+  target_title: string
+  subject_name: string | null
+  responsible_name: string | null
+  target_date_phrase: string | null
+}
+
+type DeleteInterpretation = {
+  intent: 'delete'
   target_title: string
   subject_name: string | null
   responsible_name: string | null
@@ -863,17 +871,20 @@ async function interpretIntentWithOpenAI(
       model: 'gpt-5.6-luna',
       instructions: [
         'Te egy magyar nyelvű családi asszisztens szándékfelismerő rétege vagy.',
-        'Csak azt döntsd el, hogy a felhasználó új ügyet rögzít, meglévőt módosít, készre jelez, vagy kérdez/keres.',
+        'Csak azt döntsd el, hogy a felhasználó új ügyet rögzít, meglévőt módosít, készre jelez, töröl/visszavon, vagy kérdez/keres.',
         'create: új feladat, esemény vagy határidő rögzítése. Nincs arra utalás, hogy már meglévő ügyet változtat.',
         'update: egy már meglévő ügy dátumát, idejét, címét vagy más adatát akarja módosítani.',
         'complete: azt jelzi, hogy valamit elintézett, megtörtént, kész van vagy már túl van rajta.',
+        'delete: egy meglévő ügyet törölni, visszavonni vagy érvényteleníteni akar. Ez nem ugyanaz, mint a készre jelölés.',
         'query: kérdez, listát kér, előzményt keres, időpontot vagy állapotot szeretne megtudni.',
-        'clarify: csak akkor, ha a mondatból tényleg nem dönthető el biztonságosan a fenti négy közül.',
+        'clarify: csak akkor, ha a mondatból tényleg nem dönthető el biztonságosan a fenti öt közül.',
         'Ha clarify, a clarification egyetlen rövid magyar pontosító kérdés legyen. Máskor legyen null.',
         'Példa: "Jövő kedden fogorvoshoz megyek." => create.',
         'Példa: "A szerelőt tedd szerdára." => update.',
         'Példa: "Voltam a fogorvosnál." => complete.',
         'Példa: "A villanyszámlát befizettem." => complete.',
+        'Példa: "Töröld a pénteki tesztkönyvelőt." => delete.',
+        'Példa: "A szerelős ügy már nem aktuális, vedd ki." => delete.',
         'Példa: "Mikor voltam utoljára fogorvosnál?" => query.',
         'Példa: "Milyen ügyeim vannak holnap?" => query.',
         'Példa: "Fogorvos." => clarify.',
@@ -891,7 +902,7 @@ async function interpretIntentWithOpenAI(
             properties: {
               intent: {
                 type: 'string',
-                enum: ['create', 'update', 'complete', 'query', 'clarify'],
+                enum: ['create', 'update', 'complete', 'delete', 'query', 'clarify'],
               },
               clarification: { type: ['string', 'null'] },
             },
@@ -1143,6 +1154,68 @@ async function interpretCompleteWithOpenAI(
   if (!outputText) throw new Error('Az AI nem adott értelmezhető lezárási választ.')
 
   return JSON.parse(outputText) as CompleteInterpretation
+}
+
+async function interpretDeleteWithOpenAI(
+  message: string,
+  memberNames: string[],
+  activeOwnerNames: string[],
+): Promise<DeleteInterpretation> {
+  const apiKey = Deno.env.get('OPENAI_API_KEY')
+  if (!apiKey) throw new Error('OPENAI_API_KEY nincs beállítva a Supabase Edge Function secretjei között.')
+
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'gpt-5.6-luna',
+      instructions: [
+        'Te egy magyar nyelvű családi asszisztens törlés-értelmező rétege vagy.',
+        'A felhasználó egy már létező nyitott ügyet akar törölni, visszavonni vagy érvényteleníteni.',
+        'Ne módosíts adatbázist. Csak azonosítsd a célügyet.',
+        'A target_title legyen rövid, természetes keresőkifejezés.',
+        `Ismert családtagok: ${memberNames.length ? memberNames.join(', ') : 'nincs'}.`,
+        `Aktív ügygazdák: ${activeOwnerNames.length ? activeOwnerNames.join(', ') : 'nincs'}.`,
+        'subject_name azt jelenti, hogy kire vonatkozik az ügy.',
+        'responsible_name azt jelenti, hogy melyik aktív ügygazda felelős érte.',
+        'Ha kezelt családtag ügyére hivatkozik, subject_name legyen a neve.',
+        'Ha aktív ügygazda saját feladatára hivatkozik, responsible_name legyen a neve.',
+        'Ha egyik sem egyértelmű, mindkettő legyen null.',
+        'A target_date_phrase csak akkor legyen kitöltve, ha dátummal azonosítja a törlendő ügyet.',
+      ].join('\n'),
+      input: message,
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'delete_item_interpretation',
+          strict: true,
+          schema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              intent: { type: 'string', enum: ['delete'] },
+              target_title: { type: 'string' },
+              subject_name: { type: ['string', 'null'] },
+              responsible_name: { type: ['string', 'null'] },
+              target_date_phrase: { type: ['string', 'null'] },
+            },
+            required: ['intent', 'target_title', 'subject_name', 'responsible_name', 'target_date_phrase'],
+          },
+        },
+      },
+    }),
+  })
+
+  const data = await response.json()
+  if (!response.ok) throw new Error(data?.error?.message ?? 'OpenAI API hiba.')
+
+  const outputText = extractOutputText(data)
+  if (!outputText) throw new Error('Az AI nem adott értelmezhető törlési választ.')
+
+  return JSON.parse(outputText) as DeleteInterpretation
 }
 
 async function interpretQueryWithOpenAI(
@@ -2845,6 +2918,293 @@ Deno.serve(async (req) => {
       return json({ status: 'cancelled' })
     }
 
+
+    if (body?.action === 'interpret_delete') {
+      const message = String(body?.message ?? '').trim()
+      if (!message) return json({ error: 'Az üzenet nem lehet üres.' }, 400)
+
+      const [{ data: members, error: membersError }, { data: settings }] = await Promise.all([
+        db
+          .from('family_members')
+          .select('id, display_name, member_kind, user_id')
+          .eq('family_id', familyId),
+        db
+          .from('user_settings')
+          .select('timezone')
+          .eq('user_id', user.id)
+          .maybeSingle(),
+      ])
+      if (membersError) throw membersError
+
+      const interpretation = await interpretDeleteWithOpenAI(
+        message,
+        (members ?? []).map((member) => member.display_name),
+        (members ?? [])
+          .filter((member) => member.member_kind === 'active' && member.user_id)
+          .map((member) => member.display_name),
+      )
+
+      const timeZone = settings?.timezone ?? 'Europe/Budapest'
+      const targetDate = interpretation.target_date_phrase
+        ? resolveDatePhrase(interpretation.target_date_phrase, timeZone)
+        : null
+
+      if (interpretation.target_date_phrase && !targetDate) {
+        return json({
+          error: 'A keresett dátumot még nem tudom biztonságosan feloldani.',
+          code: 'TARGET_DATE_NEEDS_CLARIFICATION',
+        })
+      }
+
+      let subjectId: string | null = null
+      if (interpretation.subject_name) {
+        const wanted = normalize(interpretation.subject_name)
+        const subject = (members ?? []).find((member) => normalize(member.display_name) === wanted) ?? null
+        if (!subject) {
+          return json({
+            error: `Nem találtam ilyen családtagot: ${interpretation.subject_name}.`,
+            code: 'SUBJECT_NEEDS_CLARIFICATION',
+          })
+        }
+        subjectId = subject.id
+      }
+
+      let responsibleUserId: string | null = null
+      if (interpretation.responsible_name) {
+        const wanted = normalize(interpretation.responsible_name)
+        const responsible = (members ?? []).find((member) =>
+          member.member_kind === 'active'
+          && member.user_id
+          && normalize(member.display_name) === wanted
+        ) ?? null
+
+        if (!responsible?.user_id) {
+          return json({
+            error: `Nem találtam ilyen aktív ügygazdát: ${interpretation.responsible_name}.`,
+            code: 'RESPONSIBLE_NEEDS_CLARIFICATION',
+          })
+        }
+        responsibleUserId = responsible.user_id
+      }
+
+      const { data: openItems, error: itemsError } = await db
+        .from('items')
+        .select('id, title, due_date, due_time, subject_member_id, responsible_user_id')
+        .eq('family_id', familyId)
+        .eq('status', 'open')
+        .order('due_date', { ascending: true, nullsFirst: false })
+      if (itemsError) throw itemsError
+
+      const targetTitle = normalize(interpretation.target_title)
+      const targetTokens = targetTitle.split(/\s+/).filter((token) => token.length >= 3)
+
+      const matches = (openItems ?? []).filter((item) => {
+        if (subjectId && item.subject_member_id !== subjectId) return false
+        if (responsibleUserId && item.responsible_user_id !== responsibleUserId) return false
+        if (targetDate && item.due_date !== targetDate) return false
+        if (fuzzyTitleMatches(item.title, targetTitle)) return true
+        const itemTitle = normalize(item.title)
+        return targetTokens.some((token) => itemTitle.includes(token))
+      })
+
+      const memberNameById = new Map((members ?? []).map((member) => [member.id, member.display_name]))
+      const responsibleNameByUserId = new Map(
+        (members ?? [])
+          .filter((member) => member.member_kind === 'active' && member.user_id)
+          .map((member) => [member.user_id, member.display_name]),
+      )
+
+      const candidates: UpdateCandidate[] = matches.map((item) => ({
+        id: item.id,
+        title: item.title,
+        due_date: item.due_date,
+        due_time: item.due_time,
+        subject_display_name: item.subject_member_id
+          ? memberNameById.get(item.subject_member_id) ?? null
+          : null,
+        responsible_display_name: item.responsible_user_id
+          ? responsibleNameByUserId.get(item.responsible_user_id) ?? null
+          : null,
+      }))
+
+      if (candidates.length === 0) {
+        return json({
+          status: 'no_match',
+          error: 'Nem találtam egyértelműen ilyen nyitott ügyet.',
+          code: 'DELETE_TARGET_NOT_FOUND',
+        })
+      }
+
+      if (candidates.length > 1) {
+        return json({
+          status: 'choose_target',
+          candidates: candidates.map((candidate) => ({
+            ...candidate,
+            label: updateCandidateLabel(candidate),
+          })),
+        })
+      }
+
+      const candidate = candidates[0]
+      const { data: pending, error: pendingError } = await db
+        .from('pending_actions')
+        .insert({
+          family_id: familyId,
+          actor_user_id: user.id,
+          intent: 'delete',
+          target_item_id: candidate.id,
+          payload: {
+            before: {
+              title: candidate.title,
+              due_date: candidate.due_date,
+              due_time: candidate.due_time ? String(candidate.due_time).slice(0, 5) : null,
+            },
+          },
+        })
+        .select('id')
+        .single()
+      if (pendingError) throw pendingError
+
+      return json({
+        status: 'needs_confirmation',
+        draft: {
+          pending_action_id: pending.id,
+          target_item_id: candidate.id,
+          confirmation_text: `Ezt találtam: ${updateCandidateLabel(candidate)}. Biztosan töröljem?`,
+        },
+      })
+    }
+
+    if (body?.action === 'prepare_delete_target') {
+      const targetItemId = String(body?.target_item_id ?? '')
+
+      const { data: item } = await db
+        .from('items')
+        .select('id, title, due_date, due_time, subject_member_id, responsible_user_id')
+        .eq('id', targetItemId)
+        .eq('family_id', familyId)
+        .eq('status', 'open')
+        .maybeSingle()
+
+      if (!item) return json({ error: 'A kiválasztott ügy már nem található.' })
+
+      const [{ data: subject }, { data: responsibleMember }] = await Promise.all([
+        item.subject_member_id
+          ? db.from('family_members').select('display_name').eq('id', item.subject_member_id).eq('family_id', familyId).maybeSingle()
+          : Promise.resolve({ data: null }),
+        item.responsible_user_id
+          ? db.from('family_members').select('display_name').eq('family_id', familyId).eq('member_kind', 'active').eq('user_id', item.responsible_user_id).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ])
+
+      const candidate: UpdateCandidate = {
+        id: item.id,
+        title: item.title,
+        due_date: item.due_date,
+        due_time: item.due_time,
+        subject_display_name: subject?.display_name ?? null,
+        responsible_display_name: responsibleMember?.display_name ?? null,
+      }
+
+      const { data: pending, error: pendingError } = await db
+        .from('pending_actions')
+        .insert({
+          family_id: familyId,
+          actor_user_id: user.id,
+          intent: 'delete',
+          target_item_id: item.id,
+          payload: {
+            before: {
+              title: item.title,
+              due_date: item.due_date,
+              due_time: item.due_time ? String(item.due_time).slice(0, 5) : null,
+            },
+          },
+        })
+        .select('id')
+        .single()
+      if (pendingError) throw pendingError
+
+      return json({
+        status: 'needs_confirmation',
+        draft: {
+          pending_action_id: pending.id,
+          target_item_id: item.id,
+          confirmation_text: `Ezt találtam: ${updateCandidateLabel(candidate)}. Biztosan töröljem?`,
+        },
+      })
+    }
+
+    if (body?.action === 'confirm_delete') {
+      const pendingActionId = String(body?.pending_action_id ?? '')
+      if (!pendingActionId) return json({ error: 'Hiányzó függőben lévő művelet.' }, 400)
+
+      const { data: pending } = await db
+        .from('pending_actions')
+        .select('id, target_item_id, payload, status, expires_at')
+        .eq('id', pendingActionId)
+        .eq('actor_user_id', user.id)
+        .eq('family_id', familyId)
+        .eq('intent', 'delete')
+        .maybeSingle()
+
+      if (!pending || pending.status !== 'pending') {
+        return json({ error: 'Ez a törlés már nem aktív.' })
+      }
+
+      if (new Date(pending.expires_at).getTime() < Date.now()) {
+        await db
+          .from('pending_actions')
+          .update({ status: 'expired', resolved_at: new Date().toISOString() })
+          .eq('id', pending.id)
+
+        return json({ error: 'A törlési megerősítés lejárt. Kérlek, indítsd újra.' })
+      }
+
+      const resolvedAt = new Date().toISOString()
+
+      const { data: updatedItem, error: updateError } = await db
+        .from('items')
+        .update({
+          status: 'deleted',
+          completed_at: null,
+        })
+        .eq('id', pending.target_item_id)
+        .eq('family_id', familyId)
+        .eq('status', 'open')
+        .select('*')
+        .single()
+      if (updateError) throw updateError
+
+      await db
+        .from('reminders')
+        .update({
+          enabled: false,
+          next_notification_at: null,
+        })
+        .eq('item_id', updatedItem.id)
+
+      await db
+        .from('pending_actions')
+        .update({
+          status: 'confirmed',
+          resolved_at: resolvedAt,
+        })
+        .eq('id', pending.id)
+
+      await db.from('activity_log').insert({
+        family_id: familyId,
+        actor_user_id: user.id,
+        item_id: updatedItem.id,
+        action: 'item_deleted',
+        details: {
+          before: pending.payload?.before ?? null,
+          deleted_at: resolvedAt,
+        },
+      })
+
+      return json({ status: 'deleted', item: updatedItem })
+    }
 
     if (body?.action === 'interpret_complete') {
       const message = String(body?.message ?? '').trim()
