@@ -310,6 +310,30 @@ function fuzzyTitleMatches(itemTitle: string, targetTitle: string) {
   )
 }
 
+function naturalReferenceScore(message: string, itemTitle: string) {
+  const messageTokens = normalize(message)
+    .replace(/[^a-z0-9]+/g, ' ')
+    .split(/\\s+/)
+    .filter((token) => token.length >= 4)
+
+  const itemTokens = normalize(itemTitle)
+    .replace(/[^a-z0-9]+/g, ' ')
+    .split(/\\s+/)
+    .filter((token) => token.length >= 4)
+
+  let score = 0
+  for (const itemToken of itemTokens) {
+    const matches = messageTokens.some((messageToken) =>
+      messageToken === itemToken
+      || (itemToken.length >= 5 && messageToken.startsWith(itemToken))
+      || (messageToken.length >= 5 && itemToken.startsWith(messageToken))
+    )
+    if (matches) score += 1
+  }
+
+  return score
+}
+
 async function findExactOpenDuplicate(
   dbClient: any,
   familyId: string,
@@ -2998,7 +3022,7 @@ Deno.serve(async (req) => {
       const targetTitle = normalize(interpretation.target_title)
       const targetTokens = targetTitle.split(/\s+/).filter((token) => token.length >= 3)
 
-      const matches = (openItems ?? []).filter((item) => {
+      let matches = (openItems ?? []).filter((item) => {
         if (subjectId && item.subject_member_id !== subjectId) return false
         if (responsibleUserId && item.responsible_user_id !== responsibleUserId) return false
         if (targetDate && item.due_date !== targetDate) return false
@@ -3006,6 +3030,19 @@ Deno.serve(async (req) => {
         const itemTitle = normalize(item.title)
         return targetTokens.some((token) => itemTitle.includes(token))
       })
+
+      if (matches.length > 1) {
+        const scored = matches.map((item) => ({
+          item,
+          score: naturalReferenceScore(message, item.title),
+        }))
+        const bestScore = Math.max(...scored.map((entry) => entry.score))
+        if (bestScore > 0) {
+          matches = scored
+            .filter((entry) => entry.score === bestScore)
+            .map((entry) => entry.item)
+        }
+      }
 
       const memberNameById = new Map((members ?? []).map((member) => [member.id, member.display_name]))
       const responsibleNameByUserId = new Map(
