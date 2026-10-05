@@ -44,7 +44,9 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (!supabase || !session) {
+    const client = supabase
+
+    if (!client || !session) {
       setFamilyName(null)
       setFamilyMembers([])
       setFamilyError(null)
@@ -57,7 +59,7 @@ export default function App() {
       setFamilyLoading(true)
       setFamilyError(null)
 
-      const { data: members, error: membersError } = await supabase
+      const { data: members, error: membersError } = await client
         .from('family_members')
         .select('family_id, display_name, member_kind, created_at')
         .order('created_at', { ascending: true })
@@ -79,7 +81,7 @@ export default function App() {
 
       const familyId = members[0].family_id
 
-      const { data: family, error: familyErrorResult } = await supabase
+      const { data: family, error: familyErrorResult } = await client
         .from('families')
         .select('name')
         .eq('id', familyId)
