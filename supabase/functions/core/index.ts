@@ -224,6 +224,28 @@ function duplicateTitleKey(value: string) {
   return normalize(value).replace(/[^a-z0-9]+/g, '')
 }
 
+function stripSubjectPrefixFromTitle(title: string, subjectName: string) {
+  const titleWords = title.trim().split(/\s+/).filter(Boolean)
+  const subjectWords = subjectName.trim().split(/\s+/).filter(Boolean)
+
+  if (!subjectWords.length || titleWords.length <= subjectWords.length) {
+    return title.trim()
+  }
+
+  const titlePrefix = normalize(titleWords.slice(0, subjectWords.length).join(' '))
+  const subjectKey = normalize(subjectWords.join(' '))
+
+  if (titlePrefix !== subjectKey) return title.trim()
+
+  const stripped = titleWords
+    .slice(subjectWords.length)
+    .join(' ')
+    .replace(/^[:\-–—]\s*/, '')
+    .trim()
+
+  return stripped || title.trim()
+}
+
 function explicitAssignedOwnerFromMessage(
   message: string,
   activeOwners: Array<{ display_name: string; user_id: string | null }>,
@@ -2288,6 +2310,10 @@ Deno.serve(async (req) => {
         }
       }
 
+      const cleanTitle = subject
+        ? stripSubjectPrefixFromTitle(interpretation.title, subject.display_name)
+        : interpretation.title
+
       const dateText = formatHungarianDate(dueDate)
       const timeText = dueTime ? ` ${dueTime}` : ''
       const subjectText = subject ? `${subject.display_name}: ` : ''
@@ -2297,11 +2323,11 @@ Deno.serve(async (req) => {
       let confirmationText: string
 
       if (interpretation.reminder_phrase) {
-        confirmationText = `${subjectText}${interpretation.title} – ${dateText}${timeText}.${responsibleText} Emlékeztetés: ${interpretation.reminder_phrase}. Rögzítsem?`
+        confirmationText = `${subjectText}${cleanTitle} – ${dateText}${timeText}.${responsibleText} Emlékeztetés: ${interpretation.reminder_phrase}. Rögzítsem?`
       } else if (dueDate) {
-        confirmationText = `${subjectText}${interpretation.title} – ${dateText}${timeText}.${responsibleText} Emlékeztetőt nem adtál meg, ezért csak az esedékesség napjának reggeli briefingjében szólok. Így rögzítsem?`
+        confirmationText = `${subjectText}${cleanTitle} – ${dateText}${timeText}.${responsibleText} Emlékeztetőt nem adtál meg, ezért csak az esedékesség napjának reggeli briefingjében szólok. Így rögzítsem?`
       } else {
-        confirmationText = `${subjectText}${interpretation.title}.${responsibleText} Dátumot és emlékeztetőt nem adtál meg, ezért automatikus értesítés nem készül. Így rögzítsem?`
+        confirmationText = `${subjectText}${cleanTitle}.${responsibleText} Dátumot és emlékeztetőt nem adtál meg, ezért automatikus értesítés nem készül. Így rögzítsem?`
       }
 
       const draft: CreateDraft = {
@@ -2309,7 +2335,7 @@ Deno.serve(async (req) => {
         subject_display_name: subject?.display_name ?? null,
         responsible_user_id: responsibleUserId,
         responsible_display_name: responsibleDisplayName,
-        title: interpretation.title,
+        title: cleanTitle,
         item_type: interpretation.item_type,
         notes: interpretation.notes,
         due_date: dueDate,
