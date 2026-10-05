@@ -58,6 +58,14 @@ type OneSignalClient = {
   Notifications: {
     requestPermission: () => Promise<void>
   }
+  User: {
+    PushSubscription: {
+      id: string | null | undefined
+      token: string | null | undefined
+      optedIn: boolean
+      optIn: () => Promise<void>
+    }
+  }
 }
 
 type OneSignalWindow = Window & {
@@ -96,6 +104,16 @@ function getOneSignalClient(appId: string) {
   })
 
   return oneSignalClientPromise
+}
+
+async function waitForPushSubscription(oneSignal: OneSignalClient) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const subscription = oneSignal.User.PushSubscription
+    if (subscription.optedIn && subscription.id) return true
+    await new Promise((resolve) => window.setTimeout(resolve, 300))
+  }
+
+  return false
 }
 
 export default function App() {
@@ -282,10 +300,14 @@ export default function App() {
 
         if (cancelled) return
 
-        if (Notification.permission === 'granted') {
-          setPushStatus('enabled')
-        } else if (Notification.permission === 'denied') {
+        if (Notification.permission === 'denied') {
           setPushStatus('blocked')
+        } else if (
+          Notification.permission === 'granted'
+          && oneSignal.User.PushSubscription.optedIn
+          && oneSignal.User.PushSubscription.id
+        ) {
+          setPushStatus('enabled')
         } else {
           setPushStatus('ready')
         }
@@ -314,12 +336,28 @@ export default function App() {
       await oneSignal.login(session.user.id)
       await oneSignal.Notifications.requestPermission()
 
-      if (Notification.permission === 'granted') {
-        setPushStatus('enabled')
-      } else if (Notification.permission === 'denied') {
+      if (Notification.permission === 'denied') {
         setPushStatus('blocked')
-      } else {
+        return
+      }
+
+      if (Notification.permission !== 'granted') {
         setPushStatus('ready')
+        return
+      }
+
+      await oneSignal.User.PushSubscription.optIn()
+      await oneSignal.login(session.user.id)
+
+      const subscribed = await waitForPushSubscription(oneSignal)
+
+      if (subscribed) {
+        setPushStatus('enabled')
+      } else {
+        setPushStatus('error')
+        setPushError(
+          'A böngésző engedélyezte az értesítéseket, de a OneSignal push-feliratkozás még nem jött létre.',
+        )
       }
     } catch (error) {
       setPushStatus('error')
