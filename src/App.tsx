@@ -85,22 +85,27 @@ function getOneSignalClient(appId: string) {
       try {
         await oneSignal.init({
           appId,
-          serviceWorkerPath: 'onesignal/OneSignalSDKWorker.js',
+          serviceWorkerPath: '/onesignal/OneSignalSDKWorker.js',
           serviceWorkerParam: { scope: '/onesignal/' },
         })
         resolve(oneSignal)
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-
-        if (message.toLowerCase().includes('already initialized')) {
-          resolve(oneSignal)
-          return
-        }
-
         oneSignalClientPromise = null
         reject(error)
       }
     })
+
+    if (!document.querySelector('script[data-onesignal-sdk]')) {
+      const script = document.createElement('script')
+      script.src = 'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js'
+      script.defer = true
+      script.dataset.onesignalSdk = 'true'
+      script.onerror = () => {
+        oneSignalClientPromise = null
+        reject(new Error('A OneSignal SDK nem tölthető be.'))
+      }
+      document.head.appendChild(script)
+    }
   })
 
   return oneSignalClientPromise
