@@ -47,6 +47,7 @@ export default function App() {
   const [createBusy, setCreateBusy] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [createSuccess, setCreateSuccess] = useState<string | null>(null)
+  const [assistantAnswer, setAssistantAnswer] = useState<string | null>(null)
 
   useEffect(() => {
     if (!supabase) return
@@ -140,7 +141,7 @@ export default function App() {
     }
   }, [session])
 
-  async function handleInterpretCreate(event: FormEvent<HTMLFormElement>) {
+  async function handleMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!supabase) return
 
@@ -151,6 +152,57 @@ export default function App() {
     setCreateDraft(null)
     setCreateError(null)
     setCreateSuccess(null)
+    setAssistantAnswer(null)
+
+    const { data: intentData, error: intentError } = await supabase.functions.invoke('core', {
+      body: {
+        action: 'interpret_intent',
+        message,
+      },
+    })
+
+    if (intentError) {
+      setCreateBusy(false)
+      setCreateError(intentError.message)
+      return
+    }
+
+    if (intentData?.status === 'needs_clarification') {
+      setCreateBusy(false)
+      setAssistantAnswer(
+        intentData.question ?? 'Pontosítsd kérlek, mit szeretnél.',
+      )
+      return
+    }
+
+    if (intentData?.intent === 'query') {
+      const { data, error } = await supabase.functions.invoke('core', {
+        body: {
+          action: 'query_items',
+          message,
+        },
+      })
+
+      setCreateBusy(false)
+
+      if (error) {
+        setCreateError(error.message)
+        return
+      }
+
+      setAssistantAnswer(
+        data?.answer ?? data?.error ?? 'Nem találtam választ a kérdésre.',
+      )
+      return
+    }
+
+    if (intentData?.intent !== 'create') {
+      setCreateBusy(false)
+      setAssistantAnswer(
+        'Ezt a műveletet a következő lépésben kötjük be a beszélgetéses felületre.',
+      )
+      return
+    }
 
     const { data, error } = await supabase.functions.invoke('core', {
       body: {
@@ -220,6 +272,7 @@ export default function App() {
     setCreateDraft(null)
     setCreateError(null)
     setCreateSuccess(null)
+    setAssistantAnswer(null)
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -312,10 +365,10 @@ export default function App() {
             <section className="capture-block capture-primary" aria-label="Kommunikáció">
               <h2>Mit intézzünk?</h2>
               <p className="capture-help">
-                Írd be vagy diktáld természetesen. Például: „Mamusnak jövő kedden 10-kor kontroll.”
+                Írd be vagy diktáld természetesen. Például: „Mamusnak jövő kedden 10-kor kontroll.” vagy „Mik a nyitott ügyeink?”
               </p>
 
-              <form className="capture-form" onSubmit={handleInterpretCreate}>
+              <form className="capture-form" onSubmit={handleMessage}>
                 <textarea
                   value={createMessage}
                   onChange={(event) => {
@@ -323,8 +376,9 @@ export default function App() {
                     setCreateDraft(null)
                     setCreateError(null)
                     setCreateSuccess(null)
+                    setAssistantAnswer(null)
                   }}
-                  placeholder="Mit jegyezzek meg?"
+                  placeholder="Mit szeretnél?"
                   rows={3}
                   disabled={createBusy}
                 />
@@ -334,9 +388,16 @@ export default function App() {
                   type="submit"
                   disabled={createBusy || !createMessage.trim()}
                 >
-                  {createBusy ? 'Feldolgozás…' : 'Értelmezés'}
+                  {createBusy ? 'Feldolgozás…' : 'Küldés'}
                 </button>
               </form>
+
+              {assistantAnswer && (
+                <div className="assistant-answer">
+                  <strong>Válasz:</strong>
+                  <p>{assistantAnswer}</p>
+                </div>
+              )}
 
               {createDraft && (
                 <div className="confirmation-card">
