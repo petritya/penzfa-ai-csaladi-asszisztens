@@ -19,9 +19,7 @@ input {
   font: inherit;
 }
 
-button {
-  cursor: pointer;
-}
+button { cursor: pointer; }
 
 button:disabled {
   cursor: wait;
@@ -54,6 +52,11 @@ h1 {
   margin: 0;
   font-size: clamp(2rem, 7vw, 3rem);
   line-height: 1.05;
+}
+
+h2 {
+  margin: 0 0 12px;
+  font-size: 1rem;
 }
 
 .lead {
@@ -148,6 +151,37 @@ h1 {
   color: #991b1b;
 }
 
+.family-block {
+  margin: 0 0 18px;
+}
+
+.member-list {
+  list-style: none;
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+}
+
+.member-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.member-list span {
+  font-weight: 800;
+}
+
+.member-list small {
+  color: #64748b;
+  text-align: right;
+}
+
 .account {
   margin: 24px 0;
   padding: 16px;
@@ -181,5 +215,15 @@ h1 {
   .card {
     margin-top: 24px;
     padding: 24px;
+  }
+
+  .member-list li {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .member-list small {
+    text-align: left;
   }
 }
