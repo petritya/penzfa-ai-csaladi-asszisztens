@@ -89,8 +89,8 @@ export default function App() {
 
       if (cancelled) return
 
-      if (familyErrorResult) {
-        setFamilyError(familyErrorResult.message)
+      if (familyErrorResult || !family) {
+        setFamilyError(familyErrorResult?.message ?? 'A család adatai nem tölthetők be.')
         setFamilyLoading(false)
         return
       }
