@@ -55,11 +55,11 @@ export default function App() {
 
     let cancelled = false
 
-    async function loadFamily() {
+    async function loadFamily(activeClient: NonNullable<typeof supabase>) {
       setFamilyLoading(true)
       setFamilyError(null)
 
-      const { data: members, error: membersError } = await client
+      const { data: members, error: membersError } = await activeClient
         .from('family_members')
         .select('family_id, display_name, member_kind, created_at')
         .order('created_at', { ascending: true })
@@ -81,7 +81,7 @@ export default function App() {
 
       const familyId = members[0].family_id
 
-      const { data: family, error: familyErrorResult } = await client
+      const { data: family, error: familyErrorResult } = await activeClient
         .from('families')
         .select('name')
         .eq('id', familyId)
@@ -108,7 +108,7 @@ export default function App() {
       setFamilyLoading(false)
     }
 
-    loadFamily()
+    loadFamily(client)
 
     return () => {
       cancelled = true
