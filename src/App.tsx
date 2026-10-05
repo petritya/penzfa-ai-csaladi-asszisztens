@@ -27,6 +27,12 @@ type CreateDraft = {
   confirmation_text: string
 }
 
+type CompleteDraft = {
+  pending_action_id: string
+  target_item_id: string
+  confirmation_text: string
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [loadingSession, setLoadingSession] = useState(hasSupabaseConfig)
@@ -47,6 +53,7 @@ export default function App() {
   const [createBusy, setCreateBusy] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [createSuccess, setCreateSuccess] = useState<string | null>(null)
+  const [completeDraft, setCompleteDraft] = useState<CompleteDraft | null>(null)
   const [assistantAnswer, setAssistantAnswer] = useState<string | null>(null)
 
   useEffect(() => {
@@ -150,6 +157,7 @@ export default function App() {
 
     setCreateBusy(true)
     setCreateDraft(null)
+    setCompleteDraft(null)
     setCreateError(null)
     setCreateSuccess(null)
     setAssistantAnswer(null)
@@ -196,6 +204,53 @@ export default function App() {
       return
     }
 
+    if (intentData?.intent === 'complete') {
+      const { data, error } = await supabase.functions.invoke('core', {
+        body: {
+          action: 'interpret_complete',
+          message,
+        },
+      })
+
+      setCreateBusy(false)
+
+      if (error) {
+        setCreateError(error.message)
+        return
+      }
+
+      if (data?.status === 'needs_confirmation' && data?.draft) {
+        setCompleteDraft(data.draft as CompleteDraft)
+        return
+      }
+
+      if (data?.status === 'choose_target') {
+        const labels = (data.candidates ?? [])
+          .map((candidate: { label?: string }) => candidate.label)
+          .filter(Boolean)
+          .join('\n• ')
+
+        setAssistantAnswer(
+          labels
+            ? `Több egyező nyitott ügyet találtam. Pontosítsd, melyikre gondolsz:\n• ${labels}`
+            : 'Több egyező nyitott ügyet találtam. Kérlek, pontosíts.',
+        )
+        return
+      }
+
+      if (data?.status === 'future_event_needs_date') {
+        setAssistantAnswer(
+          data.prompt ?? 'Ez az esemény még jövőbeli. Írd meg, mikor történt meg valójában.',
+        )
+        return
+      }
+
+      setAssistantAnswer(
+        data?.error ?? 'Nem találtam egyértelműen ilyen nyitott ügyet.',
+      )
+      return
+    }
+
     if (intentData?.intent !== 'create') {
       setCreateBusy(false)
       setAssistantAnswer(
@@ -229,6 +284,42 @@ export default function App() {
     }
 
     setCreateError(data?.error ?? 'Az ügyet most nem sikerült értelmezni.')
+  }
+
+  async function handleConfirmComplete() {
+    if (!supabase || !completeDraft) return
+
+    setCreateBusy(true)
+    setCreateError(null)
+    setCreateSuccess(null)
+    setAssistantAnswer(null)
+
+    const { data, error } = await supabase.functions.invoke('core', {
+      body: {
+        action: 'confirm_complete',
+        pending_action_id: completeDraft.pending_action_id,
+      },
+    })
+
+    setCreateBusy(false)
+
+    if (error) {
+      setCreateError(error.message)
+      return
+    }
+
+    if (data?.status === 'completed') {
+      setCreateSuccess(`Készre jelölve: ${data.item?.title ?? 'ügy'}`)
+      setCreateMessage('')
+      setCompleteDraft(null)
+
+      if (data.partner_notification_warning) {
+        setAssistantAnswer(data.partner_notification_warning)
+      }
+      return
+    }
+
+    setCreateError(data?.error ?? 'Az ügyet most nem sikerült készre jelölni.')
   }
 
   async function handleConfirmCreate() {
@@ -270,6 +361,7 @@ export default function App() {
 
   function handleCancelCreate() {
     setCreateDraft(null)
+    setCompleteDraft(null)
     setCreateError(null)
     setCreateSuccess(null)
     setAssistantAnswer(null)
@@ -374,6 +466,7 @@ export default function App() {
                   onChange={(event) => {
                     setCreateMessage(event.target.value)
                     setCreateDraft(null)
+                    setCompleteDraft(null)
                     setCreateError(null)
                     setCreateSuccess(null)
                     setAssistantAnswer(null)
@@ -396,6 +489,31 @@ export default function App() {
                 <div className="assistant-answer">
                   <strong>Válasz:</strong>
                   <p>{assistantAnswer}</p>
+                </div>
+              )}
+
+              {completeDraft && (
+                <div className="confirmation-card">
+                  <strong>Ezt találtam:</strong>
+                  <p>{completeDraft.confirmation_text}</p>
+                  <div className="confirmation-actions">
+                    <button
+                      className="primary-button"
+                      type="button"
+                      onClick={handleConfirmComplete}
+                      disabled={createBusy}
+                    >
+                      Igen, jelöld késznek
+                    </button>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={handleCancelCreate}
+                      disabled={createBusy}
+                    >
+                      Mégse
+                    </button>
+                  </div>
                 </div>
               )}
 
