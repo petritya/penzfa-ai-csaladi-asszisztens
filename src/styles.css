@@ -118,7 +118,8 @@ h2 {
 }
 
 .primary-button,
-.secondary-button {
+.secondary-button,
+.danger-button {
   border: 0;
   border-radius: 10px;
   padding: 12px 16px;
@@ -133,6 +134,16 @@ h2 {
 .secondary-button {
   background: #e2e8f0;
   color: #0f172a;
+}
+
+.danger-button {
+  background: #991b1b;
+  color: #fff;
+}
+
+.delete-confirmation {
+  border: 1px solid #fecaca;
+  background: #fff7f7;
 }
 
 .notice {
