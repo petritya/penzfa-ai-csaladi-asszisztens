@@ -4,6 +4,12 @@ import { hasSupabaseConfig, supabase } from './lib/supabase'
 
 type AuthMode = 'sign-in' | 'sign-up'
 
+type FamilyMember = {
+  family_id: string
+  display_name: string
+  member_kind: 'active' | 'managed'
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [loadingSession, setLoadingSession] = useState(hasSupabaseConfig)
@@ -13,6 +19,11 @@ export default function App() {
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  const [familyLoading, setFamilyLoading] = useState(false)
+  const [familyName, setFamilyName] = useState<string | null>(null)
+  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([])
+  const [familyError, setFamilyError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!supabase) return
@@ -31,6 +42,76 @@ export default function App() {
 
     return () => subscription.unsubscribe()
   }, [])
+
+  useEffect(() => {
+    if (!supabase || !session) {
+      setFamilyName(null)
+      setFamilyMembers([])
+      setFamilyError(null)
+      return
+    }
+
+    let cancelled = false
+
+    async function loadFamily() {
+      setFamilyLoading(true)
+      setFamilyError(null)
+
+      const { data: members, error: membersError } = await supabase
+        .from('family_members')
+        .select('family_id, display_name, member_kind, created_at')
+        .order('created_at', { ascending: true })
+
+      if (cancelled) return
+
+      if (membersError) {
+        setFamilyError(membersError.message)
+        setFamilyLoading(false)
+        return
+      }
+
+      if (!members || members.length === 0) {
+        setFamilyName(null)
+        setFamilyMembers([])
+        setFamilyLoading(false)
+        return
+      }
+
+      const familyId = members[0].family_id
+
+      const { data: family, error: familyErrorResult } = await supabase
+        .from('families')
+        .select('name')
+        .eq('id', familyId)
+        .single()
+
+      if (cancelled) return
+
+      if (familyErrorResult) {
+        setFamilyError(familyErrorResult.message)
+        setFamilyLoading(false)
+        return
+      }
+
+      setFamilyName(family.name)
+      setFamilyMembers(
+        members
+          .filter((member) => member.family_id === familyId)
+          .map(({ family_id, display_name, member_kind }) => ({
+            family_id,
+            display_name,
+            member_kind,
+          })),
+      )
+      setFamilyLoading(false)
+    }
+
+    loadFamily()
+
+    return () => {
+      cancelled = true
+    }
+  }, [session])
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -107,12 +188,36 @@ export default function App() {
       <main className="shell">
         <section className="card">
           <p className="eyebrow">Pénzfa</p>
-          <h1>Belépve</h1>
-          <p className="lead">A Supabase Auth kapcsolat működik.</p>
+          <h1>{familyName ?? 'Belépve'}</h1>
+          <p className="lead">
+            {familyLoading
+              ? 'Család betöltése…'
+              : familyName
+                ? 'A közös családi tér elérhető.'
+                : 'Ehhez a felhasználóhoz még nincs család rendelve.'}
+          </p>
+
+          {familyError && <p className="notice error">{familyError}</p>}
+
+          {!familyLoading && familyName && (
+            <section className="family-block" aria-label="Családtagok">
+              <h2>Családtagok</h2>
+              <ul className="member-list">
+                {familyMembers.map((member) => (
+                  <li key={`${member.family_id}-${member.display_name}`}>
+                    <span>{member.display_name}</span>
+                    <small>
+                      {member.member_kind === 'active' ? 'Aktív felhasználó' : 'Kezelt családtag'}
+                    </small>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           <dl className="account">
             <div>
-              <dt>Felhasználó</dt>
+              <dt>Belépett fiók</dt>
               <dd>{session.user.email ?? 'Ismeretlen e-mail'}</dd>
             </div>
           </dl>
