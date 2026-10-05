@@ -313,12 +313,12 @@ function fuzzyTitleMatches(itemTitle: string, targetTitle: string) {
 function naturalReferenceScore(message: string, itemTitle: string) {
   const messageTokens = normalize(message)
     .replace(/[^a-z0-9]+/g, ' ')
-    .split(/\\s+/)
+    .split(/\s+/)
     .filter((token) => token.length >= 4)
 
   const itemTokens = normalize(itemTitle)
     .replace(/[^a-z0-9]+/g, ' ')
-    .split(/\\s+/)
+    .split(/\s+/)
     .filter((token) => token.length >= 4)
 
   let score = 0
