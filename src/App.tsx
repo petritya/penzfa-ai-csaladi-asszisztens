@@ -10,6 +10,21 @@ type FamilyMember = {
   member_kind: 'active' | 'managed'
 }
 
+type CreateDraft = {
+  subject_member_id: string | null
+  subject_display_name: string | null
+  responsible_user_id: string
+  responsible_display_name: string
+  title: string
+  item_type: 'task' | 'event' | 'deadline'
+  notes: string | null
+  due_date: string | null
+  due_time: string | null
+  first_reminder_at: string | null
+  reminder_phrase: string | null
+  confirmation_text: string
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [loadingSession, setLoadingSession] = useState(hasSupabaseConfig)
@@ -24,6 +39,12 @@ export default function App() {
   const [familyName, setFamilyName] = useState<string | null>(null)
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([])
   const [familyError, setFamilyError] = useState<string | null>(null)
+
+  const [createMessage, setCreateMessage] = useState('')
+  const [createDraft, setCreateDraft] = useState<CreateDraft | null>(null)
+  const [createBusy, setCreateBusy] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [createSuccess, setCreateSuccess] = useState<string | null>(null)
 
   useEffect(() => {
     if (!supabase) return
@@ -114,6 +135,88 @@ export default function App() {
       cancelled = true
     }
   }, [session])
+
+  async function handleInterpretCreate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!supabase) return
+
+    const message = createMessage.trim()
+    if (!message) return
+
+    setCreateBusy(true)
+    setCreateDraft(null)
+    setCreateError(null)
+    setCreateSuccess(null)
+
+    const { data, error } = await supabase.functions.invoke('core', {
+      body: {
+        action: 'interpret_create',
+        message,
+      },
+    })
+
+    setCreateBusy(false)
+
+    if (error) {
+      setCreateError(error.message)
+      return
+    }
+
+    if (data?.status === 'needs_confirmation' && data?.draft) {
+      setCreateDraft(data.draft as CreateDraft)
+      return
+    }
+
+    if (data?.status === 'duplicate') {
+      setCreateError(data.message ?? 'Ez az ügy már szerepel a nyitott ügyek között.')
+      return
+    }
+
+    setCreateError(data?.error ?? 'Az ügyet most nem sikerült értelmezni.')
+  }
+
+  async function handleConfirmCreate() {
+    if (!supabase || !createDraft) return
+
+    setCreateBusy(true)
+    setCreateError(null)
+    setCreateSuccess(null)
+
+    const { data, error } = await supabase.functions.invoke('core', {
+      body: {
+        action: 'confirm_create',
+        draft: createDraft,
+      },
+    })
+
+    setCreateBusy(false)
+
+    if (error) {
+      setCreateError(error.message)
+      return
+    }
+
+    if (data?.status === 'created') {
+      setCreateSuccess(`Rögzítve: ${data.item?.title ?? createDraft.title}`)
+      setCreateMessage('')
+      setCreateDraft(null)
+      return
+    }
+
+    if (data?.status === 'duplicate') {
+      setCreateError(data.message ?? 'Ez az ügy már szerepel a nyitott ügyek között.')
+      setCreateDraft(null)
+      return
+    }
+
+    setCreateError(data?.error ?? 'Az ügyet most nem sikerült rögzíteni.')
+  }
+
+  function handleCancelCreate() {
+    setCreateDraft(null)
+    setCreateError(null)
+    setCreateSuccess(null)
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -214,6 +317,66 @@ export default function App() {
                   </li>
                 ))}
               </ul>
+            </section>
+          )}
+
+          {familyName && (
+            <section className="capture-block" aria-label="Új ügy rögzítése">
+              <h2>Új ügy</h2>
+              <p className="capture-help">
+                Írd be vagy diktáld természetesen. Például: „Mamusnak jövő kedden 10-kor kontroll.”
+              </p>
+
+              <form className="capture-form" onSubmit={handleInterpretCreate}>
+                <textarea
+                  value={createMessage}
+                  onChange={(event) => {
+                    setCreateMessage(event.target.value)
+                    setCreateDraft(null)
+                    setCreateError(null)
+                    setCreateSuccess(null)
+                  }}
+                  placeholder="Mit jegyezzek meg?"
+                  rows={3}
+                  disabled={createBusy}
+                />
+
+                <button
+                  className="primary-button"
+                  type="submit"
+                  disabled={createBusy || !createMessage.trim()}
+                >
+                  {createBusy ? 'Feldolgozás…' : 'Értelmezés'}
+                </button>
+              </form>
+
+              {createDraft && (
+                <div className="confirmation-card">
+                  <strong>Ezt értettem:</strong>
+                  <p>{createDraft.confirmation_text}</p>
+                  <div className="confirmation-actions">
+                    <button
+                      className="primary-button"
+                      type="button"
+                      onClick={handleConfirmCreate}
+                      disabled={createBusy}
+                    >
+                      Igen, rögzítsd
+                    </button>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={handleCancelCreate}
+                      disabled={createBusy}
+                    >
+                      Mégse
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {createSuccess && <p className="notice success">{createSuccess}</p>}
+              {createError && <p className="notice error">{createError}</p>}
             </section>
           )}
 
