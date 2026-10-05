@@ -617,6 +617,55 @@ function reminderDaysBefore(phrase: string | null) {
   return null
 }
 
+function reminderTimeFromPhrase(phrase: string | null) {
+  if (!phrase) return null
+  const text = normalize(phrase)
+
+  const clockMatch = text.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/)
+  if (clockMatch) {
+    return `${clockMatch[1].padStart(2, '0')}:${clockMatch[2]}`
+  }
+
+  const hourMatch = text.match(/\b([01]?\d|2[0-3])\s*(?:ora(?:kor)?|orakor|[- ]kor)\b/)
+  if (hourMatch) {
+    return `${hourMatch[1].padStart(2, '0')}:00`
+  }
+
+  return null
+}
+
+function explicitReminderDate(
+  phrase: string | null,
+  dueDate: string,
+  timeZone: string,
+) {
+  if (!phrase) return null
+
+  const raw = phrase.trim()
+  const text = normalize(raw)
+
+  const explicitIso = raw.match(/\b(20\d{2}-\d{2}-\d{2})\b/)
+  if (explicitIso) return explicitIso[1]
+
+  if (
+    findHungarianMonth(raw) !== null
+    || /\b(?:ma|holnap|holnaputan)\b/.test(text)
+    || text.includes('jovo het')
+    || text.includes('kovetkezo het')
+  ) {
+    return resolveDatePhrase(raw, timeZone)
+  }
+
+  const targetWeekday = findHungarianWeekday(text)
+  if (targetWeekday === null) return null
+
+  const dueWeekday = weekdayOf(dueDate)
+  let daysBefore = (dueWeekday - targetWeekday + 7) % 7
+  if (daysBefore === 0) daysBefore = 7
+
+  return addDays(dueDate, -daysBefore)
+}
+
 function validateTime(value: string | null) {
   if (!value) return null
   const match = value.match(/^([01]\d|2[0-3]):([0-5]\d)$/)
@@ -889,7 +938,7 @@ async function interpretWithOpenAI(
         'Példa: "Anyának hétfőn fodrásza van" => subject_name=Anya, responsible_name=null.',
         'Példa: "Mamus hétfőn megy orvoshoz" => subject_name=Mamus, responsible_name=null.',
         'Példa: "Anya intézze Mamus gyógyszerét pénteken" => subject_name=Mamus, responsible_name=Anya.',
-        'A reminder_phrase maradjon természetes nyelvű, például: "három nappal előtte".',
+        'A reminder_phrase maradjon a teljes természetes nyelvű emlékeztetési kérés, például: "három nappal előtte", "hétfőn 18 órakor" vagy "egy nappal előtte 18:30-kor".',
         'A title rövid, természetes magyar megnevezés legyen.',
       ].join('\n'),
       input: message,
@@ -2068,7 +2117,26 @@ Deno.serve(async (req) => {
       let firstReminderAt: string | null = null
 
       if (interpretation.reminder_phrase) {
-        if (!dueDate || reminderOffsetDays === null) {
+        if (!dueDate) {
+          return json({
+            error: 'Az emlékeztetéshez előbb az ügy dátumát kell megadni.',
+            code: 'REMINDER_NEEDS_CLARIFICATION',
+            reminder_phrase: interpretation.reminder_phrase,
+          })
+        }
+
+        const explicitDate = explicitReminderDate(
+          interpretation.reminder_phrase,
+          dueDate,
+          reminderTimeZone,
+        )
+        const explicitTime = reminderTimeFromPhrase(interpretation.reminder_phrase)
+
+        const reminderDate = reminderOffsetDays !== null
+          ? addDays(dueDate, -reminderOffsetDays)
+          : explicitDate
+
+        if (!reminderDate) {
           return json({
             error: 'Az emlékeztetés időpontját még pontosítani kell.',
             code: 'REMINDER_NEEDS_CLARIFICATION',
@@ -2076,8 +2144,9 @@ Deno.serve(async (req) => {
           })
         }
 
-        const reminderDate = addDays(dueDate, -reminderOffsetDays)
-        const reminderTime = dueTime ?? reminderBriefingTime
+        const reminderTime = explicitTime
+          ?? (reminderOffsetDays !== null && dueTime ? dueTime : reminderBriefingTime)
+
         firstReminderAt = localDateTimeToUtcIso(
           reminderDate,
           reminderTime,
@@ -2088,6 +2157,21 @@ Deno.serve(async (req) => {
           return json({
             error: 'A kért emlékeztetési időpont már elmúlt. Adj meg későbbi jelzést.',
             code: 'REMINDER_IN_PAST',
+          }, 400)
+        }
+
+        if (dueTime) {
+          const dueAt = localDateTimeToUtcIso(dueDate, dueTime, reminderTimeZone)
+          if (new Date(firstReminderAt).getTime() >= new Date(dueAt).getTime()) {
+            return json({
+              error: 'Az emlékeztetőnek az ügy időpontja előtt kell lennie.',
+              code: 'REMINDER_AFTER_DUE',
+            }, 400)
+          }
+        } else if (reminderDate > dueDate) {
+          return json({
+            error: 'Az emlékeztető nem lehet az ügy dátuma után.',
+            code: 'REMINDER_AFTER_DUE',
           }, 400)
         }
       }
@@ -2155,12 +2239,6 @@ Deno.serve(async (req) => {
       }
 
       const reminderOffsetDays = reminderDaysBefore(reminderPhrase)
-      if (reminderOffsetDays === null) {
-        return json({
-          error: 'Írd le például így: egy nappal előtte, három nappal előtte vagy két héttel előtte.',
-          code: 'REMINDER_NEEDS_CLARIFICATION',
-        }, 400)
-      }
 
       const reminderOwnerUserId = draft.responsible_user_id ?? user.id
       const { data: settings } = await db
@@ -2171,7 +2249,20 @@ Deno.serve(async (req) => {
 
       const timeZone = settings?.timezone ?? 'Europe/Budapest'
       const briefingTime = String(settings?.briefing_time ?? '07:00:00').slice(0, 5)
-      const reminderDate = addDays(draft.due_date, -reminderOffsetDays)
+      const explicitDate = explicitReminderDate(reminderPhrase, draft.due_date, timeZone)
+      const explicitTime = reminderTimeFromPhrase(reminderPhrase)
+
+      const reminderDate = reminderOffsetDays !== null
+        ? addDays(draft.due_date, -reminderOffsetDays)
+        : explicitDate
+
+      if (!reminderDate) {
+        return json({
+          error: 'Írd le például így: egy nappal előtte, hétfőn 18 órakor vagy két héttel előtte.',
+          code: 'REMINDER_NEEDS_CLARIFICATION',
+        }, 400)
+      }
+
       const today = localDateInTimezone(timeZone)
 
       if (reminderDate < today) {
@@ -2181,15 +2272,33 @@ Deno.serve(async (req) => {
         }, 400)
       }
 
-      const reminderTime = draft.due_time
-        ? String(draft.due_time).slice(0, 5)
-        : briefingTime
+      const reminderTime = explicitTime
+        ?? (reminderOffsetDays !== null && draft.due_time
+          ? String(draft.due_time).slice(0, 5)
+          : briefingTime)
+
       const firstReminderAt = localDateTimeToUtcIso(reminderDate, reminderTime, timeZone)
 
       if (new Date(firstReminderAt).getTime() <= Date.now()) {
         return json({
           error: 'A kért emlékeztetési időpont már elmúlt. Adj meg későbbi jelzést.',
           code: 'REMINDER_IN_PAST',
+        }, 400)
+      }
+
+      if (draft.due_time) {
+        const dueTime = String(draft.due_time).slice(0, 5)
+        const dueAt = localDateTimeToUtcIso(draft.due_date, dueTime, timeZone)
+        if (new Date(firstReminderAt).getTime() >= new Date(dueAt).getTime()) {
+          return json({
+            error: 'Az emlékeztetőnek az ügy időpontja előtt kell lennie.',
+            code: 'REMINDER_AFTER_DUE',
+          }, 400)
+        }
+      } else if (reminderDate > draft.due_date) {
+        return json({
+          error: 'Az emlékeztető nem lehet az ügy dátuma után.',
+          code: 'REMINDER_AFTER_DUE',
         }, 400)
       }
 
