@@ -7,11 +7,14 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      injectRegister: false,
+      filename: 'OneSignalSDKWorker.js',
       workbox: {
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         skipWaiting: true,
+        importScripts: [
+          'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js',
+        ],
       },
       manifest: {
         name: 'Pénzfa – AI családi asszisztens',
