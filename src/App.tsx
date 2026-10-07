@@ -283,6 +283,16 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    if (resendCooldown <= 0) return
+
+    const timer = window.setInterval(() => {
+      setResendCooldown((current) => Math.max(0, current - 1))
+    }, 1000)
+
+    return () => window.clearInterval(timer)
+  }, [resendCooldown])
+
+  useEffect(() => {
     if (!session || !emailJustConfirmed) return
 
     const url = new URL(window.location.href)
