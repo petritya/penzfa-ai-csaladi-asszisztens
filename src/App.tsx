@@ -1496,10 +1496,6 @@ export default function App() {
           </details>
 
           {errorMessage && <p className="notice error">{errorMessage}</p>}
-
-          <button className="secondary-button" type="button" onClick={handleSignOut}>
-            Kijelentkezés
-          </button>
         </section>
       </main>
     )
