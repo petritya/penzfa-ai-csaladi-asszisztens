@@ -1,7 +1,7 @@
 :root {
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: #0f172a;
-  background: #f8fafc;
+  background: #f1f5f4;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -35,7 +35,7 @@ button:disabled {
 }
 
 .card {
-  width: min(520px, 100%);
+  width: min(640px, 100%);
   padding: 32px;
   background: #fff;
   border: 1px solid #e2e8f0;
@@ -58,6 +58,16 @@ h1 {
 h2 {
   margin: 0 0 12px;
   font-size: 1rem;
+}
+
+.app-header {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 22px;
+}
+
+.app-header .lead {
+  margin: 0;
 }
 
 .lead {
@@ -220,9 +230,11 @@ h2 {
 }
 
 .capture-primary {
-  padding: 18px;
-  border-radius: 14px;
+  padding: 20px;
+  border: 1px solid #dbe5e1;
+  border-radius: 18px;
   background: #f8fafc;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05);
 }
 
 .capture-help {
@@ -237,22 +249,72 @@ h2 {
   gap: 10px;
 }
 
+.capture-input-shell {
+  position: relative;
+}
+
 .capture-form textarea {
   width: 100%;
-  min-height: 92px;
+  min-height: 116px;
   resize: vertical;
   border: 1px solid #cbd5e1;
-  border-radius: 12px;
-  padding: 12px 13px;
+  border-radius: 16px;
+  padding: 14px 70px 14px 14px;
   background: #fff;
   color: #0f172a;
   outline: none;
-  line-height: 1.45;
+  line-height: 1.5;
+  font-size: 1rem;
 }
 
 .capture-form textarea:focus {
   border-color: #64748b;
-  box-shadow: 0 0 0 3px rgba(100, 116, 139, 0.14);
+  box-shadow: 0 0 0 4px rgba(100, 116, 139, 0.12);
+}
+
+.voice-button {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 50px;
+  height: 50px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: #0f172a;
+  color: #fff;
+  font-size: 1.35rem;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
+}
+
+.voice-button.listening {
+  outline: 4px solid rgba(22, 101, 52, 0.16);
+  background: #166534;
+}
+
+.capture-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.capture-actions small {
+  flex: 1;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.send-button {
+  min-width: 122px;
+}
+
+.voice-error {
+  margin: 0;
+  color: #991b1b;
+  font-size: 0.9rem;
+  line-height: 1.4;
 }
 
 .assistant-answer,
@@ -267,6 +329,32 @@ h2 {
   margin: 7px 0 0;
   white-space: pre-line;
   line-height: 1.5;
+}
+
+.query-results {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.query-item {
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.query-item.other-owner {
+  border-left: 4px solid #64748b;
+  background: #f1f5f9;
+}
+
+.query-label {
+  line-height: 1.45;
+}
+
+.query-owner-name {
+  color: #334155;
 }
 
 .confirmation-card {
@@ -385,7 +473,7 @@ h2 {
 }
 
 .account {
-  margin: 24px 0;
+  margin: 0 0 12px;
   padding: 16px;
   border-radius: 12px;
   background: #f8fafc;
@@ -411,7 +499,7 @@ h2 {
 .push-settings {
   display: grid;
   gap: 10px;
-  margin: -10px 0 20px;
+  margin: 0 0 14px;
   padding: 14px 16px;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
@@ -437,15 +525,95 @@ h2 {
   justify-self: start;
 }
 
+.account-details {
+  margin-bottom: 8px;
+}
+
+.sign-out-button {
+  width: 100%;
+}
+
 @media (max-width: 520px) {
+  body {
+    background: #fff;
+  }
+
   .shell {
-    padding: 14px;
+    min-height: 100svh;
+    padding: 0;
     place-items: start center;
+    background: #fff;
   }
 
   .card {
-    margin-top: 24px;
-    padding: 24px;
+    width: 100%;
+    min-height: 100svh;
+    margin: 0;
+    padding: 22px 16px max(28px, env(safe-area-inset-bottom));
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .app-header {
+    margin-bottom: 16px;
+  }
+
+  .app-header h1 {
+    font-size: 1.75rem;
+  }
+
+  .app-header .lead {
+    font-size: 0.94rem;
+  }
+
+  .capture-primary {
+    padding: 16px;
+    border-radius: 16px;
+  }
+
+  .capture-help {
+    font-size: 0.88rem;
+  }
+
+  .capture-form textarea {
+    min-height: 132px;
+    font-size: 1.05rem;
+  }
+
+  .voice-button {
+    width: 54px;
+    height: 54px;
+    font-size: 1.45rem;
+  }
+
+  .capture-actions {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .capture-actions small {
+    font-size: 0.82rem;
+  }
+
+  .send-button {
+    width: 100%;
+    min-height: 48px;
+  }
+
+  .confirmation-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .confirmation-actions button {
+    width: 100%;
+    min-height: 46px;
+  }
+
+  .secondary-details {
+    padding: 14px 2px 0;
   }
 
   .member-list li {
