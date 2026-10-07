@@ -2400,7 +2400,13 @@ Deno.serve(async (req) => {
       let confirmationText: string
 
       if (interpretation.reminder_phrase) {
-        confirmationText = `${subjectText}${cleanTitle} – ${dateText}${timeText}.${responsibleText} Emlékeztetés: ${interpretation.reminder_phrase}. Rögzítsem?`
+        const reminderDateText = firstReminderAt
+          ? formatHungarianDate(dateInTimezone(firstReminderAt, reminderTimeZone))
+          : interpretation.reminder_phrase
+        const reminderClockText = firstReminderAt
+          ? timeInTimezone(firstReminderAt, reminderTimeZone)
+          : ''
+        confirmationText = `${subjectText}${cleanTitle} – ${dateText}${timeText}.${responsibleText} Emlékeztetés: ${reminderDateText}${reminderClockText ? ` ${reminderClockText}` : ''}. Rögzítsem?`
       } else if (dueDate) {
         confirmationText = `${subjectText}${cleanTitle} – ${dateText}${timeText}.${responsibleText} Emlékeztetőt nem adtál meg, ezért csak az esedékesség napjának reggeli briefingjében szólok. Így rögzítsem?`
       } else {
@@ -2528,7 +2534,7 @@ Deno.serve(async (req) => {
         ...draft,
         first_reminder_at: firstReminderAt,
         reminder_phrase: reminderPhrase,
-        confirmation_text: `${subjectText}${draft.title} – ${dateText}${timeText}.${responsibleText} Emlékeztetés: ${reminderPhrase}. Rögzítsem?`,
+        confirmation_text: `${subjectText}${draft.title} – ${dateText}${timeText}.${responsibleText} Emlékeztetés: ${formatHungarianDate(dateInTimezone(firstReminderAt, timeZone))} ${timeInTimezone(firstReminderAt, timeZone)}. Rögzítsem?`,
       }
 
       return json({ status: 'needs_confirmation', draft: updatedDraft })
