@@ -2118,6 +2118,8 @@ Deno.serve(async (req) => {
           status: 'ok',
           count: 0,
           answer: 'Nem találtam a kérdésednek megfelelő ügyet.',
+          summary: 'Nem találtam a kérdésednek megfelelő ügyet.',
+          items: [],
           interpretation,
         })
       }
@@ -2138,7 +2140,7 @@ Deno.serve(async (req) => {
         })
       }
 
-      const lines = visible.map((item) => {
+      const resultItems = visible.map((item) => {
         const rawSubjectName = item.subject_member_id
           ? memberNameById.get(item.subject_member_id) ?? null
           : null
@@ -2170,7 +2172,7 @@ Deno.serve(async (req) => {
               : null
           )
 
-        return queryItemLine(
+        const label = queryItemLine(
           item,
           subjectName,
           subjectMember?.member_kind ?? null,
@@ -2179,7 +2181,25 @@ Deno.serve(async (req) => {
           showResponsible,
           ownerPrefixName,
         )
+
+        return {
+          id: item.id,
+          title: item.title,
+          label,
+          status: item.status,
+          due_date: item.due_date,
+          due_time: item.due_time,
+          subject_display_name: rawSubjectName,
+          subject_member_kind: subjectMember?.member_kind ?? null,
+          responsible_display_name: itemResponsibleName,
+          is_other_owner: Boolean(
+            item.responsible_user_id
+            && item.responsible_user_id !== user.id
+          ),
+        }
       })
+
+      const lines = resultItems.map((item) => item.label)
 
       const more = filtered.length > visible.length
         ? `\n+ még ${filtered.length - visible.length} találat`
@@ -2189,6 +2209,8 @@ Deno.serve(async (req) => {
         status: 'ok',
         count: filtered.length,
         answer: `${filtered.length} ügyet találtam:\n${lines.join('\n')}${more}`,
+        summary: `${filtered.length} ügyet találtam.`,
+        items: resultItems,
         interpretation,
       })
     }
