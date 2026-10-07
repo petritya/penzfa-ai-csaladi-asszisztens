@@ -331,6 +331,59 @@ h2 {
   text-align: right;
 }
 
+.settings-details {
+  margin-top: 14px;
+}
+
+.settings-form {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.settings-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.settings-toggle input {
+  margin-top: 3px;
+}
+
+.settings-time {
+  display: grid;
+  gap: 7px;
+  font-weight: 700;
+}
+
+.settings-time input {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fff;
+  color: #0f172a;
+}
+
+.settings-time input:disabled {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.settings-hint {
+  margin: 0;
+  color: #64748b;
+}
+
+.settings-form .secondary-button {
+  justify-self: start;
+}
+
 .account {
   margin: 24px 0;
   padding: 16px;
