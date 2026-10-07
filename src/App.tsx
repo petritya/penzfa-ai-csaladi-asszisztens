@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js'
 import { hasSupabaseConfig, supabase } from './lib/supabase'
 
 type AuthMode = 'sign-in' | 'sign-up'
+type AppearanceMode = 'system' | 'light' | 'dark'
 
 type FamilyMember = {
   id: string
@@ -184,6 +185,10 @@ export default function App() {
   })
   const [settingsError, setSettingsError] = useState<string | null>(null)
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null)
+  const [appearanceMode, setAppearanceMode] = useState<AppearanceMode>(() => {
+    const saved = window.localStorage.getItem('penzfa-appearance')
+    return saved === 'light' || saved === 'dark' || saved === 'system' ? saved : 'system'
+  })
 
   const [createMessage, setCreateMessage] = useState('')
   const [createDraft, setCreateDraft] = useState<CreateDraft | null>(null)
@@ -227,6 +232,29 @@ export default function App() {
     setVoiceTranscribing(false)
     setVoiceError(null)
   }, [session?.user.id])
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+
+    const applyAppearance = () => {
+      const resolved = appearanceMode === 'system'
+        ? media.matches ? 'dark' : 'light'
+        : appearanceMode
+
+      document.documentElement.dataset.theme = resolved
+      window.localStorage.setItem('penzfa-appearance', appearanceMode)
+
+      const themeMeta = document.querySelector('meta[name="theme-color"]')
+      themeMeta?.setAttribute('content', resolved === 'dark' ? '#0b1220' : '#f1f5f4')
+    }
+
+    applyAppearance()
+
+    if (appearanceMode !== 'system') return
+
+    media.addEventListener('change', applyAppearance)
+    return () => media.removeEventListener('change', applyAppearance)
+  }, [appearanceMode])
 
   useEffect(() => {
     if (!supabase) return
@@ -1509,6 +1537,17 @@ export default function App() {
                 <p className="settings-hint">Betöltés…</p>
               ) : (
                 <form className="settings-form" onSubmit={handleSaveSettings}>
+                  <label className="settings-time appearance-setting">
+                    <span>Megjelenés</span>
+                    <select
+                      value={appearanceMode}
+                      onChange={(event) => setAppearanceMode(event.target.value as AppearanceMode)}
+                    >
+                      <option value="system">Rendszer beállítása</option>
+                      <option value="light">Világos</option>
+                      <option value="dark">Sötét</option>
+                    </select>
+                  </label>
                   <label className="settings-toggle">
                     <input
                       type="checkbox"
