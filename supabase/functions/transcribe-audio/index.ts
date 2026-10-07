@@ -59,6 +59,9 @@ Deno.serve(async (req) => {
         'Magyar nyelvű családi asszisztensnek diktált rövid teendők és kérdések.',
         memberNames ? `A családtagok pontos nevei: ${memberNames}.` : '',
         'A családtagok nevét pontosan írd le.',
+        'Gyakori időszavak és dátumszavak: ma, holnap, tegnap, hétfő, kedd, szerda, csütörtök, péntek, szombat, vasárnap, jövő héten.',
+        'Gyakori időpontok: 8-kor, 9-kor, 10-kor, 16-kor, 18-kor. A kimondott számot pontosan írd le, ne következtess másik időpontra.',
+        'A beszédet szó szerint írd át; ne javítsd át más jelentésű szóra és ne egészítsd ki találgatással.',
       ].filter(Boolean).join(' '),
     )
 
