@@ -1200,7 +1200,7 @@ export default function App() {
   }
 
   async function handleResendConfirmation() {
-    if (!supabase || !confirmationEmail) return
+    if (!supabase || !confirmationEmail || resendCooldown > 0) return
 
     setResendBusy(true)
     setResendMessage(null)
@@ -1758,6 +1758,59 @@ export default function App() {
           </details>
 
           {errorMessage && <p className="notice error">{errorMessage}</p>}
+        </section>
+      </main>
+    )
+  }
+
+
+  if (confirmationEmail) {
+    return (
+      <main className="shell">
+        <section className="card">
+          <p className="eyebrow">AI családi asszisztens</p>
+          <h1>Nézd meg az e-mailed</h1>
+          <p className="lead">
+            Megerősítő e-mailt küldtünk ide: <strong>{confirmationEmail}</strong>
+          </p>
+
+          <p className="notice success">
+            Nyisd meg a levelet, és koppints az „E-mail-cím megerősítése” gombra.
+          </p>
+
+          <p className="capture-help">
+            Ha több megerősítő levelet kaptál, mindig a legfrissebb levélben lévő linket használd.
+          </p>
+
+          {resendMessage && <p className="notice success">{resendMessage}</p>}
+          {errorMessage && <p className="notice error">{errorMessage}</p>}
+
+          <div className="auth-form">
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={handleResendConfirmation}
+              disabled={resendBusy || resendCooldown > 0}
+            >
+              {resendBusy
+                ? 'Küldés…'
+                : resendCooldown > 0
+                  ? `Újraküldés ${resendCooldown} mp múlva`
+                  : 'Megerősítő e-mail újraküldése'}
+            </button>
+
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => {
+                setConfirmationEmail(null)
+                setResendMessage(null)
+                setMode('sign-in')
+              }}
+            >
+              Vissza a belépéshez
+            </button>
+          </div>
         </section>
       </main>
     )
