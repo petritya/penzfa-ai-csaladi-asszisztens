@@ -27,6 +27,12 @@ button:disabled {
   opacity: 0.65;
 }
 
+.send-button:disabled {
+  opacity: 1;
+  background: #cbd5e1;
+  color: #475569;
+}
+
 .shell {
   min-height: 100vh;
   display: grid;
@@ -284,13 +290,43 @@ h2 {
   border-radius: 999px;
   background: #0f172a;
   color: #fff;
-  font-size: 1.35rem;
   box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
+  transition: transform 120ms ease, background 120ms ease, box-shadow 120ms ease;
+}
+
+.voice-button:not(:disabled):active {
+  transform: scale(0.96);
 }
 
 .voice-button.listening {
   outline: 4px solid rgba(22, 101, 52, 0.16);
-  background: #166534;
+  background: #15803d;
+  box-shadow: 0 6px 20px rgba(21, 128, 61, 0.26);
+}
+
+.microphone-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.stop-symbol {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  background: currentColor;
+}
+
+.voice-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 999px;
+  animation: voice-spin 0.7s linear infinite;
+}
+
+@keyframes voice-spin {
+  to { transform: rotate(360deg); }
 }
 
 .capture-actions {
@@ -321,8 +357,9 @@ h2 {
 .confirmation-card {
   margin-top: 14px;
   padding: 14px;
-  border-radius: 12px;
-  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #fff;
 }
 
 .assistant-answer p {
@@ -681,19 +718,28 @@ h2 {
   color: #0f172a;
 }
 
+:root[data-theme='dark'] .send-button:disabled {
+  background: #334155;
+  color: #94a3b8;
+}
+
 :root[data-theme='dark'] .secondary-button {
   color: #e5e7eb;
 }
 
 :root[data-theme='dark'] .setup-block,
 :root[data-theme='dark'] .capture-primary,
-:root[data-theme='dark'] .assistant-answer,
-:root[data-theme='dark'] .confirmation-card,
 :root[data-theme='dark'] .member-list li,
 :root[data-theme='dark'] .settings-form,
 :root[data-theme='dark'] .account,
 :root[data-theme='dark'] .push-settings {
   background: #172033;
+}
+
+:root[data-theme='dark'] .assistant-answer,
+:root[data-theme='dark'] .confirmation-card {
+  background: #111827;
+  border-color: #2b3a50;
 }
 
 :root[data-theme='dark'] .capture-primary,
