@@ -65,6 +65,7 @@ type QueryResultItem = {
   subject_member_kind: 'active' | 'managed' | null
   responsible_display_name: string | null
   is_other_owner: boolean
+  is_overdue: boolean
 }
 
 type OneSignalClient = {
@@ -1423,12 +1424,21 @@ export default function App() {
                       ? item.label.slice(ownerPrefix.length).trimStart()
                       : item.label
 
+                    const classes = [
+                      'query-item',
+                      item.is_other_owner ? 'other-owner' : '',
+                      item.is_overdue ? 'overdue' : '',
+                    ].filter(Boolean).join(' ')
+
                     return (
                       <div
-                        className={item.is_other_owner ? 'query-item other-owner' : 'query-item'}
+                        className={classes}
                         key={item.id}
                       >
                         <div className="query-label">
+                          {item.is_overdue && (
+                            <span className="overdue-badge">LEJÁRT</span>
+                          )}
                           {ownerPrefix && (
                             <strong className="query-owner-name">{item.responsible_display_name}:</strong>
                           )}{' '}
