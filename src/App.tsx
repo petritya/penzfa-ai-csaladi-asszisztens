@@ -53,6 +53,50 @@ type UserSettings = {
   notify_partner_on_complete: boolean
 }
 
+type QueryResultItem = {
+  id: string
+  title: string
+  label: string
+  status: 'open' | 'done' | 'deleted'
+  due_date: string | null
+  due_time: string | null
+  subject_display_name: string | null
+  subject_member_kind: 'active' | 'managed' | null
+  responsible_display_name: string | null
+  is_other_owner: boolean
+}
+
+type SpeechRecognitionResultEventLike = {
+  results: {
+    [index: number]: {
+      [index: number]: {
+        transcript: string
+      }
+    }
+  }
+}
+
+type SpeechRecognitionErrorEventLike = {
+  error: string
+}
+
+type SpeechRecognitionLike = {
+  lang: string
+  interimResults: boolean
+  continuous: boolean
+  start: () => void
+  onresult: ((event: SpeechRecognitionResultEventLike) => void) | null
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null
+  onend: (() => void) | null
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike
+
+type SpeechWindow = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor
+  webkitSpeechRecognition?: SpeechRecognitionConstructor
+}
+
 type OneSignalClient = {
   init: (options: {
     appId: string
@@ -175,6 +219,9 @@ export default function App() {
   const [updateDraft, setUpdateDraft] = useState<UpdateDraft | null>(null)
   const [deleteDraft, setDeleteDraft] = useState<DeleteDraft | null>(null)
   const [assistantAnswer, setAssistantAnswer] = useState<string | null>(null)
+  const [queryResults, setQueryResults] = useState<QueryResultItem[]>([])
+  const [voiceListening, setVoiceListening] = useState(false)
+  const [voiceError, setVoiceError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!supabase) return
@@ -520,6 +567,64 @@ export default function App() {
     setSetupError(data?.error ?? 'A családot most nem sikerült létrehozni.')
   }
 
+  function handleVoiceInput() {
+    if (createBusy || voiceListening) return
+
+    const speechWindow = window as SpeechWindow
+    const Recognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition
+
+    if (!Recognition) {
+      setVoiceError('Ezen a böngészőn használd a telefon billentyűzetének mikrofonját a diktáláshoz.')
+      return
+    }
+
+    const recognition = new Recognition()
+    recognition.lang = 'hu-HU'
+    recognition.interimResults = false
+    recognition.continuous = false
+
+    setVoiceError(null)
+    setVoiceListening(true)
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0]?.[0]?.transcript?.trim()
+      if (!transcript) return
+
+      setCreateMessage((current) => {
+        const prefix = current.trim()
+        return prefix ? `${prefix} ${transcript}` : transcript
+      })
+      setCreateDraft(null)
+      setCompleteDraft(null)
+      setUpdateDraft(null)
+      setDeleteDraft(null)
+      setCreateError(null)
+      setCreateSuccess(null)
+      setAssistantAnswer(null)
+      setQueryResults([])
+    }
+
+    recognition.onerror = (event) => {
+      setVoiceListening(false)
+      setVoiceError(
+        event.error === 'not-allowed'
+          ? 'A mikrofon nincs engedélyezve. Engedélyezd a böngésző/PWA mikrofon-hozzáférését, vagy használd a billentyűzet diktálását.'
+          : 'A hangfelismerés most nem sikerült. Próbáld újra, vagy használd a billentyűzet mikrofonját.',
+      )
+    }
+
+    recognition.onend = () => {
+      setVoiceListening(false)
+    }
+
+    try {
+      recognition.start()
+    } catch {
+      setVoiceListening(false)
+      setVoiceError('A hangfelismerést most nem sikerült elindítani.')
+    }
+  }
+
   async function handleMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!supabase) return
@@ -535,6 +640,8 @@ export default function App() {
     setCreateError(null)
     setCreateSuccess(null)
     setAssistantAnswer(null)
+    setQueryResults([])
+    setVoiceError(null)
 
     const { data: intentData, error: intentError } = await supabase.functions.invoke('core', {
       body: {
@@ -572,8 +679,15 @@ export default function App() {
         return
       }
 
+      const structuredItems = Array.isArray(data?.items)
+        ? data.items as QueryResultItem[]
+        : []
+
+      setQueryResults(structuredItems)
       setAssistantAnswer(
-        data?.answer ?? data?.error ?? 'Nem találtam választ a kérdésre.',
+        structuredItems.length
+          ? data?.summary ?? null
+          : data?.answer ?? data?.error ?? 'Nem találtam választ a kérdésre.',
       )
       return
     }
@@ -982,15 +1096,19 @@ export default function App() {
     return (
       <main className="shell">
         <section className="card">
-          <p className="eyebrow">Pénzfa</p>
-          <h1>{familyName ?? 'Belépve'}</h1>
-          <p className="lead">
-            {familyLoading
-              ? 'Család betöltése…'
-              : familyName
-                ? 'A közös családi tér elérhető.'
-                : 'Ehhez a felhasználóhoz még nincs család rendelve.'}
-          </p>
+          <header className="app-header">
+            <div>
+              <p className="eyebrow">Pénzfa</p>
+              <h1>{familyName ?? 'Belépve'}</h1>
+            </div>
+            <p className="lead">
+              {familyLoading
+                ? 'Család betöltése…'
+                : familyName
+                  ? 'Mondd vagy írd le, mit intézzünk.'
+                  : 'Ehhez a felhasználóhoz még nincs család rendelve.'}
+            </p>
+          </header>
 
           {familyError && <p className="notice error">{familyError}</p>}
 
@@ -1067,36 +1185,81 @@ export default function App() {
               </p>
 
               <form className="capture-form" onSubmit={handleMessage}>
-                <textarea
-                  value={createMessage}
-                  onChange={(event) => {
-                    setCreateMessage(event.target.value)
-                    setCreateDraft(null)
-                    setCompleteDraft(null)
-                    setUpdateDraft(null)
-                    setDeleteDraft(null)
-                    setCreateError(null)
-                    setCreateSuccess(null)
-                    setAssistantAnswer(null)
-                  }}
-                  placeholder="Mit szeretnél?"
-                  rows={3}
-                  disabled={createBusy}
-                />
+                <div className="capture-input-shell">
+                  <textarea
+                    value={createMessage}
+                    onChange={(event) => {
+                      setCreateMessage(event.target.value)
+                      setCreateDraft(null)
+                      setCompleteDraft(null)
+                      setUpdateDraft(null)
+                      setDeleteDraft(null)
+                      setCreateError(null)
+                      setCreateSuccess(null)
+                      setAssistantAnswer(null)
+                      setQueryResults([])
+                      setVoiceError(null)
+                    }}
+                    placeholder="Mondd vagy írd le, mit intézzünk…"
+                    rows={4}
+                    disabled={createBusy}
+                  />
 
-                <button
-                  className="primary-button"
-                  type="submit"
-                  disabled={createBusy || !createMessage.trim()}
-                >
-                  {createBusy ? 'Feldolgozás…' : 'Küldés'}
-                </button>
+                  <button
+                    className={voiceListening ? 'voice-button listening' : 'voice-button'}
+                    type="button"
+                    onClick={handleVoiceInput}
+                    disabled={createBusy || voiceListening}
+                    aria-label={voiceListening ? 'Hallgatlak' : 'Diktálás indítása'}
+                    title={voiceListening ? 'Hallgatlak…' : 'Diktálás'}
+                  >
+                    <span aria-hidden="true">🎙️</span>
+                  </button>
+                </div>
+
+                <div className="capture-actions">
+                  <small>
+                    {voiceListening
+                      ? 'Hallgatlak… Mondd el természetesen.'
+                      : 'Diktálhatsz a mikrofon gombbal vagy a telefon billentyűzetének mikrofonjával.'}
+                  </small>
+                  <button
+                    className="primary-button send-button"
+                    type="submit"
+                    disabled={createBusy || !createMessage.trim()}
+                  >
+                    {createBusy ? 'Feldolgozás…' : 'Küldés'}
+                  </button>
+                </div>
+
+                {voiceError && <p className="voice-error">{voiceError}</p>}
               </form>
 
               {assistantAnswer && (
                 <div className="assistant-answer">
                   <strong>Válasz:</strong>
                   <p>{assistantAnswer}</p>
+                </div>
+              )}
+
+              {queryResults.length > 0 && (
+                <div className="query-results" aria-label="Találatok">
+                  {queryResults.map((item) => (
+                    <div
+                      className={item.is_other_owner ? 'query-item other-owner' : 'query-item'}
+                      key={item.id}
+                    >
+                      {item.is_other_owner && item.responsible_display_name && (
+                        <div className="query-owner">
+                          <strong>{item.responsible_display_name}</strong> ügye
+                        </div>
+                      )}
+                      {item.subject_member_kind === 'managed' && item.subject_display_name && (
+                        <div className="query-subject">{item.subject_display_name} ügyében</div>
+                      )}
+                      <div className="query-label">{item.label}</div>
+                    </div>
+                  ))}
                 </div>
               )}
 
