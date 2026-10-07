@@ -386,8 +386,31 @@ h2 {
   background: #f1f5f9;
 }
 
+.query-item.overdue {
+  border-color: #fecaca;
+  background: #fff7f7;
+}
+
+.query-item.other-owner.overdue {
+  border-left-color: #b91c1c;
+  background: #fff7f7;
+}
+
 .query-label {
   line-height: 1.45;
+}
+
+.overdue-badge {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  vertical-align: 0.08em;
 }
 
 .query-owner-name {
@@ -775,6 +798,21 @@ h2 {
 :root[data-theme='dark'] .query-item.other-owner {
   background: #1b2537;
   border-left-color: #94a3b8;
+}
+
+:root[data-theme='dark'] .query-item.overdue,
+:root[data-theme='dark'] .query-item.other-owner.overdue {
+  background: #32191d;
+  border-color: #7f1d1d;
+}
+
+:root[data-theme='dark'] .query-item.other-owner.overdue {
+  border-left-color: #f87171;
+}
+
+:root[data-theme='dark'] .overdue-badge {
+  background: #4c1d22;
+  color: #fecaca;
 }
 
 :root[data-theme='dark'] .query-owner-name {
