@@ -1366,26 +1366,30 @@ export default function App() {
                   />
                 </label>
 
-                <label>
-                  Kezelt családtagok
-                  <textarea
-                    value={setupManagedMembers}
-                    onChange={(event) => setSetupManagedMembers(event.target.value)}
-                    placeholder="Például: Mamus, Bence"
-                    rows={2}
-                  />
-                  <small>Vesszővel vagy új sorral válaszd el a neveket.</small>
-                </label>
+                <details>
+                  <summary>További beállítások (opcionális)</summary>
 
-                <label>
-                  Második ügygazda e-mailje
-                  <input
-                    type="email"
-                    value={setupSecondOwnerEmail}
-                    onChange={(event) => setSetupSecondOwnerEmail(event.target.value)}
-                    placeholder="Opcionális"
-                  />
-                </label>
+                  <label>
+                    További családtagok
+                    <textarea
+                      value={setupManagedMembers}
+                      onChange={(event) => setSetupManagedMembers(event.target.value)}
+                      placeholder="Például: Mamus, Bence"
+                      rows={2}
+                    />
+                    <small>Vesszővel vagy új sorral válaszd el a neveket.</small>
+                  </label>
+
+                  <label>
+                    Másik felnőtt e-mailje
+                    <input
+                      type="email"
+                      value={setupSecondOwnerEmail}
+                      onChange={(event) => setSetupSecondOwnerEmail(event.target.value)}
+                      placeholder="Opcionális"
+                    />
+                  </label>
+                </details>
 
                 <button
                   className="primary-button"
@@ -1799,6 +1803,7 @@ export default function App() {
           </p>
 
           <p className="capture-help">
+            Ha pár percen belül nem látod a levelet, nézd meg a Spam vagy Levélszemét mappát is.
             Ha több megerősítő levelet kaptál, mindig a legfrissebb levélben lévő linket használd.
           </p>
 
