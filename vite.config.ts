@@ -17,8 +17,8 @@ export default defineConfig({
         ],
       },
       manifest: {
-        name: 'AI chatbot asszisztens',
-        short_name: 'AI asszisztens',
+        name: 'AI családi asszisztens',
+        short_name: 'AI családi asszisztens',
         description: 'Családi teendők, emlékeztetések és napi briefing egy helyen.',
         theme_color: '#0f172a',
         background_color: '#ffffff',
