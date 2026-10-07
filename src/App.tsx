@@ -140,6 +140,12 @@ async function waitForPushSubscription(oneSignal: OneSignalClient) {
   return false
 }
 
+function greetingForHour(hour: number) {
+  if (hour < 10) return 'Jó reggelt'
+  if (hour < 18) return 'Szép napot'
+  return 'Jó estét'
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [loadingSession, setLoadingSession] = useState(hasSupabaseConfig)
@@ -1177,19 +1183,25 @@ export default function App() {
   }
 
   if (session) {
+    const activeUserMember = familyMembers.find((member) => member.user_id === session.user.id) ?? null
+    const greeting = greetingForHour(new Date().getHours())
+    const exampleManagedMember = familyMembers.find((member) => member.member_kind === 'managed') ?? null
+    const exampleText = exampleManagedMember
+      ? `${exampleManagedMember.display_name} kontrollja jövő kedden 10-kor.`
+      : 'Jövő kedden 10-kor kontroll.'
+
     return (
       <main className="shell">
         <section className="card">
           <header className="app-header">
-            <div>
-              <p className="eyebrow">Pénzfa</p>
-              <h1>{familyName ?? 'Belépve'}</h1>
-            </div>
+            <h1>{familyName ?? 'Belépve'}</h1>
             <p className="lead">
               {familyLoading
                 ? 'Család betöltése…'
                 : familyName
-                  ? 'Mondd vagy írd le, mit intézzünk.'
+                  ? activeUserMember
+                    ? `${greeting}, ${activeUserMember.display_name}!`
+                    : `${greeting}!`
                   : 'Ehhez a felhasználóhoz még nincs család rendelve.'}
             </p>
           </header>
@@ -1265,7 +1277,7 @@ export default function App() {
             <section className="capture-block capture-primary" aria-label="Kommunikáció">
               <h2>Mit intézzünk?</h2>
               <p className="capture-help">
-                Írd be vagy diktáld természetesen. Például: „Mamusnak jövő kedden 10-kor kontroll.” vagy „Mik a nyitott ügyeink?”
+                Írd be vagy diktáld természetesen. Például: „{exampleText}” vagy „Mik a nyitott ügyeink?”
               </p>
 
               <form className="capture-form" onSubmit={handleMessage}>
