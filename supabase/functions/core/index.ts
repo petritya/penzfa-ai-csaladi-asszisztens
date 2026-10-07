@@ -3098,7 +3098,7 @@ Deno.serve(async (req) => {
 
       const { data: openItems, error: itemsError } = await db
         .from('items')
-        .select('id, title, due_date, due_time, subject_member_id, responsible_user_id')
+        .select('id, title, item_type, due_date, due_time, subject_member_id, responsible_user_id')
         .eq('family_id', familyId)
         .eq('status', 'open')
         .order('due_date', { ascending: true, nullsFirst: false })
@@ -3419,15 +3419,42 @@ Deno.serve(async (req) => {
       const targetTitle = normalize(interpretation.target_title)
       const targetTokens = targetTitle.split(/\s+/).filter((token) => token.length >= 3)
 
-      const matches = (openItems ?? []).filter((item) => {
+      const scopedItems = (openItems ?? []).filter((item) => {
         if (subjectId && item.subject_member_id !== subjectId) return false
         if (responsibleUserId && item.responsible_user_id !== responsibleUserId) return false
         if (targetDate && item.due_date !== targetDate) return false
+        return true
+      })
 
+      const exactTitleMatches = scopedItems.filter(
+        (item) => normalize(item.title) === targetTitle,
+      )
+
+      const fullTitleMessageMatches = scopedItems.filter((item) => {
+        const itemTitle = normalize(item.title)
+        return itemTitle.length >= 4 && normalize(message).includes(itemTitle)
+      })
+
+      const strongestMessageMatches = fullTitleMessageMatches.length
+        ? fullTitleMessageMatches.filter((item) => {
+            const maxLength = Math.max(
+              ...fullTitleMessageMatches.map((candidate) => normalize(candidate.title).length),
+            )
+            return normalize(item.title).length === maxLength
+          })
+        : []
+
+      const fuzzyMatches = scopedItems.filter((item) => {
         if (fuzzyTitleMatches(item.title, targetTitle)) return true
         const itemTitle = normalize(item.title)
         return targetTokens.some((token) => itemTitle.includes(token))
       })
+
+      const matches = exactTitleMatches.length
+        ? exactTitleMatches
+        : strongestMessageMatches.length
+          ? strongestMessageMatches
+          : fuzzyMatches
 
       const memberNameById = new Map((members ?? []).map((member) => [member.id, member.display_name]))
       const responsibleNameByUserId = new Map(
