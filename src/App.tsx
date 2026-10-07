@@ -663,6 +663,15 @@ export default function App() {
 
     try {
       setVoiceError(null)
+      setCreateMessage('')
+      setCreateDraft(null)
+      setCompleteDraft(null)
+      setUpdateDraft(null)
+      setDeleteDraft(null)
+      setCreateError(null)
+      setCreateSuccess(null)
+      setAssistantAnswer(null)
+      setQueryResults([])
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       mediaStreamRef.current = stream
@@ -1326,7 +1335,7 @@ export default function App() {
                     }}
                     placeholder="Mondd vagy írd le, mit intézzünk…"
                     rows={4}
-                    disabled={createBusy}
+                    disabled={createBusy || voiceListening || voiceTranscribing}
                   />
 
                   <button
@@ -1349,9 +1358,26 @@ export default function App() {
                           : 'Diktálás'
                     }
                   >
-                    <span aria-hidden="true">
-                      {voiceTranscribing ? '…' : voiceListening ? '■' : '🎙️'}
-                    </span>
+                    {voiceTranscribing ? (
+                      <span className="voice-spinner" aria-hidden="true" />
+                    ) : voiceListening ? (
+                      <span className="stop-symbol" aria-hidden="true" />
+                    ) : (
+                      <svg
+                        className="microphone-icon"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0M12 16v4m-3 0h6"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    )}
                   </button>
                 </div>
 
@@ -1366,7 +1392,12 @@ export default function App() {
                   <button
                     className="primary-button send-button"
                     type="submit"
-                    disabled={createBusy || !createMessage.trim()}
+                    disabled={
+                      createBusy
+                      || voiceListening
+                      || voiceTranscribing
+                      || !createMessage.trim()
+                    }
                   >
                     {createBusy ? 'Feldolgozás…' : 'Küldés'}
                   </button>
