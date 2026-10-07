@@ -47,6 +47,12 @@ type DeleteDraft = {
 
 type PushStatus = 'idle' | 'loading' | 'ready' | 'enabled' | 'blocked' | 'unsupported' | 'error'
 
+type UserSettings = {
+  briefing_enabled: boolean
+  briefing_time: string
+  notify_partner_on_complete: boolean
+}
+
 type OneSignalClient = {
   init: (options: {
     appId: string
@@ -149,6 +155,16 @@ export default function App() {
   const [pushAppId, setPushAppId] = useState<string | null>(null)
   const [pushBusy, setPushBusy] = useState(false)
   const [pushError, setPushError] = useState<string | null>(null)
+
+  const [settingsLoading, setSettingsLoading] = useState(false)
+  const [settingsBusy, setSettingsBusy] = useState(false)
+  const [settings, setSettings] = useState<UserSettings>({
+    briefing_enabled: true,
+    briefing_time: '07:00',
+    notify_partner_on_complete: false,
+  })
+  const [settingsError, setSettingsError] = useState<string | null>(null)
+  const [settingsMessage, setSettingsMessage] = useState<string | null>(null)
 
   const [createMessage, setCreateMessage] = useState('')
   const [createDraft, setCreateDraft] = useState<CreateDraft | null>(null)
@@ -330,6 +346,51 @@ export default function App() {
     }
   }, [session?.user.id, familyName])
 
+  useEffect(() => {
+    if (!supabase || !session || !familyName) {
+      setSettings({
+        briefing_enabled: true,
+        briefing_time: '07:00',
+        notify_partner_on_complete: false,
+      })
+      setSettingsError(null)
+      setSettingsMessage(null)
+      return
+    }
+
+    let cancelled = false
+
+    async function loadSettings() {
+      setSettingsLoading(true)
+      setSettingsError(null)
+
+      const { data, error } = await supabase!.functions.invoke('core', {
+        body: { action: 'get_settings' },
+      })
+
+      if (cancelled) return
+
+      setSettingsLoading(false)
+
+      if (error || !data?.settings) {
+        setSettingsError(error?.message ?? data?.error ?? 'A beállítások nem tölthetők be.')
+        return
+      }
+
+      setSettings({
+        briefing_enabled: Boolean(data.settings.briefing_enabled),
+        briefing_time: String(data.settings.briefing_time ?? '07:00').slice(0, 5),
+        notify_partner_on_complete: Boolean(data.settings.notify_partner_on_complete),
+      })
+    }
+
+    loadSettings()
+
+    return () => {
+      cancelled = true
+    }
+  }, [session?.user.id, familyName])
+
   async function handleEnablePush() {
     if (!session || !pushAppId) return
 
@@ -370,6 +431,41 @@ export default function App() {
     } finally {
       setPushBusy(false)
     }
+  }
+
+  async function handleSaveSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!supabase || !session) return
+
+    setSettingsBusy(true)
+    setSettingsError(null)
+    setSettingsMessage(null)
+
+    const { data, error } = await supabase.functions.invoke('core', {
+      body: {
+        action: 'update_settings',
+        briefing_enabled: settings.briefing_enabled,
+        briefing_time: settings.briefing_time,
+        notify_partner_on_complete: settings.notify_partner_on_complete,
+      },
+    })
+
+    setSettingsBusy(false)
+
+    if (error || data?.error) {
+      setSettingsError(error?.message ?? data?.error ?? 'A beállításokat nem sikerült menteni.')
+      return
+    }
+
+    if (data?.settings) {
+      setSettings({
+        briefing_enabled: Boolean(data.settings.briefing_enabled),
+        briefing_time: String(data.settings.briefing_time ?? settings.briefing_time).slice(0, 5),
+        notify_partner_on_complete: Boolean(data.settings.notify_partner_on_complete),
+      })
+    }
+
+    setSettingsMessage('Beállítások mentve.')
   }
 
   async function handleFamilySetup(event: FormEvent<HTMLFormElement>) {
@@ -1122,6 +1218,71 @@ export default function App() {
                   </li>
                 ))}
               </ul>
+            </details>
+          )}
+
+          {familyName && (
+            <details className="secondary-details settings-details">
+              <summary>Beállítások</summary>
+              {settingsLoading ? (
+                <p className="settings-hint">Betöltés…</p>
+              ) : (
+                <form className="settings-form" onSubmit={handleSaveSettings}>
+                  <label className="settings-toggle">
+                    <input
+                      type="checkbox"
+                      checked={settings.briefing_enabled}
+                      onChange={(event) => {
+                        setSettings((current) => ({
+                          ...current,
+                          briefing_enabled: event.target.checked,
+                        }))
+                        setSettingsMessage(null)
+                      }}
+                    />
+                    <span>Reggeli briefing</span>
+                  </label>
+
+                  <label className="settings-time">
+                    <span>Briefing időpontja</span>
+                    <input
+                      type="time"
+                      value={settings.briefing_time}
+                      disabled={!settings.briefing_enabled}
+                      onChange={(event) => {
+                        setSettings((current) => ({
+                          ...current,
+                          briefing_time: event.target.value,
+                        }))
+                        setSettingsMessage(null)
+                      }}
+                      required
+                    />
+                  </label>
+
+                  <label className="settings-toggle">
+                    <input
+                      type="checkbox"
+                      checked={settings.notify_partner_on_complete}
+                      onChange={(event) => {
+                        setSettings((current) => ({
+                          ...current,
+                          notify_partner_on_complete: event.target.checked,
+                        }))
+                        setSettingsMessage(null)
+                      }}
+                    />
+                    <span>Szóljon a másik ügygazdának, ha készre jelölök egy ügyet</span>
+                  </label>
+
+                  {settingsMessage && <p className="notice success">{settingsMessage}</p>}
+                  {settingsError && <p className="notice error">{settingsError}</p>}
+
+                  <button className="secondary-button" type="submit" disabled={settingsBusy}>
+                    {settingsBusy ? 'Mentés…' : 'Beállítások mentése'}
+                  </button>
+                </form>
+              )}
             </details>
           )}
 
