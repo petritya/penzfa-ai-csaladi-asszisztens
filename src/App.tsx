@@ -157,6 +157,9 @@ export default function App() {
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [emailJustConfirmed, setEmailJustConfirmed] = useState(() =>
+    new URLSearchParams(window.location.search).get('email_confirmed') === '1',
+  )
 
   const [familyLoading, setFamilyLoading] = useState(false)
   const [familyName, setFamilyName] = useState<string | null>(null)
@@ -274,6 +277,18 @@ export default function App() {
 
     return () => subscription.unsubscribe()
   }, [])
+
+  useEffect(() => {
+    if (!session || !emailJustConfirmed) return
+
+    const url = new URL(window.location.href)
+    url.searchParams.delete('email_confirmed')
+    window.history.replaceState(
+      {},
+      '',
+      `${url.pathname}${url.search}${url.hash}`,
+    )
+  }, [session, emailJustConfirmed])
 
   useEffect(() => {
     const client = supabase
@@ -1141,7 +1156,13 @@ export default function App() {
     const result =
       mode === 'sign-in'
         ? await supabase.auth.signInWithPassword({ email, password })
-        : await supabase.auth.signUp({ email, password })
+        : await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+              emailRedirectTo: `${window.location.origin}/?email_confirmed=1`,
+            },
+          })
 
     setSubmitting(false)
 
@@ -1151,7 +1172,7 @@ export default function App() {
     }
 
     if (mode === 'sign-up' && !result.data.session) {
-      setMessage('A regisztráció elkészült. Nyisd meg a megerősítő e-mailt, majd jelentkezz be.')
+      setMessage(`Már csak egy lépés. Küldtünk egy megerősítő e-mailt ide: ${email}. Nyisd meg, és koppints az e-mail-cím megerősítésére.`)
       setMode('sign-in')
       setPassword('')
       return
@@ -1195,7 +1216,7 @@ export default function App() {
     return (
       <main className="shell">
         <section className="card">
-          <p className="eyebrow">Pénzfa</p>
+          <p className="eyebrow">AI chatbot asszisztens</p>
           <h1>Beállítás szükséges</h1>
           <p className="lead">
             A Cloudflare deployból hiányzik a Supabase projekt URL-je vagy publishable key-je.
@@ -1213,7 +1234,7 @@ export default function App() {
     return (
       <main className="shell">
         <section className="card">
-          <p className="eyebrow">Pénzfa</p>
+          <p className="eyebrow">AI chatbot asszisztens</p>
           <p>Belépés ellenőrzése…</p>
         </section>
       </main>
@@ -1245,6 +1266,12 @@ export default function App() {
           </header>
 
           {familyError && <p className="notice error">{familyError}</p>}
+
+          {emailJustConfirmed && !familyLoading && !familyName && !familyError && (
+            <p className="notice success">
+              E-mail-cím megerősítve. Állítsuk be a családodat.
+            </p>
+          )}
 
           {!familyLoading && !familyName && !familyError && (
             <section className="setup-block" aria-label="Család létrehozása">
@@ -1696,11 +1723,11 @@ export default function App() {
   return (
     <main className="shell">
       <section className="card">
-        <p className="eyebrow">Pénzfa</p>
-        <h1>AI családi asszisztens</h1>
+        <p className="eyebrow">AI chatbot asszisztens</p>
+        <h1>AI chatbot asszisztens</h1>
         <p className="lead">
           {mode === 'sign-in'
-            ? 'Jelentkezz be az MVP-be.'
+            ? 'Jelentkezz be az AI chatbot asszisztensbe.'
             : 'Hozd létre az első felhasználói fiókot.'}
         </p>
 
