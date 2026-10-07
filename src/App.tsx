@@ -1187,6 +1187,33 @@ export default function App() {
     setPassword('')
   }
 
+  async function handleResendConfirmation() {
+    if (!supabase || !confirmationEmail) return
+
+    setResendBusy(true)
+    setResendMessage(null)
+    setErrorMessage(null)
+
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: confirmationEmail,
+      options: {
+        emailRedirectTo: `${window.location.origin}/?email_confirmed=1`,
+      },
+    })
+
+    setResendBusy(false)
+
+    if (error) {
+      setErrorMessage(error.message)
+      return
+    }
+
+    setResendMessage(
+      'Új megerősítő e-mailt küldtünk. Ha több levelet kaptál, mindig a legfrissebb levél linkjét használd.',
+    )
+  }
+
   async function handleSignOut() {
     if (!supabase) return
 
