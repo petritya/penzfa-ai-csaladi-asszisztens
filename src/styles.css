@@ -449,13 +449,18 @@ h2 {
   font-weight: 700;
 }
 
-.settings-time input {
+.settings-time input,
+.settings-time select {
   width: 100%;
   border: 1px solid #cbd5e1;
   border-radius: 10px;
   padding: 10px 12px;
   background: #fff;
   color: #0f172a;
+}
+
+.appearance-setting select {
+  cursor: pointer;
 }
 
 .settings-time input:disabled {
@@ -624,5 +629,146 @@ h2 {
 
   .member-list small {
     text-align: left;
+  }
+}
+
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  color: #e5e7eb;
+  background: #0b1220;
+}
+
+:root[data-theme='dark'] body,
+:root[data-theme='dark'] .shell {
+  background: #0b1220;
+}
+
+:root[data-theme='dark'] .card {
+  background: #111827;
+  border-color: #273244;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+}
+
+:root[data-theme='dark'] .lead,
+:root[data-theme='dark'] .capture-help,
+:root[data-theme='dark'] .capture-actions small,
+:root[data-theme='dark'] .settings-hint,
+:root[data-theme='dark'] .member-list small,
+:root[data-theme='dark'] .account dt,
+:root[data-theme='dark'] .push-settings small,
+:root[data-theme='dark'] .secondary-details summary {
+  color: #94a3b8;
+}
+
+:root[data-theme='dark'] .auth-tabs,
+:root[data-theme='dark'] .secondary-button {
+  background: #1e293b;
+}
+
+:root[data-theme='dark'] .tab {
+  color: #94a3b8;
+}
+
+:root[data-theme='dark'] .tab.active {
+  background: #273449;
+  color: #f8fafc;
+  box-shadow: none;
+}
+
+:root[data-theme='dark'] .primary-button {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+:root[data-theme='dark'] .secondary-button {
+  color: #e5e7eb;
+}
+
+:root[data-theme='dark'] .setup-block,
+:root[data-theme='dark'] .capture-primary,
+:root[data-theme='dark'] .assistant-answer,
+:root[data-theme='dark'] .confirmation-card,
+:root[data-theme='dark'] .member-list li,
+:root[data-theme='dark'] .settings-form,
+:root[data-theme='dark'] .account,
+:root[data-theme='dark'] .push-settings {
+  background: #172033;
+}
+
+:root[data-theme='dark'] .capture-primary,
+:root[data-theme='dark'] .query-item,
+:root[data-theme='dark'] .push-settings,
+:root[data-theme='dark'] .secondary-details {
+  border-color: #2b3a50;
+}
+
+:root[data-theme='dark'] .auth-form input,
+:root[data-theme='dark'] .setup-form input,
+:root[data-theme='dark'] .setup-form textarea,
+:root[data-theme='dark'] .capture-form textarea,
+:root[data-theme='dark'] .settings-time input,
+:root[data-theme='dark'] .settings-time select {
+  background: #0f172a;
+  color: #f8fafc;
+  border-color: #334155;
+}
+
+:root[data-theme='dark'] .auth-form input:focus,
+:root[data-theme='dark'] .setup-form input:focus,
+:root[data-theme='dark'] .setup-form textarea:focus,
+:root[data-theme='dark'] .capture-form textarea:focus {
+  border-color: #64748b;
+  box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.13);
+}
+
+:root[data-theme='dark'] .query-item {
+  background: #111827;
+}
+
+:root[data-theme='dark'] .query-item.other-owner {
+  background: #1b2537;
+  border-left-color: #94a3b8;
+}
+
+:root[data-theme='dark'] .query-owner-name {
+  color: #cbd5e1;
+}
+
+:root[data-theme='dark'] .voice-button {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+:root[data-theme='dark'] .voice-button.listening {
+  background: #15803d;
+  color: #fff;
+}
+
+:root[data-theme='dark'] .notice.success {
+  background: #123524;
+  color: #bbf7d0;
+}
+
+:root[data-theme='dark'] .notice.error,
+:root[data-theme='dark'] .delete-confirmation {
+  background: #3b171b;
+  color: #fecaca;
+}
+
+:root[data-theme='dark'] .delete-confirmation {
+  border-color: #7f1d1d;
+}
+
+:root[data-theme='dark'] .settings-time input:disabled {
+  background: #1e293b;
+  color: #64748b;
+}
+
+@media (max-width: 520px) {
+  :root[data-theme='dark'] body,
+  :root[data-theme='dark'] .shell,
+  :root[data-theme='dark'] .card {
+    background: #0b1220;
   }
 }
