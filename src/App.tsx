@@ -159,6 +159,7 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null)
   const [resendBusy, setResendBusy] = useState(false)
+  const [resendCooldown, setResendCooldown] = useState(0)
   const [resendMessage, setResendMessage] = useState<string | null>(null)
   const [emailJustConfirmed, setEmailJustConfirmed] = useState(() =>
     new URLSearchParams(window.location.search).get('email_confirmed') === '1',
@@ -1176,6 +1177,7 @@ export default function App() {
 
     if (mode === 'sign-up' && !result.data.session) {
       setConfirmationEmail(email)
+      setResendCooldown(60)
       setResendMessage(null)
       setPassword('')
       return
@@ -1209,6 +1211,7 @@ export default function App() {
       return
     }
 
+    setResendCooldown(60)
     setResendMessage(
       'Új megerősítő e-mailt küldtünk. Ha több levelet kaptál, mindig a legfrissebb levél linkjét használd.',
     )
