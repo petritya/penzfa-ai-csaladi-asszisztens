@@ -1216,7 +1216,7 @@ export default function App() {
     return (
       <main className="shell">
         <section className="card">
-          <p className="eyebrow">AI chatbot asszisztens</p>
+          <p className="eyebrow">AI családi asszisztens</p>
           <h1>Beállítás szükséges</h1>
           <p className="lead">
             A Cloudflare deployból hiányzik a Supabase projekt URL-je vagy publishable key-je.
@@ -1234,7 +1234,7 @@ export default function App() {
     return (
       <main className="shell">
         <section className="card">
-          <p className="eyebrow">AI chatbot asszisztens</p>
+          <p className="eyebrow">AI családi asszisztens</p>
           <p>Belépés ellenőrzése…</p>
         </section>
       </main>
@@ -1723,11 +1723,11 @@ export default function App() {
   return (
     <main className="shell">
       <section className="card">
-        <p className="eyebrow">AI chatbot asszisztens</p>
-        <h1>AI chatbot asszisztens</h1>
+        <p className="eyebrow">AI családi asszisztens</p>
+        <h1>AI családi asszisztens</h1>
         <p className="lead">
           {mode === 'sign-in'
-            ? 'Jelentkezz be az AI chatbot asszisztensbe.'
+            ? 'Jelentkezz be az AI családi asszisztensbe.'
             : 'Hozd létre az első felhasználói fiókot.'}
         </p>
 
