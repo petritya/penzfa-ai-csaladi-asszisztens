@@ -1113,7 +1113,10 @@ export default function App() {
       return
     }
 
-    setMessage(mode === 'sign-up' ? 'Sikeres regisztráció.' : 'Sikeres belépés.')
+    setMessage(null)
+    setErrorMessage(null)
+    setEmail('')
+    setPassword('')
   }
 
   async function handleSignOut() {
@@ -1134,7 +1137,14 @@ export default function App() {
 
     if (error) {
       setErrorMessage(error.message)
+      return
     }
+
+    setMode('sign-in')
+    setEmail('')
+    setPassword('')
+    setMessage(null)
+    setErrorMessage(null)
   }
 
   if (!hasSupabaseConfig) {
