@@ -17,8 +17,8 @@ export default defineConfig({
         ],
       },
       manifest: {
-        name: 'Pénzfa – AI családi asszisztens',
-        short_name: 'Pénzfa',
+        name: 'AI chatbot asszisztens',
+        short_name: 'AI asszisztens',
         description: 'Családi teendők, emlékeztetések és napi briefing egy helyen.',
         theme_color: '#0f172a',
         background_color: '#ffffff',
