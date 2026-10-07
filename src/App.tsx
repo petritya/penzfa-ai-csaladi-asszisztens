@@ -164,6 +164,20 @@ export default function App() {
   const [emailJustConfirmed, setEmailJustConfirmed] = useState(() =>
     new URLSearchParams(window.location.search).get('email_confirmed') === '1',
   )
+  const [authRedirectError] = useState(() => {
+    const search = new URLSearchParams(window.location.search)
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+    const hasError = Boolean(
+      search.get('error')
+      || search.get('error_code')
+      || hash.get('error')
+      || hash.get('error_code'),
+    )
+
+    return hasError
+      ? 'A megerősítő link lejárt vagy már nem érvényes. Ha több levelet kaptál, mindig a legfrissebb levél linkjét használd.'
+      : null
+  })
 
   const [familyLoading, setFamilyLoading] = useState(false)
   const [familyName, setFamilyName] = useState<string | null>(null)
@@ -281,6 +295,12 @@ export default function App() {
 
     return () => subscription.unsubscribe()
   }, [])
+
+  useEffect(() => {
+    if (!authRedirectError) return
+
+    window.history.replaceState({}, '', window.location.pathname)
+  }, [authRedirectError])
 
   useEffect(() => {
     if (resendCooldown <= 0) return
@@ -1826,6 +1846,8 @@ export default function App() {
             ? 'Jelentkezz be az AI családi asszisztensbe.'
             : 'Hozd létre az első felhasználói fiókot.'}
         </p>
+
+        {authRedirectError && <p className="notice error">{authRedirectError}</p>}
 
         <div className="auth-tabs" aria-label="Belépési mód">
           <button
