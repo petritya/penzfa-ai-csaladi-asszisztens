@@ -1244,22 +1244,28 @@ export default function App() {
 
               {queryResults.length > 0 && (
                 <div className="query-results" aria-label="Találatok">
-                  {queryResults.map((item) => (
-                    <div
-                      className={item.is_other_owner ? 'query-item other-owner' : 'query-item'}
-                      key={item.id}
-                    >
-                      {item.is_other_owner && item.responsible_display_name && (
-                        <div className="query-owner">
-                          <strong>{item.responsible_display_name}</strong> ügye
+                  {queryResults.map((item) => {
+                    const ownerPrefix = item.is_other_owner && item.responsible_display_name
+                      ? `${item.responsible_display_name}:`
+                      : null
+                    const labelWithoutOwner = ownerPrefix && item.label.startsWith(ownerPrefix)
+                      ? item.label.slice(ownerPrefix.length).trimStart()
+                      : item.label
+
+                    return (
+                      <div
+                        className={item.is_other_owner ? 'query-item other-owner' : 'query-item'}
+                        key={item.id}
+                      >
+                        <div className="query-label">
+                          {ownerPrefix && (
+                            <strong className="query-owner-name">{item.responsible_display_name}:</strong>
+                          )}{' '}
+                          {labelWithoutOwner}
                         </div>
-                      )}
-                      {item.subject_member_kind === 'managed' && item.subject_display_name && (
-                        <div className="query-subject">{item.subject_display_name} ügyében</div>
-                      )}
-                      <div className="query-label">{item.label}</div>
-                    </div>
-                  ))}
+                      </div>
+                    )
+                  })}
                 </div>
               )}
 
@@ -1449,37 +1455,45 @@ export default function App() {
             </details>
           )}
 
-          <dl className="account">
-            <div>
-              <dt>Belépett fiók</dt>
-              <dd>{session.user.email ?? 'Ismeretlen e-mail'}</dd>
-            </div>
-          </dl>
+          <details className="secondary-details account-details">
+            <summary>Fiók és értesítések</summary>
 
-          {familyName && (
-            <section className="push-settings" aria-label="Értesítések">
+            <dl className="account">
               <div>
-                <strong>Értesítések</strong>
-                {pushStatus === 'loading' && <small>Ellenőrzés…</small>}
-                {pushStatus === 'enabled' && <small className="push-enabled">Bekapcsolva ezen az eszközön.</small>}
-                {pushStatus === 'blocked' && <small>Az értesítések le vannak tiltva a böngésző/PWA beállításaiban.</small>}
-                {pushStatus === 'unsupported' && <small>Ez a böngésző vagy eszköz nem támogatja a webes push értesítéseket.</small>}
-                {pushStatus === 'error' && <small>{pushError ?? 'A push szolgáltatás nem érhető el.'}</small>}
-                {pushStatus === 'ready' && <small>Kapcsold be, hogy ezen az eszközön megérkezzenek a családi értesítések.</small>}
+                <dt>Belépett fiók</dt>
+                <dd>{session.user.email ?? 'Ismeretlen e-mail'}</dd>
               </div>
+            </dl>
 
-              {pushStatus === 'ready' && (
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={handleEnablePush}
-                  disabled={pushBusy}
-                >
-                  {pushBusy ? 'Bekapcsolás…' : 'Értesítések bekapcsolása'}
-                </button>
-              )}
-            </section>
-          )}
+            {familyName && (
+              <section className="push-settings" aria-label="Értesítések">
+                <div>
+                  <strong>Értesítések</strong>
+                  {pushStatus === 'loading' && <small>Ellenőrzés…</small>}
+                  {pushStatus === 'enabled' && <small className="push-enabled">Bekapcsolva ezen az eszközön.</small>}
+                  {pushStatus === 'blocked' && <small>Az értesítések le vannak tiltva a böngésző/PWA beállításaiban.</small>}
+                  {pushStatus === 'unsupported' && <small>Ez a böngésző vagy eszköz nem támogatja a webes push értesítéseket.</small>}
+                  {pushStatus === 'error' && <small>{pushError ?? 'A push szolgáltatás nem érhető el.'}</small>}
+                  {pushStatus === 'ready' && <small>Kapcsold be, hogy ezen az eszközön megérkezzenek a családi értesítések.</small>}
+                </div>
+
+                {pushStatus === 'ready' && (
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={handleEnablePush}
+                    disabled={pushBusy}
+                  >
+                    {pushBusy ? 'Bekapcsolás…' : 'Értesítések bekapcsolása'}
+                  </button>
+                )}
+              </section>
+            )}
+
+            <button className="secondary-button sign-out-button" type="button" onClick={handleSignOut}>
+              Kijelentkezés
+            </button>
+          </details>
 
           {errorMessage && <p className="notice error">{errorMessage}</p>}
 
