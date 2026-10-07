@@ -2112,6 +2112,7 @@ Deno.serve(async (req) => {
         ? responsibleNameByUserId.get(responsibleUserId) ?? null
         : null
       const visible = asksForLatestDone ? filtered.slice(0, 1) : filtered.slice(0, 20)
+      const localToday = localDateInTimezone(timeZone)
 
       if (!visible.length) {
         return json({
@@ -2195,6 +2196,11 @@ Deno.serve(async (req) => {
           is_other_owner: Boolean(
             item.responsible_user_id
             && item.responsible_user_id !== user.id
+          ),
+          is_overdue: Boolean(
+            item.status === 'open'
+            && item.due_date
+            && item.due_date < localToday
           ),
         }
       })
