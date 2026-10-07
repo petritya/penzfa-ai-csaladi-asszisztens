@@ -680,6 +680,8 @@ function reminderDaysBefore(phrase: string | null) {
   if (!phrase) return null
   const text = normalize(phrase)
 
+  if (/\belozo\s+nap(?:on)?\b/.test(text)) return 1
+
   const dayMatch = text.match(/(\d+|egy|ket|ketto|harom|negy|ot|hat|het|nyolc|kilenc|tiz)\s+nappal/)
   if (dayMatch) return parseHungarianNumber(dayMatch[1])
 
