@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { hasSupabaseConfig, supabase } from './lib/supabase'
 
@@ -64,37 +64,6 @@ type QueryResultItem = {
   subject_member_kind: 'active' | 'managed' | null
   responsible_display_name: string | null
   is_other_owner: boolean
-}
-
-type SpeechRecognitionResultEventLike = {
-  results: {
-    [index: number]: {
-      [index: number]: {
-        transcript: string
-      }
-    }
-  }
-}
-
-type SpeechRecognitionErrorEventLike = {
-  error: string
-}
-
-type SpeechRecognitionLike = {
-  lang: string
-  interimResults: boolean
-  continuous: boolean
-  start: () => void
-  onresult: ((event: SpeechRecognitionResultEventLike) => void) | null
-  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null
-  onend: (() => void) | null
-}
-
-type SpeechRecognitionConstructor = new () => SpeechRecognitionLike
-
-type SpeechWindow = Window & {
-  SpeechRecognition?: SpeechRecognitionConstructor
-  webkitSpeechRecognition?: SpeechRecognitionConstructor
 }
 
 type OneSignalClient = {
@@ -221,7 +190,37 @@ export default function App() {
   const [assistantAnswer, setAssistantAnswer] = useState<string | null>(null)
   const [queryResults, setQueryResults] = useState<QueryResultItem[]>([])
   const [voiceListening, setVoiceListening] = useState(false)
+  const [voiceTranscribing, setVoiceTranscribing] = useState(false)
   const [voiceError, setVoiceError] = useState<string | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const mediaStreamRef = useRef<MediaStream | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+
+  useEffect(() => {
+    const recorder = mediaRecorderRef.current
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.onstop = null
+      recorder.stop()
+    }
+
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+    mediaRecorderRef.current = null
+    mediaStreamRef.current = null
+    audioChunksRef.current = []
+
+    setCreateMessage('')
+    setCreateDraft(null)
+    setCompleteDraft(null)
+    setUpdateDraft(null)
+    setDeleteDraft(null)
+    setCreateError(null)
+    setCreateSuccess(null)
+    setAssistantAnswer(null)
+    setQueryResults([])
+    setVoiceListening(false)
+    setVoiceTranscribing(false)
+    setVoiceError(null)
+  }, [session?.user.id])
 
   useEffect(() => {
     if (!supabase) return
@@ -567,33 +566,31 @@ export default function App() {
     setSetupError(data?.error ?? 'A családot most nem sikerült létrehozni.')
   }
 
-  function handleVoiceInput() {
-    if (createBusy || voiceListening) return
+  async function transcribeVoiceRecording(audio: Blob, mimeType: string) {
+    if (!supabase || !session) return
 
-    const speechWindow = window as SpeechWindow
-    const Recognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition
-
-    if (!Recognition) {
-      setVoiceError('Ezen a böngészőn használd a telefon billentyűzetének mikrofonját a diktáláshoz.')
-      return
-    }
-
-    const recognition = new Recognition()
-    recognition.lang = 'hu-HU'
-    recognition.interimResults = false
-    recognition.continuous = false
-
+    setVoiceTranscribing(true)
     setVoiceError(null)
-    setVoiceListening(true)
 
-    recognition.onresult = (event) => {
-      const transcript = event.results[0]?.[0]?.transcript?.trim()
-      if (!transcript) return
+    try {
+      const extension = mimeType.includes('mp4') ? 'm4a' : mimeType.includes('ogg') ? 'ogg' : 'webm'
+      const form = new FormData()
+      form.append('file', new File([audio], `penzfa-voice.${extension}`, { type: mimeType }))
+      form.append(
+        'member_names',
+        familyMembers.map((member) => member.display_name).join(', '),
+      )
 
-      setCreateMessage((current) => {
-        const prefix = current.trim()
-        return prefix ? `${prefix} ${transcript}` : transcript
+      const { data, error } = await supabase.functions.invoke('transcribe-audio', {
+        body: form,
       })
+
+      if (error || !data?.text) {
+        setVoiceError(error?.message ?? data?.error ?? 'A hang átírása nem sikerült.')
+        return
+      }
+
+      setCreateMessage(String(data.text).trim())
       setCreateDraft(null)
       setCompleteDraft(null)
       setUpdateDraft(null)
@@ -602,26 +599,92 @@ export default function App() {
       setCreateSuccess(null)
       setAssistantAnswer(null)
       setQueryResults([])
-    }
-
-    recognition.onerror = (event) => {
-      setVoiceListening(false)
+    } catch (error) {
       setVoiceError(
-        event.error === 'not-allowed'
-          ? 'A mikrofon nincs engedélyezve. Engedélyezd a böngésző/PWA mikrofon-hozzáférését, vagy használd a billentyűzet diktálását.'
-          : 'A hangfelismerés most nem sikerült. Próbáld újra, vagy használd a billentyűzet mikrofonját.',
+        error instanceof Error
+          ? error.message
+          : 'A hang átírása most nem sikerült.',
       )
+    } finally {
+      setVoiceTranscribing(false)
+    }
+  }
+
+  async function handleVoiceInput() {
+    if (createBusy || voiceTranscribing) return
+
+    const activeRecorder = mediaRecorderRef.current
+    if (voiceListening && activeRecorder && activeRecorder.state !== 'inactive') {
+      activeRecorder.stop()
+      return
     }
 
-    recognition.onend = () => {
-      setVoiceListening(false)
+    if (
+      !navigator.mediaDevices?.getUserMedia
+      || typeof MediaRecorder === 'undefined'
+    ) {
+      setVoiceError('Ez az eszköz nem támogatja a közvetlen hangfelvételt.')
+      return
     }
 
     try {
-      recognition.start()
-    } catch {
+      setVoiceError(null)
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      mediaStreamRef.current = stream
+
+      const preferredTypes = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp4',
+      ]
+      const supportedType = preferredTypes.find((type) => MediaRecorder.isTypeSupported(type))
+      const recorder = supportedType
+        ? new MediaRecorder(stream, { mimeType: supportedType })
+        : new MediaRecorder(stream)
+
+      mediaRecorderRef.current = recorder
+      audioChunksRef.current = []
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data)
+      }
+
+      recorder.onerror = () => {
+        setVoiceListening(false)
+        setVoiceError('A hangfelvétel megszakadt. Próbáld újra.')
+        stream.getTracks().forEach((track) => track.stop())
+        mediaRecorderRef.current = null
+        mediaStreamRef.current = null
+      }
+
+      recorder.onstop = () => {
+        const mimeType = recorder.mimeType || supportedType || 'audio/webm'
+        const audio = new Blob(audioChunksRef.current, { type: mimeType })
+
+        stream.getTracks().forEach((track) => track.stop())
+        mediaRecorderRef.current = null
+        mediaStreamRef.current = null
+        audioChunksRef.current = []
+        setVoiceListening(false)
+
+        if (audio.size > 0) {
+          void transcribeVoiceRecording(audio, mimeType)
+        }
+      }
+
+      recorder.start()
+      setVoiceListening(true)
+    } catch (error) {
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+      mediaRecorderRef.current = null
+      mediaStreamRef.current = null
       setVoiceListening(false)
-      setVoiceError('A hangfelismerést most nem sikerült elindítani.')
+      setVoiceError(
+        error instanceof DOMException && error.name === 'NotAllowedError'
+          ? 'A mikrofon nincs engedélyezve. Engedélyezd a Pénzfának a mikrofon használatát.'
+          : 'A mikrofont most nem sikerült elindítani.',
+      )
     }
   }
 
@@ -689,6 +752,7 @@ export default function App() {
           ? data?.summary ?? null
           : data?.answer ?? data?.error ?? 'Nem találtam választ a kérdésre.',
       )
+      setCreateMessage('')
       return
     }
 
@@ -709,6 +773,7 @@ export default function App() {
 
       if (data?.status === 'needs_confirmation' && data?.draft) {
         setCompleteDraft(data.draft as CompleteDraft)
+        setCreateMessage('')
         return
       }
 
@@ -756,6 +821,7 @@ export default function App() {
 
       if (data?.status === 'needs_confirmation' && data?.draft) {
         setUpdateDraft(data.draft as UpdateDraft)
+        setCreateMessage('')
         return
       }
 
@@ -803,6 +869,7 @@ export default function App() {
 
       if (data?.status === 'needs_confirmation' && data?.draft) {
         setDeleteDraft(data.draft as DeleteDraft)
+        setCreateMessage('')
         return
       }
 
@@ -850,6 +917,7 @@ export default function App() {
 
     if (data?.status === 'needs_confirmation' && data?.draft) {
       setCreateDraft(data.draft as CreateDraft)
+      setCreateMessage('')
       return
     }
 
@@ -1209,19 +1277,35 @@ export default function App() {
                     className={voiceListening ? 'voice-button listening' : 'voice-button'}
                     type="button"
                     onClick={handleVoiceInput}
-                    disabled={createBusy || voiceListening}
-                    aria-label={voiceListening ? 'Hallgatlak' : 'Diktálás indítása'}
-                    title={voiceListening ? 'Hallgatlak…' : 'Diktálás'}
+                    disabled={createBusy || voiceTranscribing}
+                    aria-label={
+                      voiceTranscribing
+                        ? 'Hang átírása'
+                        : voiceListening
+                          ? 'Felvétel leállítása'
+                          : 'Diktálás indítása'
+                    }
+                    title={
+                      voiceTranscribing
+                        ? 'Átírás…'
+                        : voiceListening
+                          ? 'Felvétel leállítása'
+                          : 'Diktálás'
+                    }
                   >
-                    <span aria-hidden="true">🎙️</span>
+                    <span aria-hidden="true">
+                      {voiceTranscribing ? '…' : voiceListening ? '■' : '🎙️'}
+                    </span>
                   </button>
                 </div>
 
                 <div className="capture-actions">
                   <small>
-                    {voiceListening
-                      ? 'Hallgatlak… Mondd el természetesen.'
-                      : 'Diktálhatsz a mikrofon gombbal vagy a telefon billentyűzetének mikrofonjával.'}
+                    {voiceTranscribing
+                      ? 'Átírom a felvételt…'
+                      : voiceListening
+                        ? 'Felvétel folyamatban. Ha kész vagy, koppints újra a mikrofonra.'
+                        : 'Koppints a mikrofonra, mondd el, majd koppints újra a leállításhoz.'}
                   </small>
                   <button
                     className="primary-button send-button"
