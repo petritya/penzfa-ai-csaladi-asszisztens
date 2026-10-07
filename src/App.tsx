@@ -724,6 +724,7 @@ export default function App() {
       setAssistantAnswer(
         intentData.question ?? 'Pontosítsd kérlek, mit szeretnél.',
       )
+      setCreateMessage('')
       return
     }
 
@@ -788,6 +789,7 @@ export default function App() {
             ? `Több egyező nyitott ügyet találtam. Pontosítsd, melyikre gondolsz:\n• ${labels}`
             : 'Több egyező nyitott ügyet találtam. Kérlek, pontosíts.',
         )
+        setCreateMessage('')
         return
       }
 
@@ -795,6 +797,7 @@ export default function App() {
         setAssistantAnswer(
           data.prompt ?? 'Ez az esemény még jövőbeli. Írd meg, mikor történt meg valójában.',
         )
+        setCreateMessage('')
         return
       }
 
@@ -843,6 +846,7 @@ export default function App() {
         setAssistantAnswer(
           data.error ?? 'Megtaláltam az ügyet. Mondd meg, mire szeretnéd módosítani.',
         )
+        setCreateMessage('')
         return
       }
 
@@ -884,6 +888,7 @@ export default function App() {
             ? `Több egyező nyitott ügyet találtam. Pontosítsd, melyiket töröljem:\n• ${labels}`
             : 'Több egyező nyitott ügyet találtam. Kérlek, pontosíts.',
         )
+        setCreateMessage('')
         return
       }
 
@@ -923,6 +928,7 @@ export default function App() {
 
     if (data?.status === 'duplicate') {
       setCreateError(data.message ?? 'Ez az ügy már szerepel a nyitott ügyek között.')
+      setCreateMessage('')
       return
     }
 
