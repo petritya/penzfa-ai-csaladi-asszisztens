@@ -157,6 +157,9 @@ export default function App() {
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null)
+  const [resendBusy, setResendBusy] = useState(false)
+  const [resendMessage, setResendMessage] = useState<string | null>(null)
   const [emailJustConfirmed, setEmailJustConfirmed] = useState(() =>
     new URLSearchParams(window.location.search).get('email_confirmed') === '1',
   )
@@ -1172,8 +1175,8 @@ export default function App() {
     }
 
     if (mode === 'sign-up' && !result.data.session) {
-      setMessage(`Már csak egy lépés. Küldtünk egy megerősítő e-mailt ide: ${email}. Nyisd meg, és koppints az e-mail-cím megerősítésére.`)
-      setMode('sign-in')
+      setConfirmationEmail(email)
+      setResendMessage(null)
       setPassword('')
       return
     }
