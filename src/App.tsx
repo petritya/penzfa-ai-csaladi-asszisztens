@@ -55,7 +55,7 @@ type UserSettings = {
 }
 
 type PushContext = {
-  type: 'briefing' | 'reminder'
+  type: 'briefing' | 'reminder' | 'item'
   title: string
   message: string
 }
@@ -413,7 +413,7 @@ export default function App() {
 
     const url = new URL(window.location.href)
     const pushType = url.searchParams.get('push')
-    if (pushType !== 'briefing' && pushType !== 'reminder') return
+    if (pushType !== 'briefing' && pushType !== 'reminder' && pushType !== 'item') return
 
     const briefingDate = url.searchParams.get('date')
     const itemId = url.searchParams.get('item_id')
@@ -437,7 +437,10 @@ export default function App() {
       if (!error && data?.status === 'ok' && data?.message) {
         setPushContext({
           type: pushType,
-          title: String(data.title ?? (pushType === 'briefing' ? 'Reggeli briefing' : 'Emlékeztető')),
+          title: String(
+            data.title
+            ?? (pushType === 'briefing' ? 'Reggeli briefing' : pushType === 'reminder' ? 'Emlékeztető' : 'Ügy'),
+          ),
           message: String(data.message),
         })
       }
