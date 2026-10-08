@@ -207,6 +207,7 @@ export default function App() {
   const [pendingOwnerInvitation, setPendingOwnerInvitation] = useState(false)
   const [invitationFamilyName, setInvitationFamilyName] = useState<string | null>(null)
   const [invitationDisplayName, setInvitationDisplayName] = useState('')
+  const [invitationPassword, setInvitationPassword] = useState('')
   const [invitationBusy, setInvitationBusy] = useState(false)
   const [invitationError, setInvitationError] = useState<string | null>(null)
 
@@ -804,10 +805,20 @@ export default function App() {
     if (!supabase) return
 
     const displayName = invitationDisplayName.trim()
-    if (!displayName) return
+    if (!displayName || invitationPassword.length < 6) return
 
     setInvitationBusy(true)
     setInvitationError(null)
+
+    const { error: passwordError } = await supabase.auth.updateUser({
+      password: invitationPassword,
+    })
+
+    if (passwordError) {
+      setInvitationBusy(false)
+      setInvitationError(passwordError.message)
+      return
+    }
 
     const { data, error } = await supabase.functions.invoke('core', {
       body: {
@@ -826,6 +837,7 @@ export default function App() {
     setPendingOwnerInvitation(false)
     setInvitationFamilyName(null)
     setInvitationDisplayName('')
+    setInvitationPassword('')
     setFamilyRefreshKey((value) => value + 1)
   }
 
@@ -1617,10 +1629,27 @@ export default function App() {
                   />
                 </label>
 
+                <label>
+                  Jelszó
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    value={invitationPassword}
+                    onChange={(event) => setInvitationPassword(event.target.value)}
+                    minLength={6}
+                    placeholder="Legalább 6 karakter"
+                    required
+                  />
+                </label>
+
                 <button
                   className="primary-button"
                   type="submit"
-                  disabled={invitationBusy || !invitationDisplayName.trim()}
+                  disabled={
+                    invitationBusy
+                    || !invitationDisplayName.trim()
+                    || invitationPassword.length < 6
+                  }
                 >
                   {invitationBusy ? 'Csatlakozás…' : 'Csatlakozás a családhoz'}
                 </button>
