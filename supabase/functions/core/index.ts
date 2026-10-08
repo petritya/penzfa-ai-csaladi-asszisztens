@@ -1897,6 +1897,49 @@ Deno.serve(async (req) => {
       })
     }
 
+    if (body?.action === 'add_managed_member') {
+      const displayName = String(body?.display_name ?? '').trim()
+      if (!displayName) {
+        return json({ error: 'Add meg a családtag nevét.' }, 400)
+      }
+
+      const { data: existingMembers, error: existingMembersError } = await db
+        .from('family_members')
+        .select('id, display_name')
+        .eq('family_id', familyId)
+
+      if (existingMembersError) throw existingMembersError
+
+      const duplicate = (existingMembers ?? []).some(
+        (member) => normalize(member.display_name) === normalize(displayName),
+      )
+      if (duplicate) {
+        return json({ error: 'Ilyen nevű családtag már szerepel a családban.' }, 409)
+      }
+
+      const { data: member, error: memberError } = await db
+        .from('family_members')
+        .insert({
+          family_id: familyId,
+          user_id: null,
+          display_name: displayName,
+          member_kind: 'managed',
+        })
+        .select('id, family_id, user_id, display_name, member_kind')
+        .single()
+
+      if (memberError) throw memberError
+
+      await db.from('activity_log').insert({
+        family_id: familyId,
+        actor_user_id: user.id,
+        action: 'managed_member_added',
+        details: { member_id: member.id, display_name: member.display_name },
+      })
+
+      return json({ status: 'created', member })
+    }
+
     if (body?.action === 'invite_second_owner') {
       const email = String(body?.email ?? '').trim().toLowerCase()
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
