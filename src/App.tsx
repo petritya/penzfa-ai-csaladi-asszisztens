@@ -414,6 +414,7 @@ export default function App() {
     const url = new URL(window.location.href)
     const pushType = url.searchParams.get('push')
     if (pushType !== 'briefing' && pushType !== 'reminder' && pushType !== 'item') return
+    const resolvedPushType: PushContext['type'] = pushType
 
     const briefingDate = url.searchParams.get('date')
     const itemId = url.searchParams.get('item_id')
@@ -425,7 +426,7 @@ export default function App() {
       const { data, error } = await supabase!.functions.invoke('core', {
         body: {
           action: 'push_context',
-          type: pushType,
+          type: resolvedPushType,
           briefing_date: briefingDate,
           item_id: itemId,
         },
@@ -436,10 +437,10 @@ export default function App() {
 
       if (!error && data?.status === 'ok' && data?.message) {
         setPushContext({
-          type: pushType,
+          type: resolvedPushType,
           title: String(
             data.title
-            ?? (pushType === 'briefing' ? 'Reggeli briefing' : pushType === 'reminder' ? 'Emlékeztető' : 'Ügy'),
+            ?? (resolvedPushType === 'briefing' ? 'Reggeli briefing' : resolvedPushType === 'reminder' ? 'Emlékeztető' : 'Ügy'),
           ),
           message: String(data.message),
         })
