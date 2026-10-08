@@ -1779,8 +1779,8 @@ export default function App() {
                   <p>{createDraft.confirmation_text}</p>
                   {createDraft.due_date && !createDraft.first_reminder_at && (
                     <p className="confirmation-hint">
-                      Ha kérsz emlékeztetőt, mondd vagy írd be fent például: „előző nap 18-kor”,
-                      majd nyomd meg a Küldést.
+                      Az ügy többi adata megmarad. Mondd vagy írd be csak az emlékeztetést,
+                      például: „aznap 18-kor” vagy „előző nap 18-kor”, majd nyomd meg a Küldést.
                     </p>
                   )}
                   <div className="confirmation-actions">
