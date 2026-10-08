@@ -888,6 +888,12 @@ export default function App() {
         return
       }
 
+      if (data?.status === 'reminder_needs_clarification' && data?.draft) {
+        setCreateDraft(data.draft as CreateDraft)
+        setCreateError(data.error ?? 'Az emlékeztetés időpontját még pontosítani kell.')
+        return
+      }
+
       setCreateError(data?.error ?? 'Az emlékeztetés időpontját nem sikerült értelmezni.')
       return
     }
@@ -1121,6 +1127,13 @@ export default function App() {
 
     if (data?.status === 'needs_confirmation' && data?.draft) {
       setCreateDraft(data.draft as CreateDraft)
+      setCreateMessage('')
+      return
+    }
+
+    if (data?.status === 'reminder_needs_clarification' && data?.draft) {
+      setCreateDraft(data.draft as CreateDraft)
+      setCreateError(data.error ?? 'Az emlékeztetés időpontját még pontosítani kell.')
       setCreateMessage('')
       return
     }
