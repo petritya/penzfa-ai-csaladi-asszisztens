@@ -199,6 +199,17 @@ export default function App() {
   const [setupError, setSetupError] = useState<string | null>(null)
   const [setupMessage, setSetupMessage] = useState<string | null>(null)
 
+  const [newFamilyMemberName, setNewFamilyMemberName] = useState('')
+  const [secondOwnerInviteEmail, setSecondOwnerInviteEmail] = useState('')
+  const [familyActionBusy, setFamilyActionBusy] = useState(false)
+  const [familyActionError, setFamilyActionError] = useState<string | null>(null)
+  const [familyActionMessage, setFamilyActionMessage] = useState<string | null>(null)
+  const [pendingOwnerInvitation, setPendingOwnerInvitation] = useState(false)
+  const [invitationFamilyName, setInvitationFamilyName] = useState<string | null>(null)
+  const [invitationDisplayName, setInvitationDisplayName] = useState('')
+  const [invitationBusy, setInvitationBusy] = useState(false)
+  const [invitationError, setInvitationError] = useState<string | null>(null)
+
   const [pushStatus, setPushStatus] = useState<PushStatus>('idle')
   const [pushAppId, setPushAppId] = useState<string | null>(null)
   const [pushBusy, setPushBusy] = useState(false)
@@ -366,6 +377,21 @@ export default function App() {
       if (!members || members.length === 0) {
         setFamilyName(null)
         setFamilyMembers([])
+
+        const { data: setupStatus, error: setupStatusError } = await activeClient.functions.invoke('core', {
+          body: { action: 'setup_status' },
+        })
+
+        if (cancelled) return
+
+        if (setupStatusError) {
+          setFamilyError(setupStatusError.message)
+          setFamilyLoading(false)
+          return
+        }
+
+        setPendingOwnerInvitation(Boolean(setupStatus?.pending_owner_invitation))
+        setInvitationFamilyName(setupStatus?.invitation_family_name ?? null)
         setFamilyLoading(false)
         return
       }
@@ -386,6 +412,8 @@ export default function App() {
         return
       }
 
+      setPendingOwnerInvitation(false)
+      setInvitationFamilyName(null)
       setFamilyName(family.name)
       setFamilyMembers(
         members
@@ -709,6 +737,96 @@ export default function App() {
     }
 
     setSetupError(data?.error ?? 'A családot most nem sikerült létrehozni.')
+  }
+
+  async function handleAddFamilyMember(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!supabase) return
+
+    const displayName = newFamilyMemberName.trim()
+    if (!displayName) return
+
+    setFamilyActionBusy(true)
+    setFamilyActionError(null)
+    setFamilyActionMessage(null)
+
+    const { data, error } = await supabase.functions.invoke('core', {
+      body: {
+        action: 'add_managed_member',
+        display_name: displayName,
+      },
+    })
+
+    setFamilyActionBusy(false)
+
+    if (error || data?.error) {
+      setFamilyActionError(error?.message ?? data?.error ?? 'A családtagot most nem sikerült hozzáadni.')
+      return
+    }
+
+    setNewFamilyMemberName('')
+    setFamilyActionMessage(`${displayName} hozzáadva a családhoz.`)
+    setFamilyRefreshKey((value) => value + 1)
+  }
+
+  async function handleInviteSecondOwner(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!supabase) return
+
+    const email = secondOwnerInviteEmail.trim()
+    if (!email) return
+
+    setFamilyActionBusy(true)
+    setFamilyActionError(null)
+    setFamilyActionMessage(null)
+
+    const { data, error } = await supabase.functions.invoke('core', {
+      body: {
+        action: 'invite_second_owner',
+        email,
+        redirect_to: window.location.origin,
+      },
+    })
+
+    setFamilyActionBusy(false)
+
+    if (error || data?.error) {
+      setFamilyActionError(error?.message ?? data?.error ?? 'A meghívót most nem sikerült elküldeni.')
+      return
+    }
+
+    setSecondOwnerInviteEmail('')
+    setFamilyActionMessage('Meghívó elküldve a másik felnőttnek.')
+  }
+
+  async function handleAcceptOwnerInvitation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!supabase) return
+
+    const displayName = invitationDisplayName.trim()
+    if (!displayName) return
+
+    setInvitationBusy(true)
+    setInvitationError(null)
+
+    const { data, error } = await supabase.functions.invoke('core', {
+      body: {
+        action: 'accept_owner_invitation',
+        display_name: displayName,
+      },
+    })
+
+    setInvitationBusy(false)
+
+    if (error || data?.error) {
+      setInvitationError(error?.message ?? data?.error ?? 'A családhoz csatlakozás most nem sikerült.')
+      return
+    }
+
+    setPendingOwnerInvitation(false)
+    setInvitationFamilyName(null)
+    setInvitationDisplayName('')
+    setFamilyRefreshKey((value) => value + 1)
   }
 
   async function transcribeVoiceRecording(audio: Blob, mimeType: string) {
@@ -1479,7 +1597,40 @@ export default function App() {
             </p>
           )}
 
-          {!familyLoading && !familyName && !familyError && (
+          {!familyLoading && !familyName && !familyError && pendingOwnerInvitation && (
+            <section className="setup-block" aria-label="Csatlakozás a családhoz">
+              <h2>Csatlakozás a családhoz</h2>
+              <p className="capture-help">
+                Meghívást kaptál{invitationFamilyName ? ` a(z) ${invitationFamilyName} családhoz` : ' egy családhoz'}.
+                Add meg, hogyan szólítsunk.
+              </p>
+
+              <form className="setup-form" onSubmit={handleAcceptOwnerInvitation}>
+                <label>
+                  Hogyan szólítsunk?
+                  <input
+                    type="text"
+                    value={invitationDisplayName}
+                    onChange={(event) => setInvitationDisplayName(event.target.value)}
+                    placeholder="Például: Anna"
+                    required
+                  />
+                </label>
+
+                <button
+                  className="primary-button"
+                  type="submit"
+                  disabled={invitationBusy || !invitationDisplayName.trim()}
+                >
+                  {invitationBusy ? 'Csatlakozás…' : 'Csatlakozás a családhoz'}
+                </button>
+              </form>
+
+              {invitationError && <p className="notice error">{invitationError}</p>}
+            </section>
+          )}
+
+          {!familyLoading && !familyName && !familyError && !pendingOwnerInvitation && (
             <section className="setup-block" aria-label="Család létrehozása">
               <h2>Család létrehozása</h2>
               <p className="capture-help">
@@ -1831,11 +1982,54 @@ export default function App() {
                   <li key={`${member.family_id}-${member.display_name}`}>
                     <span>{member.display_name}</span>
                     <small>
-                      {member.member_kind === 'active' ? 'Aktív felhasználó' : 'Kezelt családtag'}
+                      {member.member_kind === 'active' ? 'Felnőtt felhasználó' : 'Családtag'}
                     </small>
                   </li>
                 ))}
               </ul>
+
+              <form className="setup-form" onSubmit={handleAddFamilyMember}>
+                <label>
+                  Új családtag
+                  <input
+                    type="text"
+                    value={newFamilyMemberName}
+                    onChange={(event) => setNewFamilyMemberName(event.target.value)}
+                    placeholder="Például: Bence"
+                  />
+                </label>
+                <button
+                  className="secondary-button"
+                  type="submit"
+                  disabled={familyActionBusy || !newFamilyMemberName.trim()}
+                >
+                  Családtag hozzáadása
+                </button>
+              </form>
+
+              {familyMembers.filter((member) => member.member_kind === 'active').length < 2 && (
+                <form className="setup-form" onSubmit={handleInviteSecondOwner}>
+                  <label>
+                    Másik felnőtt meghívása
+                    <input
+                      type="email"
+                      value={secondOwnerInviteEmail}
+                      onChange={(event) => setSecondOwnerInviteEmail(event.target.value)}
+                      placeholder="E-mail-cím"
+                    />
+                  </label>
+                  <button
+                    className="secondary-button"
+                    type="submit"
+                    disabled={familyActionBusy || !secondOwnerInviteEmail.trim()}
+                  >
+                    Meghívó küldése
+                  </button>
+                </form>
+              )}
+
+              {familyActionMessage && <p className="notice success">{familyActionMessage}</p>}
+              {familyActionError && <p className="notice error">{familyActionError}</p>}
             </details>
           )}
 
