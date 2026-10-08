@@ -1459,7 +1459,7 @@ export default function App() {
       <main className="shell">
         <section className="card">
           <header className="app-header">
-            <h1>{familyName ?? 'Belépve'}</h1>
+            <h1>{familyName ?? 'Kezdjük a beállítást'}</h1>
             <p className="lead">
               {familyLoading
                 ? 'Család betöltése…'
@@ -1467,7 +1467,7 @@ export default function App() {
                   ? activeUserMember
                     ? `${greeting}, ${activeUserMember.display_name}!`
                     : `${greeting}!`
-                  : 'Ehhez a felhasználóhoz még nincs család rendelve.'}
+                  : 'Két adat kell az induláshoz.'}
             </p>
           </header>
 
@@ -1475,7 +1475,7 @@ export default function App() {
 
           {emailJustConfirmed && !familyLoading && !familyName && !familyError && (
             <p className="notice success">
-              E-mail-cím megerősítve. Állítsuk be a családodat.
+              E-mail-cím megerősítve.
             </p>
           )}
 
@@ -1483,7 +1483,7 @@ export default function App() {
             <section className="setup-block" aria-label="Család létrehozása">
               <h2>Család létrehozása</h2>
               <p className="capture-help">
-                Elsőként add meg, hogyan hívjuk a családot és téged. A többi mező opcionális.
+                Add meg a család nevét és azt, hogyan szólítsunk. A többit később is beállíthatod.
               </p>
 
               <form className="setup-form" onSubmit={handleFamilySetup}>
@@ -1493,18 +1493,18 @@ export default function App() {
                     type="text"
                     value={setupFamilyName}
                     onChange={(event) => setSetupFamilyName(event.target.value)}
-                    placeholder="Például: Család"
+                    placeholder="Például: Kovács család"
                     required
                   />
                 </label>
 
                 <label>
-                  Saját megszólítás
+                  Hogyan szólítsunk?
                   <input
                     type="text"
                     value={setupDisplayName}
                     onChange={(event) => setSetupDisplayName(event.target.value)}
-                    placeholder="Például: Apa"
+                    placeholder="Például: Anna"
                     required
                   />
                 </label>
