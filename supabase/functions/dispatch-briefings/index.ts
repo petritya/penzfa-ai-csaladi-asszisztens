@@ -90,7 +90,12 @@ function localDateTimeToUtcIso(dateIso: string, time: string, timeZone: string) 
   return new Date(guess).toISOString()
 }
 
-async function sendOneSignalPush(userId: string, title: string, message: string) {
+async function sendOneSignalPush(
+  userId: string,
+  title: string,
+  message: string,
+  launchUrl?: string,
+) {
   const appId = Deno.env.get('ONESIGNAL_APP_ID')
   const restApiKey = Deno.env.get('ONESIGNAL_REST_API_KEY')
 
@@ -110,6 +115,7 @@ async function sendOneSignalPush(userId: string, title: string, message: string)
       target_channel: 'push',
       headings: { en: title },
       contents: { en: message },
+      ...(launchUrl ? { url: launchUrl } : {}),
     }),
   })
 
@@ -301,10 +307,15 @@ Deno.serve(async (req) => {
 
       if (runError) throw runError
 
+      const appUrl = Deno.env.get('APP_URL')
+        ?? 'https://penzfa-ai-csaladi-asszisztens.petritya.workers.dev'
+      const launchUrl = `${appUrl}/?push=briefing&date=${encodeURIComponent(local.date)}`
+
       const delivery = await sendOneSignalPush(
         settings.user_id,
         'Pénzfa – reggeli briefing',
         message,
+        launchUrl,
       )
 
       if (!delivery.sent) {
