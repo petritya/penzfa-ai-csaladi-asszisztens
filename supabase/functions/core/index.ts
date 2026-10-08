@@ -1393,6 +1393,75 @@ async function interpretQueryWithOpenAI(
   return JSON.parse(outputText) as QueryInterpretation
 }
 
+async function findSemanticQueryCandidateIds(
+  message: string,
+  items: Array<{ id: string; title: string; notes?: string | null }>,
+) {
+  if (!items.length) return [] as string[]
+
+  const apiKey = Deno.env.get('OPENAI_API_KEY')
+  if (!apiKey) return [] as string[]
+
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'gpt-5.6-luna',
+      instructions: [
+        'Te egy magyar nyelvű keresési pontosító réteg vagy.',
+        'A felhasználó kifejezéséhez válaszd ki azokat a meglévő ügyeket, amelyek jelentésük alapján életszerűen megfelelhetnek.',
+        'Csak a megadott azonosítókból válassz. Ne találj ki új ügyet.',
+        'Általános kategória és konkrét szolgáltatónév is lehet kapcsolatban, például a "telefon számla" lehet Telekom vagy Vodafone számla.',
+        'Legfeljebb 5 azonosítót adj vissza. Ha nincs érdemi szemantikai kapcsolat, adj vissza üres listát.',
+      ].join('\n'),
+      input: JSON.stringify({
+        query: message,
+        candidates: items.slice(0, 80).map((item) => ({
+          id: item.id,
+          title: item.title,
+          notes: item.notes ?? null,
+        })),
+      }),
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'semantic_query_candidates',
+          strict: true,
+          schema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              candidate_ids: {
+                type: 'array',
+                maxItems: 5,
+                items: { type: 'string' },
+              },
+            },
+            required: ['candidate_ids'],
+          },
+        },
+      },
+    }),
+  })
+
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) return [] as string[]
+
+  const outputText = extractOutputText(data)
+  if (!outputText) return [] as string[]
+
+  try {
+    const parsed = JSON.parse(outputText) as { candidate_ids?: string[] }
+    const allowed = new Set(items.map((item) => item.id))
+    return (parsed.candidate_ids ?? []).filter((id) => allowed.has(id))
+  } catch {
+    return [] as string[]
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return json({ error: 'Csak POST kérés támogatott.' }, 405)
@@ -1945,6 +2014,77 @@ Deno.serve(async (req) => {
       return json({ status: 'updated', settings })
     }
 
+    if (body?.action === 'push_context') {
+      const type = String(body?.type ?? '').trim()
+
+      if (type === 'briefing') {
+        const briefingDate = String(body?.briefing_date ?? '').trim()
+        if (!/^20\d{2}-\d{2}-\d{2}$/.test(briefingDate)) {
+          return json({ error: 'Hiányzó vagy hibás briefing dátum.' }, 400)
+        }
+
+        const { data: run, error: runError } = await db
+          .from('briefing_runs')
+          .select('message, briefing_date, status')
+          .eq('user_id', user.id)
+          .eq('family_id', familyId)
+          .eq('briefing_date', briefingDate)
+          .maybeSingle()
+
+        if (runError) throw runError
+        if (!run?.message) {
+          return json({ error: 'Ezt a briefinget nem találtam.' }, 404)
+        }
+
+        return json({
+          status: 'ok',
+          type: 'briefing',
+          title: 'Reggeli briefing',
+          message: run.message,
+          briefing_date: run.briefing_date,
+        })
+      }
+
+      if (type === 'reminder') {
+        const itemId = String(body?.item_id ?? '').trim()
+        if (!itemId) return json({ error: 'Hiányzó ügyazonosító.' }, 400)
+
+        const { data: item, error: itemError } = await db
+          .from('items')
+          .select('id, title, due_date, due_time, status, subject_member_id, responsible_user_id')
+          .eq('id', itemId)
+          .eq('family_id', familyId)
+          .eq('responsible_user_id', user.id)
+          .maybeSingle()
+
+        if (itemError) throw itemError
+        if (!item) return json({ error: 'Ezt az emlékeztetett ügyet nem találtam.' }, 404)
+
+        const { data: subject } = item.subject_member_id
+          ? await db
+              .from('family_members')
+              .select('display_name')
+              .eq('id', item.subject_member_id)
+              .eq('family_id', familyId)
+              .maybeSingle()
+          : { data: null }
+
+        const subjectPrefix = subject?.display_name ? `${subject.display_name}: ` : ''
+        const dateText = item.due_date ? formatHungarianDate(item.due_date) : 'dátum nélkül'
+        const timeText = item.due_time ? ` ${String(item.due_time).slice(0, 5)}` : ''
+
+        return json({
+          status: 'ok',
+          type: 'reminder',
+          title: 'Emlékeztető',
+          message: `${subjectPrefix}${item.title} – ${dateText}${timeText}.`,
+          item_id: item.id,
+        })
+      }
+
+      return json({ error: 'Ismeretlen push típus.' }, 400)
+    }
+
     if (body?.action === 'query_items') {
       const message = String(body?.message ?? '').trim()
       if (!message) return json({ error: 'A kérdés nem lehet üres.' }, 400)
@@ -2061,7 +2201,7 @@ Deno.serve(async (req) => {
             .filter((token) => token.length >= 2)
         : []
 
-      const filtered = ownershipFiltered.filter((item) => {
+      let filtered = ownershipFiltered.filter((item) => {
         if (keywordTokens.length) {
           const haystack = normalize(`${item.title} ${item.notes ?? ''}`)
           if (!keywordTokens.every((token) => haystack.includes(token))) return false
@@ -2074,6 +2214,22 @@ Deno.serve(async (req) => {
 
         return true
       })
+
+      let semanticFallbackUsed = false
+      if (!filtered.length && keywordTokens.length) {
+        const dateEligible = ownershipFiltered.filter((item) => {
+          if (!dateRange) return true
+          const itemDate = queryItemDate(item, timeZone)
+          return Boolean(itemDate && itemDate >= dateRange.start && itemDate <= dateRange.end)
+        })
+
+        const candidateIds = await findSemanticQueryCandidateIds(message, dateEligible)
+        if (candidateIds.length) {
+          const candidateSet = new Set(candidateIds)
+          filtered = dateEligible.filter((item) => candidateSet.has(item.id))
+          semanticFallbackUsed = true
+        }
+      }
 
       const asksForLatestDone = interpretation.status === 'done'
         && /\b(utoljara|legutobb|legutobbi)\b/.test(normalize(message))
@@ -2206,6 +2362,16 @@ Deno.serve(async (req) => {
           ),
         }
       })
+
+      if (semanticFallbackUsed && resultItems.length > 1) {
+        return json({
+          status: 'choose_target',
+          count: resultItems.length,
+          answer: `Nem találtam pontos szöveges egyezést. Ezek közül melyikre gondoltál?`,
+          items: resultItems,
+          interpretation,
+        })
+      }
 
       const lines = resultItems.map((item) => item.label)
 
@@ -2408,7 +2574,7 @@ Deno.serve(async (req) => {
           : ''
         confirmationText = `${subjectText}${cleanTitle} – ${dateText}${timeText}.${responsibleText} Emlékeztetés: ${reminderDateText}${reminderClockText ? ` ${reminderClockText}` : ''}. Rögzítsem?`
       } else if (dueDate) {
-        confirmationText = `${subjectText}${cleanTitle} – ${dateText}${timeText}.${responsibleText} Emlékeztetőt nem adtál meg, ezért csak az esedékesség napjának reggeli briefingjében szólok. Így rögzítsem?`
+        confirmationText = `${subjectText}${cleanTitle} – ${dateText}${timeText}.${responsibleText} Emlékeztetőt nem adtál meg. Ha szeretnél, diktáld vagy írd be külön az emlékeztetés idejét; egyébként rögzítheted emlékeztető nélkül.`
       } else {
         confirmationText = `${subjectText}${cleanTitle}.${responsibleText} Dátumot és emlékeztetőt nem adtál meg, ezért automatikus értesítés nem készül. Így rögzítsem?`
       }
@@ -2457,6 +2623,16 @@ Deno.serve(async (req) => {
 
       if (!draft || !draft.title || !draft.item_type || !draft.due_date) {
         return json({ error: 'Ehhez az ügyhöz előbb érvényes dátum szükséges.' }, 400)
+      }
+
+      const normalizedReminderPhrase = normalize(reminderPhrase)
+      if (
+        /\bnem\s+kerek\b/.test(normalizedReminderPhrase)
+        || /\bnem\s+kell\b.*\bemlekeztet/.test(normalizedReminderPhrase)
+        || /\bne\s+emlekeztess\b/.test(normalizedReminderPhrase)
+        || /\bemlekezteto\s+nelkul\b/.test(normalizedReminderPhrase)
+      ) {
+        return json({ status: 'no_reminder' })
       }
 
       const reminderOffsetDays = reminderDaysBefore(reminderPhrase)
@@ -2617,6 +2793,18 @@ Deno.serve(async (req) => {
         if (reminderError) {
           await db.from('items').delete().eq('id', item.id)
           throw reminderError
+        }
+      } else if (draft.due_date && body?.reminder_decision === 'none') {
+        const { error: reminderDecisionError } = await db.from('reminders').insert({
+          item_id: item.id,
+          first_reminder_at: null,
+          next_notification_at: null,
+          enabled: false,
+        })
+
+        if (reminderDecisionError) {
+          await db.from('items').delete().eq('id', item.id)
+          throw reminderDecisionError
         }
       }
 
