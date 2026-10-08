@@ -1623,7 +1623,9 @@ export default function App() {
             <section className="setup-block" aria-label="Csatlakozás a családhoz">
               <h2>Csatlakozás a családhoz</h2>
               <p className="capture-help">
-                Meghívást kaptál{invitationFamilyName ? ` a(z) ${invitationFamilyName} családhoz` : ' egy családhoz'}.
+                {invitationFamilyName
+                  ? `Meghívást kaptál ehhez a családhoz: ${invitationFamilyName}.`
+                  : 'Meghívást kaptál egy családhoz.'}
                 Add meg, hogyan szólítsunk.
               </p>
 
