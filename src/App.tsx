@@ -335,6 +335,16 @@ export default function App() {
   }, [resendCooldown])
 
   useEffect(() => {
+    if (!familyActionMessage) return
+
+    const timer = window.setTimeout(() => {
+      setFamilyActionMessage(null)
+    }, 5000)
+
+    return () => window.clearTimeout(timer)
+  }, [familyActionMessage])
+
+  useEffect(() => {
     if (!session || !emailJustConfirmed) return
 
     const url = new URL(window.location.href)
