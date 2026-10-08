@@ -54,6 +54,12 @@ type UserSettings = {
   notify_partner_on_complete: boolean
 }
 
+type PushContext = {
+  type: 'briefing' | 'reminder'
+  title: string
+  message: string
+}
+
 type QueryResultItem = {
   id: string
   title: string
@@ -225,6 +231,8 @@ export default function App() {
   const [voiceListening, setVoiceListening] = useState(false)
   const [voiceTranscribing, setVoiceTranscribing] = useState(false)
   const [voiceError, setVoiceError] = useState<string | null>(null)
+  const [pushContext, setPushContext] = useState<PushContext | null>(null)
+  const [pushContextLoading, setPushContextLoading] = useState(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
@@ -253,6 +261,8 @@ export default function App() {
     setVoiceListening(false)
     setVoiceTranscribing(false)
     setVoiceError(null)
+    setPushContext(null)
+    setPushContextLoading(false)
   }, [session?.user.id])
 
   useEffect(() => {
@@ -397,6 +407,53 @@ export default function App() {
       cancelled = true
     }
   }, [session, familyRefreshKey])
+
+  useEffect(() => {
+    if (!supabase || !session || !familyName) return
+
+    const url = new URL(window.location.href)
+    const pushType = url.searchParams.get('push')
+    if (pushType !== 'briefing' && pushType !== 'reminder') return
+
+    const briefingDate = url.searchParams.get('date')
+    const itemId = url.searchParams.get('item_id')
+    let cancelled = false
+
+    async function loadPushContext() {
+      setPushContextLoading(true)
+
+      const { data, error } = await supabase!.functions.invoke('core', {
+        body: {
+          action: 'push_context',
+          type: pushType,
+          briefing_date: briefingDate,
+          item_id: itemId,
+        },
+      })
+
+      if (cancelled) return
+      setPushContextLoading(false)
+
+      if (!error && data?.status === 'ok' && data?.message) {
+        setPushContext({
+          type: pushType,
+          title: String(data.title ?? (pushType === 'briefing' ? 'Reggeli briefing' : 'Emlékeztető')),
+          message: String(data.message),
+        })
+      }
+
+      url.searchParams.delete('push')
+      url.searchParams.delete('date')
+      url.searchParams.delete('item_id')
+      window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+    }
+
+    void loadPushContext()
+
+    return () => {
+      cancelled = true
+    }
+  }, [session?.user.id, familyName])
 
   useEffect(() => {
     if (!supabase || !session || !familyName) {
@@ -675,7 +732,10 @@ export default function App() {
       }
 
       setCreateMessage(String(data.text).trim())
-      setCreateDraft(null)
+      const addingReminderToDraft = Boolean(
+        createDraft?.due_date && !createDraft.first_reminder_at,
+      )
+      if (!addingReminderToDraft) setCreateDraft(null)
       setCompleteDraft(null)
       setUpdateDraft(null)
       setDeleteDraft(null)
@@ -714,7 +774,10 @@ export default function App() {
     try {
       setVoiceError(null)
       setCreateMessage('')
-      setCreateDraft(null)
+      const addingReminderToDraft = Boolean(
+        createDraft?.due_date && !createDraft.first_reminder_at,
+      )
+      if (!addingReminderToDraft) setCreateDraft(null)
       setCompleteDraft(null)
       setUpdateDraft(null)
       setDeleteDraft(null)
@@ -788,6 +851,43 @@ export default function App() {
     const message = createMessage.trim()
     if (!message) return
 
+    if (createDraft?.due_date && !createDraft.first_reminder_at) {
+      setCreateBusy(true)
+      setCreateError(null)
+      setCreateSuccess(null)
+      setVoiceError(null)
+
+      const { data, error } = await supabase.functions.invoke('core', {
+        body: {
+          action: 'add_create_reminder',
+          draft: createDraft,
+          reminder_phrase: message,
+        },
+      })
+
+      setCreateBusy(false)
+      setCreateMessage('')
+
+      if (error) {
+        setCreateError(error.message)
+        return
+      }
+
+      if (data?.status === 'no_reminder') {
+        await confirmCreateDraft(createDraft, 'none')
+        return
+      }
+
+      if (data?.status === 'needs_confirmation' && data?.draft) {
+        setCreateDraft(data.draft as CreateDraft)
+        setCreateError(null)
+        return
+      }
+
+      setCreateError(data?.error ?? 'Az emlékeztetés időpontját nem sikerült értelmezni.')
+      return
+    }
+
     setCreateBusy(true)
     setCreateDraft(null)
     setCompleteDraft(null)
@@ -842,9 +942,11 @@ export default function App() {
 
       setQueryResults(structuredItems)
       setAssistantAnswer(
-        structuredItems.length
-          ? data?.summary ?? null
-          : data?.answer ?? data?.error ?? 'Nem találtam választ a kérdésre.',
+        data?.status === 'choose_target'
+          ? data?.answer ?? 'Több lehetséges ügyet találtam. Pontosítsd, melyikre gondolsz.'
+          : structuredItems.length
+            ? data?.summary ?? null
+            : data?.answer ?? data?.error ?? 'Nem találtam választ a kérdésre.',
       )
       setCreateMessage('')
       return
@@ -1128,8 +1230,11 @@ export default function App() {
     setCreateError(data?.error ?? 'Az ügyet most nem sikerült készre jelölni.')
   }
 
-  async function handleConfirmCreate() {
-    if (!supabase || !createDraft) return
+  async function confirmCreateDraft(
+    draft: CreateDraft,
+    reminderDecision: 'scheduled' | 'none',
+  ) {
+    if (!supabase) return
 
     setCreateBusy(true)
     setCreateError(null)
@@ -1138,7 +1243,8 @@ export default function App() {
     const { data, error } = await supabase.functions.invoke('core', {
       body: {
         action: 'confirm_create',
-        draft: createDraft,
+        draft,
+        reminder_decision: reminderDecision,
       },
     })
 
@@ -1150,7 +1256,7 @@ export default function App() {
     }
 
     if (data?.status === 'created') {
-      setCreateSuccess(`Rögzítve: ${data.item?.title ?? createDraft.title}`)
+      setCreateSuccess(`Rögzítve: ${data.item?.title ?? draft.title}`)
       setCreateMessage('')
       setCreateDraft(null)
 
@@ -1167,6 +1273,14 @@ export default function App() {
     }
 
     setCreateError(data?.error ?? 'Az ügyet most nem sikerült rögzíteni.')
+  }
+
+  async function handleConfirmCreate() {
+    if (!createDraft) return
+    await confirmCreateDraft(
+      createDraft,
+      createDraft.first_reminder_at ? 'scheduled' : 'none',
+    )
   }
 
   function handleCancelCreate() {
@@ -1405,6 +1519,29 @@ export default function App() {
             </section>
           )}
 
+          {familyName && pushContextLoading && (
+            <section className="push-context-card" aria-live="polite">
+              <strong>Értesítés betöltése…</strong>
+            </section>
+          )}
+
+          {familyName && pushContext && (
+            <section className="push-context-card" aria-label="Megnyitott értesítés">
+              <div className="push-context-header">
+                <strong>{pushContext.title}</strong>
+                <button
+                  className="push-context-close"
+                  type="button"
+                  onClick={() => setPushContext(null)}
+                  aria-label="Értesítés bezárása"
+                >
+                  ×
+                </button>
+              </div>
+              <p>{pushContext.message}</p>
+            </section>
+          )}
+
           {familyName && (
             <section className="capture-block capture-primary" aria-label="Kommunikáció">
               <h2>Mit intézzünk?</h2>
@@ -1623,6 +1760,12 @@ export default function App() {
                 <div className="confirmation-card">
                   <strong>Ezt értettem:</strong>
                   <p>{createDraft.confirmation_text}</p>
+                  {createDraft.due_date && !createDraft.first_reminder_at && (
+                    <p className="confirmation-hint">
+                      Ha kérsz emlékeztetőt, mondd vagy írd be fent például: „előző nap 18-kor”,
+                      majd nyomd meg a Küldést.
+                    </p>
+                  )}
                   <div className="confirmation-actions">
                     <button
                       className="primary-button"
@@ -1630,7 +1773,9 @@ export default function App() {
                       onClick={handleConfirmCreate}
                       disabled={createBusy}
                     >
-                      Igen, rögzítsd
+                      {createDraft.due_date && !createDraft.first_reminder_at
+                        ? 'Rögzítés emlékeztető nélkül'
+                        : 'Igen, rögzítsd'}
                     </button>
                     <button
                       className="secondary-button"
