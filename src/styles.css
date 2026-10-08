@@ -362,6 +362,48 @@ h2 {
   background: #fff;
 }
 
+.push-context-card {
+  margin: 0 0 18px;
+  padding: 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.push-context-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.push-context-close {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.push-context-card p {
+  margin: 10px 0 0;
+  white-space: pre-line;
+  line-height: 1.55;
+}
+
+.confirmation-hint {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
 .assistant-answer p {
   margin: 7px 0 0;
   white-space: pre-line;
@@ -760,9 +802,16 @@ h2 {
 }
 
 :root[data-theme='dark'] .assistant-answer,
-:root[data-theme='dark'] .confirmation-card {
+:root[data-theme='dark'] .confirmation-card,
+:root[data-theme='dark'] .push-context-card {
   background: #111827;
   border-color: #2b3a50;
+}
+
+:root[data-theme='dark'] .push-context-close,
+:root[data-theme='dark'] .confirmation-hint {
+  background: #1e293b;
+  color: #cbd5e1;
 }
 
 :root[data-theme='dark'] .capture-primary,
