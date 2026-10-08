@@ -126,6 +126,7 @@ async function sendOwnerInvite(
 async function sendAssignmentPush(
   userId: string,
   assignerName: string,
+  itemId: string,
   itemTitle: string,
   subjectName: string | null,
   dueDate: string | null,
@@ -156,6 +157,7 @@ async function sendAssignmentPush(
       target_channel: 'push',
       headings: { en: 'Pénzfa – új ügy' },
       contents: { en: message },
+      url: `${Deno.env.get('APP_URL') ?? 'https://penzfa-ai-csaladi-asszisztens.petritya.workers.dev'}/?push=item&item_id=${encodeURIComponent(itemId)}`,
     }),
   })
 
@@ -173,6 +175,7 @@ async function sendAssignmentPush(
 async function sendCompletionPush(
   userId: string,
   completerName: string,
+  itemId: string,
   itemTitle: string,
   subjectName: string | null,
 ) {
@@ -198,6 +201,7 @@ async function sendCompletionPush(
       target_channel: 'push',
       headings: { en: 'Pénzfa – ügy elintézve' },
       contents: { en: message },
+      url: `${Deno.env.get('APP_URL') ?? 'https://penzfa-ai-csaladi-asszisztens.petritya.workers.dev'}/?push=item&item_id=${encodeURIComponent(itemId)}`,
     }),
   })
 
@@ -2045,7 +2049,7 @@ Deno.serve(async (req) => {
         })
       }
 
-      if (type === 'reminder') {
+      if (type === 'reminder' || type === 'item') {
         const itemId = String(body?.item_id ?? '').trim()
         if (!itemId) return json({ error: 'Hiányzó ügyazonosító.' }, 400)
 
@@ -2075,8 +2079,8 @@ Deno.serve(async (req) => {
 
         return json({
           status: 'ok',
-          type: 'reminder',
-          title: 'Emlékeztető',
+          type,
+          title: type === 'reminder' ? 'Emlékeztető' : 'Ügy',
           message: `${subjectPrefix}${item.title} – ${dateText}${timeText}.`,
           item_id: item.id,
         })
@@ -2490,6 +2494,20 @@ Deno.serve(async (req) => {
         responsibleSettings?.briefing_time ?? briefingTime,
       ).slice(0, 5)
 
+      const interpretedReminderText = interpretation.reminder_phrase
+        ? normalize(interpretation.reminder_phrase)
+        : ''
+      const explicitNoReminder = Boolean(
+        interpretation.reminder_phrase
+        && (
+          /\bnem\s+kerek\b/.test(interpretedReminderText)
+          || /\bnem\s+kell\b.*\bemlekeztet/.test(interpretedReminderText)
+          || /\bne\s+emlekeztess\b/.test(interpretedReminderText)
+          || /\bemlekezteto\s+nelkul\b/.test(interpretedReminderText)
+        )
+      )
+      if (explicitNoReminder) interpretation.reminder_phrase = null
+
       const reminderOffsetDays = reminderDaysBefore(interpretation.reminder_phrase)
       let firstReminderAt: string | null = null
 
@@ -2816,6 +2834,7 @@ Deno.serve(async (req) => {
         const delivery = await sendAssignmentPush(
           responsibleUserId,
           activeMembership.display_name,
+          item.id,
           item.title,
           draft.subject_display_name,
           item.due_date,
@@ -4058,6 +4077,7 @@ Deno.serve(async (req) => {
         const delivery = await sendCompletionPush(
           partner.user_id,
           activeMembership.display_name,
+          updatedItem.id,
           updatedItem.title,
           subjectMember?.display_name ?? null,
         )
