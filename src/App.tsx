@@ -1337,6 +1337,18 @@ export default function App() {
     }
 
     if (mode === 'sign-up' && !result.data.session) {
+      const identities = result.data.user?.identities ?? []
+
+      if (identities.length === 0) {
+        setMode('sign-in')
+        setConfirmationEmail(null)
+        setResendMessage(null)
+        setErrorMessage(
+          'Ezzel az e-mail-címmel már regisztráltak. Lépj be a fiókodba.',
+        )
+        return
+      }
+
       setConfirmationEmail(email)
       setResendCooldown(60)
       setResendMessage(null)
