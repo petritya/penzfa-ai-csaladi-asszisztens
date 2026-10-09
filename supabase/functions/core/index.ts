@@ -3782,11 +3782,48 @@ Deno.serve(async (req) => {
         return targetTokens.some((token) => itemTitle.includes(token))
       })
 
-      const matches = exactTitleMatches.length
+      let matches = exactTitleMatches.length
         ? exactTitleMatches
         : strongestMessageMatches.length
           ? strongestMessageMatches
           : fuzzyMatches
+
+      const today = localDateInTimezone(timeZone)
+      const hasPreciseMatch = Boolean(
+        exactTitleMatches.length
+        || strongestMessageMatches.length
+        || targetDate
+        || responsibleUserId
+      )
+
+      if (!hasPreciseMatch && matches.length > 1) {
+        const recentMatches = matches.filter((item) =>
+          !item.due_date || item.due_date >= addDays(today, -7)
+        )
+        if (recentMatches.length) matches = recentMatches
+      }
+
+      matches.sort((a, b) => {
+        const aOtherOwner = !responsibleUserId
+          && Boolean(a.responsible_user_id)
+          && a.responsible_user_id !== user.id
+        const bOtherOwner = !responsibleUserId
+          && Boolean(b.responsible_user_id)
+          && b.responsible_user_id !== user.id
+
+        if (aOtherOwner !== bOtherOwner) return aOtherOwner ? 1 : -1
+
+        const aOverdue = Boolean(a.due_date && a.due_date < today)
+        const bOverdue = Boolean(b.due_date && b.due_date < today)
+        if (aOverdue !== bOverdue) return aOverdue ? 1 : -1
+
+        if (aOverdue && bOverdue) {
+          return String(b.due_date ?? '').localeCompare(String(a.due_date ?? ''))
+        }
+
+        return String(a.due_date ?? '9999-12-31')
+          .localeCompare(String(b.due_date ?? '9999-12-31'))
+      })
 
       const memberNameById = new Map((members ?? []).map((member) => [member.id, member.display_name]))
       const responsibleNameByUserId = new Map(
@@ -3827,7 +3864,6 @@ Deno.serve(async (req) => {
       }
 
       const candidate = candidates[0]
-      const today = localDateInTimezone(timeZone)
 
       if (candidate.item_type === 'event' && candidate.due_date && candidate.due_date > today) {
         return json({
