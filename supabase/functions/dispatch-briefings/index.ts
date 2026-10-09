@@ -263,7 +263,11 @@ Deno.serve(async (req) => {
           : null,
       }))
 
-      const overdue = items.filter((item) => item.due_date && item.due_date < local.date)
+      const overdue = items.filter((item) =>
+        item.due_date
+        && item.due_date < local.date
+        && daysBetween(item.due_date, local.date) <= 7
+      )
       const dueToday = items.filter((item) => item.due_date === local.date)
 
       const reminderToday = items.filter((item) => {
