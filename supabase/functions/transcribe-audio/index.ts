@@ -37,6 +37,34 @@ Deno.serve(async (req) => {
     const { data: authData, error: authError } = await authClient.auth.getUser()
     if (authError || !authData.user) return json({ error: 'Érvénytelen vagy lejárt munkamenet.' }, 401)
 
+    let openItemTitles = ''
+    try {
+      const { data: membership } = await authClient
+        .from('family_members')
+        .select('family_id')
+        .eq('user_id', authData.user.id)
+        .eq('member_kind', 'active')
+        .limit(1)
+        .maybeSingle()
+
+      if (membership?.family_id) {
+        const { data: openItems } = await authClient
+          .from('items')
+          .select('title')
+          .eq('family_id', membership.family_id)
+          .eq('status', 'open')
+          .order('created_at', { ascending: false })
+          .limit(25)
+
+        openItemTitles = (openItems ?? [])
+          .map((item) => String(item.title ?? '').trim())
+          .filter(Boolean)
+          .join('; ')
+      }
+    } catch {
+      openItemTitles = ''
+    }
+
     const form = await req.formData()
     const audio = form.get('file')
     const memberNames = String(form.get('member_names') ?? '').trim()
@@ -58,7 +86,9 @@ Deno.serve(async (req) => {
       [
         'Magyar nyelvű családi asszisztensnek diktált rövid teendők és kérdések.',
         memberNames ? `A családtagok pontos nevei: ${memberNames}.` : '',
+        openItemTitles ? `Aktuális nyitott ügyek címei, kizárólag akusztikai kontextusnak: ${openItemTitles}.` : '',
         'A családtagok nevét pontosan írd le.',
+        'A nyitott ügyek címei csak háttérszókincs: csak akkor használd őket, ha a hang alapján is hihetőek. Ne alakítsd át a beszédet azért, hogy valamelyik ügycímhez illeszkedjen.',
         'Gyakori időszavak és dátumszavak: ma, holnap, tegnap, hétfő, kedd, szerda, csütörtök, péntek, szombat, vasárnap, jövő héten.',
         'Gyakori időpontok: 8-kor, 9-kor, 10-kor, 16-kor, 18-kor. A kimondott számot pontosan írd le, ne következtess másik időpontra.',
         'A beszédet szó szerint írd át; ne javítsd át más jelentésű szóra és ne egészítsd ki találgatással.',
