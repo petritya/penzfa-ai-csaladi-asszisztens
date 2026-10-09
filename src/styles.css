@@ -416,10 +416,17 @@ h2 {
   margin-top: 10px;
 }
 
+.candidate-helper {
+  margin: 12px 2px 0;
+  color: #64748b;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
 .complete-candidates {
   display: grid;
   gap: 8px;
-  margin-top: 10px;
+  margin-top: 8px;
 }
 
 .complete-candidate-button {
@@ -907,6 +914,10 @@ h2 {
 
 :root[data-theme='dark'] .query-owner-name {
   color: #cbd5e1;
+}
+
+:root[data-theme='dark'] .candidate-helper {
+  color: #94a3b8;
 }
 
 :root[data-theme='dark'] .voice-button {
