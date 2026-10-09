@@ -98,6 +98,9 @@ type OneSignalClient = {
     appId: string
     serviceWorkerPath: string
     serviceWorkerParam: { scope: string }
+    welcomeNotification?: {
+      disable: boolean
+    }
   }) => Promise<void>
   login: (externalId: string) => Promise<void> | void
   logout: () => Promise<void> | void
@@ -133,6 +136,9 @@ function getOneSignalClient(appId: string) {
           appId,
           serviceWorkerPath: 'OneSignalSDKWorker.js',
           serviceWorkerParam: { scope: '/' },
+          welcomeNotification: {
+            disable: true,
+          },
         })
         resolve(oneSignal)
       } catch (error) {
