@@ -358,6 +358,26 @@ export default function App() {
   }, [familyActionMessage])
 
   useEffect(() => {
+    if (!createSuccess) return
+
+    const timer = window.setTimeout(() => {
+      setCreateSuccess(null)
+    }, 4500)
+
+    return () => window.clearTimeout(timer)
+  }, [createSuccess])
+
+  useEffect(() => {
+    if (!settingsMessage) return
+
+    const timer = window.setTimeout(() => {
+      setSettingsMessage(null)
+    }, 4500)
+
+    return () => window.clearTimeout(timer)
+  }, [settingsMessage])
+
+  useEffect(() => {
     if (!session || !emailJustConfirmed) return
 
     const url = new URL(window.location.href)
@@ -1145,7 +1165,7 @@ export default function App() {
         setCompleteCandidates(candidates)
         setAssistantAnswer(
           candidates.length
-            ? 'Több egyező nyitott ügyet találtam. Koppints arra, amelyiket készre jelöljem.'
+            ? null
             : 'Több egyező nyitott ügyet találtam. Kérlek, pontosíts.',
         )
         setCreateMessage('')
@@ -1941,7 +1961,11 @@ export default function App() {
               )}
 
               {completeCandidates.length > 0 && (
-                <div className="complete-candidates" aria-label="Lezárható találatok">
+                <>
+                  <p className="candidate-helper">
+                    Több egyező nyitott ügyet találtam. Koppints arra, amelyiket készre jelöljem.
+                  </p>
+                  <div className="complete-candidates" aria-label="Lezárható találatok">
                   {completeCandidates.map((candidate) => (
                     <button
                       className="complete-candidate-button"
@@ -1953,7 +1977,8 @@ export default function App() {
                       {candidate.label}
                     </button>
                   ))}
-                </div>
+                  </div>
+                </>
               )}
 
               {queryResults.length > 0 && (
