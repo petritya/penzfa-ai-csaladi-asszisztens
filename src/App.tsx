@@ -5,6 +5,14 @@ import { hasSupabaseConfig, supabase } from './lib/supabase'
 type AuthMode = 'sign-in' | 'sign-up'
 type AppearanceMode = 'system' | 'light' | 'dark'
 
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>
+  userChoice: Promise<{
+    outcome: 'accepted' | 'dismissed'
+    platform: string
+  }>
+}
+
 type FamilyMember = {
   id: string
   family_id: string
@@ -222,6 +230,15 @@ export default function App() {
   const [invitationBusy, setInvitationBusy] = useState(false)
   const [invitationError, setInvitationError] = useState<string | null>(null)
 
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null)
+  const [isStandalone, setIsStandalone] = useState(() => {
+    const navigatorWithStandalone = window.navigator as Navigator & { standalone?: boolean }
+    return window.matchMedia('(display-mode: standalone)').matches
+      || navigatorWithStandalone.standalone === true
+  })
+  const isIos = /iPad|iPhone|iPod/i.test(window.navigator.userAgent)
+    || (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1)
+
   const [pushStatus, setPushStatus] = useState<PushStatus>('idle')
   const [pushAppId, setPushAppId] = useState<string | null>(null)
   const [pushBusy, setPushBusy] = useState(false)
@@ -329,6 +346,38 @@ export default function App() {
     })
 
     return () => subscription.unsubscribe()
+  }, [])
+
+  useEffect(() => {
+    const displayMode = window.matchMedia('(display-mode: standalone)')
+
+    const syncStandaloneState = () => {
+      const navigatorWithStandalone = window.navigator as Navigator & { standalone?: boolean }
+      setIsStandalone(
+        displayMode.matches || navigatorWithStandalone.standalone === true,
+      )
+    }
+
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault()
+      setInstallPrompt(event as BeforeInstallPromptEvent)
+    }
+
+    const handleAppInstalled = () => {
+      setInstallPrompt(null)
+      setIsStandalone(true)
+    }
+
+    syncStandaloneState()
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+    window.addEventListener('appinstalled', handleAppInstalled)
+    displayMode.addEventListener('change', syncStandaloneState)
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+      window.removeEventListener('appinstalled', handleAppInstalled)
+      displayMode.removeEventListener('change', syncStandaloneState)
+    }
   }, [])
 
   useEffect(() => {
@@ -1624,6 +1673,14 @@ export default function App() {
     )
   }
 
+  async function handleInstallApp() {
+    if (!installPrompt) return
+
+    await installPrompt.prompt()
+    await installPrompt.userChoice
+    setInstallPrompt(null)
+  }
+
   async function handleSignOut() {
     if (!supabase) return
 
@@ -2262,6 +2319,40 @@ export default function App() {
                   </button>
                 </form>
               )}
+            </details>
+          )}
+
+          {familyName && !isStandalone && (
+            <details className="secondary-details">
+              <summary>Telepítés a telefonra</summary>
+              <section className="push-settings" aria-label="Telepítés a telefonra">
+                <div>
+                  <strong>AI családi asszisztens a kezdőképernyőn</strong>
+                  {installPrompt ? (
+                    <small>
+                      Telepítsd az alkalmazást, hogy a telefonodon önálló appként tudd megnyitni.
+                    </small>
+                  ) : isIos ? (
+                    <small>
+                      iPhone-on vagy iPaden Safari alatt: Megosztás → Hozzáadás a Főképernyőhöz.
+                    </small>
+                  ) : (
+                    <small>
+                      A böngésző menüjében válaszd a Telepítés vagy a Hozzáadás a kezdőképernyőhöz lehetőséget.
+                    </small>
+                  )}
+                </div>
+
+                {installPrompt && (
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={handleInstallApp}
+                  >
+                    Telepítés
+                  </button>
+                )}
+              </section>
             </details>
           )}
 
