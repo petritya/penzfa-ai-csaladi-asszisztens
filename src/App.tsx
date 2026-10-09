@@ -34,6 +34,17 @@ type CompleteDraft = {
   confirmation_text: string
 }
 
+type CompleteCandidate = {
+  id: string
+  title: string
+  label: string
+  due_date: string | null
+  due_time: string | null
+  responsible_display_name: string | null
+  subject_display_name: string | null
+  item_type?: 'task' | 'event' | 'deadline'
+}
+
 type UpdateDraft = {
   pending_action_id: string
   target_item_id: string
@@ -236,6 +247,7 @@ export default function App() {
   const [createError, setCreateError] = useState<string | null>(null)
   const [createSuccess, setCreateSuccess] = useState<string | null>(null)
   const [completeDraft, setCompleteDraft] = useState<CompleteDraft | null>(null)
+  const [completeCandidates, setCompleteCandidates] = useState<CompleteCandidate[]>([])
   const [updateDraft, setUpdateDraft] = useState<UpdateDraft | null>(null)
   const [deleteDraft, setDeleteDraft] = useState<DeleteDraft | null>(null)
   const [assistantAnswer, setAssistantAnswer] = useState<string | null>(null)
@@ -264,6 +276,7 @@ export default function App() {
     setCreateMessage('')
     setCreateDraft(null)
     setCompleteDraft(null)
+    setCompleteCandidates([])
     setUpdateDraft(null)
     setDeleteDraft(null)
     setCreateError(null)
@@ -1041,6 +1054,7 @@ export default function App() {
     setCreateBusy(true)
     setCreateDraft(null)
     setCompleteDraft(null)
+    setCompleteCandidates([])
     setUpdateDraft(null)
     setDeleteDraft(null)
     setCreateError(null)
@@ -1124,14 +1138,14 @@ export default function App() {
       }
 
       if (data?.status === 'choose_target') {
-        const labels = (data.candidates ?? [])
-          .map((candidate: { label?: string }) => candidate.label)
-          .filter(Boolean)
-          .join('\n• ')
+        const candidates = Array.isArray(data.candidates)
+          ? data.candidates as CompleteCandidate[]
+          : []
 
+        setCompleteCandidates(candidates)
         setAssistantAnswer(
-          labels
-            ? `Több egyező nyitott ügyet találtam. Pontosítsd, melyikre gondolsz:\n• ${labels}`
+          candidates.length
+            ? 'Több egyező nyitott ügyet találtam. Koppints arra, amelyiket készre jelöljem.'
             : 'Több egyező nyitott ügyet találtam. Kérlek, pontosíts.',
         )
         setCreateMessage('')
@@ -1351,6 +1365,64 @@ export default function App() {
     setCreateError(data?.error ?? 'Az ügyet most nem sikerült módosítani.')
   }
 
+  async function handleCompleteCandidate(candidate: CompleteCandidate) {
+    if (!supabase) return
+
+    setCreateBusy(true)
+    setCreateError(null)
+    setCreateSuccess(null)
+
+    const { data: prepared, error: prepareError } = await supabase.functions.invoke('core', {
+      body: {
+        action: 'prepare_complete_target',
+        target_item_id: candidate.id,
+      },
+    })
+
+    if (prepareError) {
+      setCreateBusy(false)
+      setCreateError(prepareError.message)
+      return
+    }
+
+    if (prepared?.status === 'future_event_needs_date') {
+      setCreateBusy(false)
+      setAssistantAnswer(
+        prepared.prompt ?? 'Ez az esemény még jövőbeli. Írd meg, mikor történt meg valójában.',
+      )
+      return
+    }
+
+    if (prepared?.status !== 'needs_confirmation' || !prepared?.draft?.pending_action_id) {
+      setCreateBusy(false)
+      setCreateError(prepared?.error ?? 'A kiválasztott ügyet most nem sikerült előkészíteni.')
+      return
+    }
+
+    const { data, error } = await supabase.functions.invoke('core', {
+      body: {
+        action: 'confirm_complete',
+        pending_action_id: prepared.draft.pending_action_id,
+      },
+    })
+
+    setCreateBusy(false)
+
+    if (error) {
+      setCreateError(error.message)
+      return
+    }
+
+    if (data?.status === 'completed') {
+      setCreateSuccess(`Készre jelölve: ${data.item?.title ?? candidate.title}`)
+      setCompleteCandidates([])
+      setAssistantAnswer(data.partner_notification_warning ?? null)
+      return
+    }
+
+    setCreateError(data?.error ?? 'Az ügyet most nem sikerült készre jelölni.')
+  }
+
   async function handleConfirmComplete() {
     if (!supabase || !completeDraft) return
 
@@ -1377,6 +1449,7 @@ export default function App() {
       setCreateSuccess(`Készre jelölve: ${data.item?.title ?? 'ügy'}`)
       setCreateMessage('')
       setCompleteDraft(null)
+      setCompleteCandidates([])
 
       if (data.partner_notification_warning) {
         setAssistantAnswer(data.partner_notification_warning)
@@ -1443,6 +1516,7 @@ export default function App() {
   function handleCancelCreate() {
     setCreateDraft(null)
     setCompleteDraft(null)
+    setCompleteCandidates([])
     setUpdateDraft(null)
     setDeleteDraft(null)
     setCreateError(null)
@@ -1863,6 +1937,22 @@ export default function App() {
                 <div className="assistant-answer">
                   <strong>Válasz:</strong>
                   <p>{assistantAnswer}</p>
+                </div>
+              )}
+
+              {completeCandidates.length > 0 && (
+                <div className="complete-candidates" aria-label="Lezárható találatok">
+                  {completeCandidates.map((candidate) => (
+                    <button
+                      className="complete-candidate-button"
+                      type="button"
+                      key={candidate.id}
+                      onClick={() => void handleCompleteCandidate(candidate)}
+                      disabled={createBusy}
+                    >
+                      {candidate.label}
+                    </button>
+                  ))}
                 </div>
               )}
 
