@@ -416,6 +416,36 @@ h2 {
   margin-top: 10px;
 }
 
+.complete-candidates {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.complete-candidate-button {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+}
+
+.complete-candidate-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.complete-candidate-button:hover,
+.complete-candidate-button:focus-visible {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+
 .query-item {
   padding: 12px 14px;
   border: 1px solid #e2e8f0;
@@ -840,8 +870,19 @@ h2 {
   box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.13);
 }
 
-:root[data-theme='dark'] .query-item {
+:root[data-theme='dark'] .query-item,
+:root[data-theme='dark'] .complete-candidate-button {
   background: #111827;
+}
+
+:root[data-theme='dark'] .complete-candidate-button {
+  border-color: #2b3a50;
+}
+
+:root[data-theme='dark'] .complete-candidate-button:hover,
+:root[data-theme='dark'] .complete-candidate-button:focus-visible {
+  background: #1b2537;
+  border-color: #475569;
 }
 
 :root[data-theme='dark'] .query-item.other-owner {
