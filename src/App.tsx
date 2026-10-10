@@ -677,15 +677,17 @@ export default function App() {
   useEffect(() => {
     if (!session || !pushAppId) return
 
+    const currentUserId = session.user.id
+    const currentPushAppId = pushAppId
     let cancelled = false
 
     async function relinkPushOnResume() {
       if (document.visibilityState !== 'visible') return
 
       try {
-        const oneSignal = await getOneSignalClient(pushAppId)
+        const oneSignal = await getOneSignalClient(currentPushAppId)
         await oneSignal.logout()
-        await oneSignal.login(session.user.id)
+        await oneSignal.login(currentUserId)
 
         if (
           !cancelled
@@ -695,7 +697,7 @@ export default function App() {
           if (!oneSignal.User.PushSubscription.optedIn) {
             await oneSignal.User.PushSubscription.optIn()
           }
-          await oneSignal.login(session.user.id)
+          await oneSignal.login(currentUserId)
         }
       } catch {
         // A háttérből visszatéréskor végzett push-helyreállítás
