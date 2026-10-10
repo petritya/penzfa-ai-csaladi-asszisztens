@@ -635,18 +635,28 @@ export default function App() {
 
       try {
         const oneSignal = await getOneSignalClient(data.app_id)
+
+        // Minden belépéskor kösd újra biztosan ezt az eszközt az aktuális
+        // Pénzfa-felhasználóhoz. Ez helyrehozza azt az esetet is, amikor
+        // ugyanazon a telefonon korábban másik családi felhasználó volt belépve.
+        await oneSignal.logout()
         await oneSignal.login(currentSession.user.id)
 
         if (cancelled) return
 
         if (Notification.permission === 'denied') {
           setPushStatus('blocked')
-        } else if (
-          Notification.permission === 'granted'
-          && oneSignal.User.PushSubscription.optedIn
-          && oneSignal.User.PushSubscription.id
-        ) {
-          setPushStatus('enabled')
+        } else if (Notification.permission === 'granted') {
+          if (!oneSignal.User.PushSubscription.optedIn) {
+            await oneSignal.User.PushSubscription.optIn()
+          }
+
+          // Az opt-in létrehozhat/frissíthet subscriptiont, ezért utána
+          // még egyszer rögzítjük az aktuális felhasználói kapcsolatot.
+          await oneSignal.login(currentSession.user.id)
+
+          const subscribed = await waitForPushSubscription(oneSignal)
+          setPushStatus(subscribed ? 'enabled' : 'ready')
         } else {
           setPushStatus('ready')
         }
