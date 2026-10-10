@@ -675,6 +675,44 @@ export default function App() {
   }, [session?.user.id, familyName])
 
   useEffect(() => {
+    if (!session || !pushAppId) return
+
+    let cancelled = false
+
+    async function relinkPushOnResume() {
+      if (document.visibilityState !== 'visible') return
+
+      try {
+        const oneSignal = await getOneSignalClient(pushAppId)
+        await oneSignal.logout()
+        await oneSignal.login(session.user.id)
+
+        if (
+          !cancelled
+          && typeof Notification !== 'undefined'
+          && Notification.permission === 'granted'
+        ) {
+          if (!oneSignal.User.PushSubscription.optedIn) {
+            await oneSignal.User.PushSubscription.optIn()
+          }
+          await oneSignal.login(session.user.id)
+        }
+      } catch {
+        // A háttérből visszatéréskor végzett push-helyreállítás
+        // nem blokkolhatja az alkalmazás használatát.
+      }
+    }
+
+    document.addEventListener('visibilitychange', relinkPushOnResume)
+    void relinkPushOnResume()
+
+    return () => {
+      cancelled = true
+      document.removeEventListener('visibilitychange', relinkPushOnResume)
+    }
+  }, [session?.user.id, pushAppId])
+
+  useEffect(() => {
     if (!supabase || !session || !familyName) {
       setSettings({
         briefing_enabled: true,
