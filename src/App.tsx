@@ -675,10 +675,12 @@ export default function App() {
   }, [session?.user.id, familyName])
 
   useEffect(() => {
-    if (!session || !pushAppId) return
-
-    const currentUserId = session.user.id
+    const currentSession = session
     const currentPushAppId = pushAppId
+
+    if (!currentSession || !currentPushAppId) return
+
+    const currentUserId = currentSession.user.id
     let cancelled = false
 
     async function relinkPushOnResume() {
