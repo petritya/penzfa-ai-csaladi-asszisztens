@@ -680,14 +680,15 @@ export default function App() {
 
     if (!currentSession || !currentPushAppId) return
 
-    const currentUserId = currentSession.user.id
+    const resolvedPushAppId: string = currentPushAppId
+    const currentUserId: string = currentSession.user.id
     let cancelled = false
 
     async function relinkPushOnResume() {
       if (document.visibilityState !== 'visible') return
 
       try {
-        const oneSignal = await getOneSignalClient(currentPushAppId)
+        const oneSignal = await getOneSignalClient(resolvedPushAppId)
         await oneSignal.logout()
         await oneSignal.login(currentUserId)
 
