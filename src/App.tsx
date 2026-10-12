@@ -1969,7 +1969,39 @@ export default function App() {
                   ×
                 </button>
               </div>
-              <p>{pushContext.message}</p>
+              {pushContext.type === 'briefing' ? (
+                <div className="briefing-content">
+                  {pushContext.message
+                    .split('\n')
+                    .map((line) => line.trim())
+                    .filter((line) => line && !line.startsWith('Pontosítás:'))
+                    .map((line, index) => {
+                      if (index === 0) {
+                        return <p className="briefing-greeting" key={`briefing-${index}`}>{line}</p>
+                      }
+
+                      const match = line.match(/^(Ma|Lejárt|Emlékeztető):\s*(.*)$/)
+                      if (!match) {
+                        return <div className="briefing-row" key={`briefing-${index}`}>{line}</div>
+                      }
+
+                      const labelClass = match[1] === 'Lejárt'
+                        ? 'overdue'
+                        : match[1] === 'Ma'
+                          ? 'today'
+                          : 'reminder'
+
+                      return (
+                        <div className="briefing-row" key={`briefing-${index}`}>
+                          <span className={`briefing-label ${labelClass}`}>{match[1]}</span>
+                          <span>{match[2]}</span>
+                        </div>
+                      )
+                    })}
+                </div>
+              ) : (
+                <p>{pushContext.message}</p>
+              )}
             </section>
           )}
 
