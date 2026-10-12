@@ -151,11 +151,11 @@ function buildBriefingMessage(
   dueToday: any[],
   overdue: any[],
   reminderToday: any[],
-  missingReminder: any[],
+  _missingReminder: any[],
 ) {
   const lines: string[] = [`Jó reggelt, ${displayName}!`]
 
-  if (!dueToday.length && !overdue.length && !reminderToday.length && !missingReminder.length) {
+  if (!dueToday.length && !overdue.length && !reminderToday.length) {
     lines.push('Mára nincs esedékes vagy jelzendő nyitott ügy.')
     return lines.join('\n')
   }
@@ -172,15 +172,10 @@ function buildBriefingMessage(
     lines.push(itemLine(item.title, item.subject_name, item.due_date, item.due_time, 'Emlékeztető: '))
   }
 
-  for (const item of missingReminder.slice(0, 3)) {
-    lines.push(`${itemLine(item.title, item.subject_name, item.due_date, item.due_time, 'Pontosítás: ')} – nincs emlékeztetés beállítva.`)
-  }
-
   const shown = Math.min(dueToday.length, 4)
     + Math.min(overdue.length, 3)
     + Math.min(reminderToday.length, 3)
-    + Math.min(missingReminder.length, 3)
-  const total = dueToday.length + overdue.length + reminderToday.length + missingReminder.length
+  const total = dueToday.length + overdue.length + reminderToday.length
 
   if (total > shown) lines.push(`+ még ${total - shown} ügy`)
 
@@ -266,7 +261,7 @@ Deno.serve(async (req) => {
       const overdue = items.filter((item) =>
         item.due_date
         && item.due_date < local.date
-        && daysBetween(item.due_date, local.date) <= 7
+        && daysBetween(item.due_date, local.date) <= 2
       )
       const dueToday = items.filter((item) => item.due_date === local.date)
 
