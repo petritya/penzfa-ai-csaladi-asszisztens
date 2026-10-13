@@ -83,6 +83,7 @@ type PushContext = {
   title: string
   message: string
   item_id: string | null
+  item_title: string | null
 }
 
 type QueryResultItem = {
@@ -588,6 +589,7 @@ export default function App() {
           ),
           message: String(data.message),
           item_id: data.item_id ? String(data.item_id) : null,
+          item_title: data.item_title ? String(data.item_title) : null,
         })
       }
 
@@ -1045,7 +1047,7 @@ export default function App() {
       setDeleteDraft(null)
       setCreateError(null)
       setCreateSuccess(null)
-      setAssistantAnswer(null)
+      if (!reminderEditTarget) setAssistantAnswer(null)
       setQueryResults([])
     } catch (error) {
       setVoiceError(
@@ -1088,7 +1090,7 @@ export default function App() {
       setDeleteDraft(null)
       setCreateError(null)
       setCreateSuccess(null)
-      setAssistantAnswer(null)
+      if (!reminderEditTarget) setAssistantAnswer(null)
       setQueryResults([])
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -2116,7 +2118,10 @@ export default function App() {
                 <button
                   className="secondary-button push-context-action"
                   type="button"
-                  onClick={() => startReminderEdit(pushContext.item_id as string, pushContext.message)}
+                  onClick={() => startReminderEdit(
+                    pushContext.item_id as string,
+                    pushContext.item_title ?? pushContext.message,
+                  )}
                   disabled={createBusy}
                 >
                   Saját emlékeztető módosítása
@@ -2145,7 +2150,7 @@ export default function App() {
                       setDeleteDraft(null)
                       setCreateError(null)
                       setCreateSuccess(null)
-                      setAssistantAnswer(null)
+                      if (!reminderEditTarget) setAssistantAnswer(null)
                       setQueryResults([])
                       setVoiceError(null)
                     }}
