@@ -2352,7 +2352,7 @@ export default function App() {
                           )}{' '}
                           {labelWithoutOwner}
                           {item.status === 'open' && item.reminder_missing && (
-                            <div className="confirmation-hint">Saját emlékeztető nincs beállítva</div>
+                            <strong> – Nincs emlékeztető</strong>
                           )}
                         </div>
                         {item.status === 'open' && (
