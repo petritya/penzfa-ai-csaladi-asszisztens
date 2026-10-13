@@ -600,6 +600,16 @@ h2 {
   text-align: right;
 }
 
+.secondary-details > .setup-form {
+  margin-top: 16px;
+}
+
+.secondary-details > .setup-form + .setup-form {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid #e2e8f0;
+}
+
 .settings-details {
   margin-top: 14px;
 }
