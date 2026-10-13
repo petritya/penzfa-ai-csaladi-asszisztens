@@ -200,7 +200,7 @@ Deno.serve(async (req) => {
 
     const { data: dueReminders, error: dueError } = await db
       .from('reminders')
-      .select('id, item_id, next_notification_at, follow_up_step')
+      .select('id, item_id, user_id, next_notification_at, follow_up_step')
       .eq('enabled', true)
       .not('next_notification_at', 'is', null)
       .lte('next_notification_at', nowIso)
@@ -230,7 +230,7 @@ Deno.serve(async (req) => {
         continue
       }
 
-      if (item.status !== 'open' || !item.responsible_user_id) {
+      if (item.status !== 'open' || !reminder.user_id) {
         await db
           .from('reminders')
           .update({ enabled: false, next_notification_at: null })
@@ -249,7 +249,7 @@ Deno.serve(async (req) => {
         db
           .from('user_settings')
           .select('timezone, briefing_time, briefing_enabled')
-          .eq('user_id', item.responsible_user_id)
+          .eq('user_id', reminder.user_id)
           .maybeSingle(),
       ])
 
@@ -259,7 +259,11 @@ Deno.serve(async (req) => {
         ? localTimeInTimezone(timeZone, new Date(originalNextNotificationAt))
         : null
 
-      if (settings?.briefing_enabled && reminderLocalTime === briefingTime) {
+      if (
+        settings?.briefing_enabled
+        && reminderLocalTime === briefingTime
+        && reminder.user_id === item.responsible_user_id
+      ) {
         continue
       }
 
@@ -289,7 +293,7 @@ Deno.serve(async (req) => {
       const launchUrl = `${appUrl}/?push=reminder&item_id=${encodeURIComponent(item.id)}`
 
       const delivery = await sendOneSignalPush(
-        item.responsible_user_id,
+        reminder.user_id,
         'Pénzfa emlékeztető',
         message,
         launchUrl,
@@ -343,6 +347,7 @@ Deno.serve(async (req) => {
         action: 'reminder_sent',
         details: {
           reminder_id: reminder.id,
+          reminder_user_id: reminder.user_id,
           notification_id: delivery.notification_id ?? null,
           next_notification_at: nextNotificationAt,
         },
