@@ -2442,7 +2442,8 @@ Deno.serve(async (req) => {
       if (visibleIds.length) {
         const { data: reminderRows, error: reminderError } = await db
           .from('reminders')
-          .select('item_id, next_notification_at, first_reminder_at, enabled')
+          .select('item_id, user_id, next_notification_at, first_reminder_at, enabled')
+          .eq('user_id', user.id)
           .in('item_id', visibleIds)
 
         if (reminderError) throw reminderError
@@ -3052,24 +3053,32 @@ Deno.serve(async (req) => {
 
       if (itemError) throw itemError
 
+      const reminderUserIds = Array.from(new Set([user.id, responsibleUserId]))
+
       if (draft.first_reminder_at) {
-        const { error: reminderError } = await db.from('reminders').insert({
+        const reminderRows = reminderUserIds.map((reminderUserId) => ({
           item_id: item.id,
+          user_id: reminderUserId,
           first_reminder_at: draft.first_reminder_at,
           next_notification_at: draft.first_reminder_at,
-        })
+        }))
+
+        const { error: reminderError } = await db.from('reminders').insert(reminderRows)
 
         if (reminderError) {
           await db.from('items').delete().eq('id', item.id)
           throw reminderError
         }
       } else if (draft.due_date && body?.reminder_decision === 'none') {
-        const { error: reminderDecisionError } = await db.from('reminders').insert({
+        const reminderRows = reminderUserIds.map((reminderUserId) => ({
           item_id: item.id,
+          user_id: reminderUserId,
           first_reminder_at: null,
           next_notification_at: null,
           enabled: false,
-        })
+        }))
+
+        const { error: reminderDecisionError } = await db.from('reminders').insert(reminderRows)
 
         if (reminderDecisionError) {
           await db.from('items').delete().eq('id', item.id)
