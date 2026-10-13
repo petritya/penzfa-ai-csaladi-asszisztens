@@ -243,7 +243,8 @@ Deno.serve(async (req) => {
         itemIds.length
           ? db
               .from('reminders')
-              .select('id, item_id, first_reminder_at, next_notification_at, follow_up_step, last_sent_at, enabled')
+              .select('id, item_id, user_id, first_reminder_at, next_notification_at, follow_up_step, last_sent_at, enabled')
+              .eq('user_id', settings.user_id)
               .in('item_id', itemIds)
           : Promise.resolve({ data: [] }),
       ])
