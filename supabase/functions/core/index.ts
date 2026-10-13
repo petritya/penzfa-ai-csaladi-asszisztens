@@ -3184,7 +3184,7 @@ Deno.serve(async (req) => {
         draft: {
           pending_action_id: pending.id,
           target_item_id: item.id,
-          confirmation_text: `${item.title}. Saját emlékeztető: ${oldText} → ${newText}. Módosítsam?`,
+          confirmation_text: `${item.title}. Emlékeztető: ${oldText} → ${newText}. Módosítsam?`,
         },
       })
     }
@@ -3819,41 +3819,29 @@ Deno.serve(async (req) => {
         return json({ error: 'Nincs végrehajtható módosítás.' })
       }
 
-      if (changes.due_date && item.due_date) {
-        const { data: reminders, error: remindersError } = await db
+      // Az ügy dátumának módosítása önmagában nem írhatja át a személyes
+      // vagy a másik felnőtthöz tartozó emlékeztetőt. A felhasználó a
+      // mentés után külön dönthet a megtartásról, módosításról, kikapcsolásról.
+      const dateOrTimeChanged = Boolean(
+        (changes.due_date && changes.due_date !== item.due_date)
+        || (
+          changes.due_time
+          && String(changes.due_time).slice(0, 5) !== String(item.due_time ?? '').slice(0, 5)
+        )
+      )
+      let existingReminderAt: string | null = null
+      if (dateOrTimeChanged) {
+        const { data: existingReminder, error: reminderError } = await db
           .from('reminders')
-          .select('id, user_id, first_reminder_at, next_notification_at, last_sent_at, enabled')
+          .select('enabled, first_reminder_at, specific_push_at, next_notification_at')
           .eq('item_id', item.id)
-
-        if (remindersError) throw remindersError
-
-        for (const reminder of reminders ?? []) {
-          if (!reminder.enabled || !reminder.first_reminder_at || reminder.last_sent_at) continue
-
-          const { data: reminderSettings } = await db
-            .from('user_settings')
-            .select('timezone')
-            .eq('user_id', reminder.user_id)
-            .maybeSingle()
-
-          const reminderTimeZone = reminderSettings?.timezone ?? 'Europe/Budapest'
-          const oldReminderDate = dateInTimezone(reminder.first_reminder_at, reminderTimeZone)
-          const oldReminderTime = timeInTimezone(reminder.first_reminder_at, reminderTimeZone)
-          const offset = daysBetween(oldReminderDate, item.due_date)
-          const newReminderDate = addDays(changes.due_date, -offset)
-          const newReminderAt = localDateTimeToUtcIso(
-            newReminderDate,
-            oldReminderTime,
-            reminderTimeZone,
-          )
-
-          await db
-            .from('reminders')
-            .update({
-              first_reminder_at: newReminderAt,
-              next_notification_at: newReminderAt,
-            })
-            .eq('id', reminder.id)
+          .eq('user_id', user.id)
+          .maybeSingle()
+        if (reminderError) throw reminderError
+        if (existingReminder?.enabled) {
+          existingReminderAt = existingReminder.next_notification_at
+            ?? existingReminder.first_reminder_at
+            ?? existingReminder.specific_push_at
         }
       }
 
@@ -3884,7 +3872,11 @@ Deno.serve(async (req) => {
         },
       })
 
-      return json({ status: 'updated', item: updatedItem })
+      return json({
+        status: 'updated',
+        item: updatedItem,
+        reminder_review: dateOrTimeChanged ? { reminder_at: existingReminderAt } : null,
+      })
     }
 
     if (body?.action === 'cancel_pending') {
