@@ -65,6 +65,11 @@ type DeleteDraft = {
   confirmation_text: string
 }
 
+type ReminderEditTarget = {
+  id: string
+  title: string
+}
+
 type PushStatus = 'idle' | 'loading' | 'ready' | 'enabled' | 'blocked' | 'unsupported' | 'error'
 
 type UserSettings = {
@@ -77,6 +82,7 @@ type PushContext = {
   type: 'briefing' | 'reminder' | 'item'
   title: string
   message: string
+  item_id: string | null
 }
 
 type QueryResultItem = {
@@ -86,6 +92,7 @@ type QueryResultItem = {
   status: 'open' | 'done' | 'deleted'
   due_date: string | null
   due_time: string | null
+  reminder_at?: string | null
   subject_display_name: string | null
   subject_member_kind: 'active' | 'managed' | null
   responsible_display_name: string | null
@@ -272,6 +279,8 @@ export default function App() {
   const [completeDraft, setCompleteDraft] = useState<CompleteDraft | null>(null)
   const [completeCandidates, setCompleteCandidates] = useState<CompleteCandidate[]>([])
   const [updateDraft, setUpdateDraft] = useState<UpdateDraft | null>(null)
+  const [reminderUpdateDraft, setReminderUpdateDraft] = useState<UpdateDraft | null>(null)
+  const [reminderEditTarget, setReminderEditTarget] = useState<ReminderEditTarget | null>(null)
   const [deleteDraft, setDeleteDraft] = useState<DeleteDraft | null>(null)
   const [assistantAnswer, setAssistantAnswer] = useState<string | null>(null)
   const [queryResults, setQueryResults] = useState<QueryResultItem[]>([])
@@ -301,6 +310,8 @@ export default function App() {
     setCompleteDraft(null)
     setCompleteCandidates([])
     setUpdateDraft(null)
+    setReminderUpdateDraft(null)
+    setReminderEditTarget(null)
     setDeleteDraft(null)
     setCreateError(null)
     setCreateSuccess(null)
@@ -576,6 +587,7 @@ export default function App() {
             ?? (resolvedPushType === 'briefing' ? 'Reggeli briefing' : resolvedPushType === 'reminder' ? 'Emlékeztető' : 'Ügy'),
           ),
           message: String(data.message),
+          item_id: data.item_id ? String(data.item_id) : null,
         })
       }
 
@@ -1026,7 +1038,7 @@ export default function App() {
       const addingReminderToDraft = Boolean(
         createDraft?.due_date && !createDraft.first_reminder_at,
       )
-      if (!addingReminderToDraft) setCreateDraft(null)
+      if (!addingReminderToDraft && !reminderEditTarget) setCreateDraft(null)
       setCompleteDraft(null)
       setUpdateDraft(null)
       setDeleteDraft(null)
@@ -1068,7 +1080,7 @@ export default function App() {
       const addingReminderToDraft = Boolean(
         createDraft?.due_date && !createDraft.first_reminder_at,
       )
-      if (!addingReminderToDraft) setCreateDraft(null)
+      if (!addingReminderToDraft && !reminderEditTarget) setCreateDraft(null)
       setCompleteDraft(null)
       setUpdateDraft(null)
       setDeleteDraft(null)
@@ -1142,6 +1154,43 @@ export default function App() {
     const message = createMessage.trim()
     if (!message) return
 
+    if (reminderEditTarget) {
+      setCreateBusy(true)
+      setCreateError(null)
+      setCreateSuccess(null)
+      setVoiceError(null)
+
+      const { data, error } = await supabase.functions.invoke('core', {
+        body: {
+          action: 'prepare_reminder_update',
+          target_item_id: reminderEditTarget.id,
+          reminder_phrase: message,
+        },
+      })
+
+      setCreateBusy(false)
+      setCreateMessage('')
+
+      if (error) {
+        setCreateError(error.message)
+        return
+      }
+
+      if (data?.status === 'needs_confirmation' && data?.draft) {
+        setReminderUpdateDraft(data.draft as UpdateDraft)
+        setCreateError(null)
+        return
+      }
+
+      if (data?.status === 'reminder_needs_clarification') {
+        setCreateError(data.error ?? 'Az emlékeztetés időpontját még pontosítani kell.')
+        return
+      }
+
+      setCreateError(data?.error ?? 'Az emlékeztetést most nem sikerült módosítani.')
+      return
+    }
+
     if (createDraft?.due_date && !createDraft.first_reminder_at) {
       setCreateBusy(true)
       setCreateError(null)
@@ -1190,6 +1239,8 @@ export default function App() {
     setCompleteDraft(null)
     setCompleteCandidates([])
     setUpdateDraft(null)
+    setReminderUpdateDraft(null)
+    setReminderEditTarget(null)
     setDeleteDraft(null)
     setCreateError(null)
     setCreateSuccess(null)
@@ -1465,6 +1516,57 @@ export default function App() {
     }
 
     setCreateError(data?.error ?? 'Az ügyet most nem sikerült törölni.')
+  }
+
+  function startReminderEdit(itemId: string, title: string) {
+    setReminderEditTarget({ id: itemId, title })
+    setReminderUpdateDraft(null)
+    setCreateMessage('')
+    setCreateDraft(null)
+    setCompleteDraft(null)
+    setCompleteCandidates([])
+    setUpdateDraft(null)
+    setReminderUpdateDraft(null)
+    setReminderEditTarget(null)
+    setDeleteDraft(null)
+    setCreateError(null)
+    setCreateSuccess(null)
+    setQueryResults([])
+    setAssistantAnswer(
+      `Saját emlékeztető módosítása: ${title}. Írd vagy mondd be az új időpontot, például: „előtte fél órával”, „aznap 18-kor”, vagy „nem kérek emlékeztetőt”.`,
+    )
+  }
+
+  async function handleConfirmReminderUpdate() {
+    if (!supabase || !reminderUpdateDraft) return
+
+    setCreateBusy(true)
+    setCreateError(null)
+    setCreateSuccess(null)
+
+    const { data, error } = await supabase.functions.invoke('core', {
+      body: {
+        action: 'confirm_reminder_update',
+        pending_action_id: reminderUpdateDraft.pending_action_id,
+      },
+    })
+
+    setCreateBusy(false)
+
+    if (error) {
+      setCreateError(error.message)
+      return
+    }
+
+    if (data?.status === 'reminder_updated') {
+      setCreateSuccess(`Saját emlékeztető módosítva: ${data.item?.title ?? reminderEditTarget?.title ?? 'ügy'}`)
+      setReminderUpdateDraft(null)
+      setReminderEditTarget(null)
+      setAssistantAnswer(null)
+      return
+    }
+
+    setCreateError(data?.error ?? 'Az emlékeztetőt most nem sikerült módosítani.')
   }
 
   async function handleConfirmUpdate() {
@@ -2008,6 +2110,16 @@ export default function App() {
               ) : (
                 <p>{pushContext.message}</p>
               )}
+              {pushContext.type !== 'briefing' && pushContext.item_id && (
+                <button
+                  className="secondary-button push-context-action"
+                  type="button"
+                  onClick={() => startReminderEdit(pushContext.item_id as string, pushContext.message)}
+                  disabled={createBusy}
+                >
+                  Saját emlékeztető módosítása
+                </button>
+              )}
             </section>
           )}
 
@@ -2165,6 +2277,16 @@ export default function App() {
                           )}{' '}
                           {labelWithoutOwner}
                         </div>
+                        {item.status === 'open' && (
+                          <button
+                            className="query-action-button"
+                            type="button"
+                            onClick={() => startReminderEdit(item.id, item.title)}
+                            disabled={createBusy}
+                          >
+                            Emlékeztető módosítása
+                          </button>
+                        )}
                       </div>
                     )
                   })}
@@ -2183,6 +2305,31 @@ export default function App() {
                       disabled={createBusy}
                     >
                       Igen, töröld
+                    </button>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={handleCancelCreate}
+                      disabled={createBusy}
+                    >
+                      Mégse
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {reminderUpdateDraft && (
+                <div className="confirmation-card">
+                  <strong>Emlékeztető módosításának megerősítése:</strong>
+                  <p>{reminderUpdateDraft.confirmation_text}</p>
+                  <div className="confirmation-actions">
+                    <button
+                      className="primary-button"
+                      type="button"
+                      onClick={handleConfirmReminderUpdate}
+                      disabled={createBusy}
+                    >
+                      Igen, módosítsd
                     </button>
                     <button
                       className="secondary-button"
