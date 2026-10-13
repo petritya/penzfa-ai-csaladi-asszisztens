@@ -91,6 +91,8 @@ Deno.serve(async (req) => {
         'A nyitott ügyek címei csak háttérszókincs: csak akkor használd őket, ha a hang alapján is hihetőek. Ne alakítsd át a beszédet azért, hogy valamelyik ügycímhez illeszkedjen.',
         'Gyakori időszavak és dátumszavak: ma, holnap, tegnap, hétfő, kedd, szerda, csütörtök, péntek, szombat, vasárnap, jövő héten.',
         'Gyakori időpontok: 8-kor, 9-kor, 10-kor, 16-kor, 18-kor. A kimondott számot pontosan írd le, ne következtess másik időpontra.',
+        'Az időpontokat lehetőleg számjegyes HH:MM formában írd át. Példák: "tíz harminc" vagy "fél tizenegy" => 10:30; "tíz óra" => 10:00; "negyed tizenegy" => 10:15.',
+        'Relatív időtartamot ne alakíts abszolút időponttá: "fél órával előtte" maradjon "fél órával előtte".',
         'Gyakori lezáró igék: felhívtam, elintéztem, befizettem, elküldtem, átvettem, lefoglaltam.',
         'Különösen ügyelj a felhívtam igére: ha a hang és a nyitott ügyek kontextusa telefonhívásra utal, ne írd át elhívtam alakra.',
         'A beszédet szó szerint írd át; ne javítsd át más jelentésű szóra és ne egészítsd ki találgatással.',
