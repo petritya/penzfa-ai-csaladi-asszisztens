@@ -718,6 +718,13 @@ function reminderMinutesBefore(phrase: string | null) {
   const beforeWord = '(?:elotte|korabban|elobb)'
 
   if (
+    new RegExp('\\bmasfel\\s+oraval\\s+' + beforeWord + '\\b').test(text)
+    || new RegExp('\\b' + beforeWord + '\\s+masfel\\s+oraval\\b').test(text)
+    || new RegExp('\\begy\\s+es\\s+fel\\s+oraval\\s+' + beforeWord + '\\b').test(text)
+    || new RegExp('\\b' + beforeWord + '\\s+egy\\s+es\\s+fel\\s+oraval\\b').test(text)
+  ) return 90
+
+  if (
     new RegExp('\\bfel\\s+oraval\\s+' + beforeWord + '\\b').test(text)
     || new RegExp('\\b' + beforeWord + '\\s+fel\\s+oraval\\b').test(text)
   ) return 30
