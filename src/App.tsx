@@ -94,6 +94,7 @@ type QueryResultItem = {
   due_date: string | null
   due_time: string | null
   reminder_at?: string | null
+  reminder_missing?: boolean
   subject_display_name: string | null
   subject_member_kind: 'active' | 'managed' | null
   responsible_display_name: string | null
@@ -282,6 +283,7 @@ export default function App() {
   const [updateDraft, setUpdateDraft] = useState<UpdateDraft | null>(null)
   const [reminderUpdateDraft, setReminderUpdateDraft] = useState<UpdateDraft | null>(null)
   const [reminderEditTarget, setReminderEditTarget] = useState<ReminderEditTarget | null>(null)
+  const [dateEditTarget, setDateEditTarget] = useState<ReminderEditTarget | null>(null)
   const [deleteDraft, setDeleteDraft] = useState<DeleteDraft | null>(null)
   const [assistantAnswer, setAssistantAnswer] = useState<string | null>(null)
   const [queryResults, setQueryResults] = useState<QueryResultItem[]>([])
@@ -313,6 +315,7 @@ export default function App() {
     setUpdateDraft(null)
     setReminderUpdateDraft(null)
     setReminderEditTarget(null)
+    setDateEditTarget(null)
     setDeleteDraft(null)
     setCreateError(null)
     setCreateSuccess(null)
@@ -1158,6 +1161,47 @@ export default function App() {
     const message = createMessage.trim()
     if (!message) return
 
+
+    if (dateEditTarget) {
+      setCreateBusy(true)
+      setCreateError(null)
+      setCreateSuccess(null)
+      setVoiceError(null)
+
+      const { data: parsed, error: parseError } = await supabase.functions.invoke('core', {
+        body: {
+          action: 'interpret_selected_item_change',
+          target_item_id: dateEditTarget.id,
+          message,
+        },
+      })
+
+      if (parseError || parsed?.status !== 'ok' || !parsed?.changes) {
+        setCreateBusy(false)
+        setCreateError(parseError?.message ?? parsed?.error ?? 'Az új időpont nem egyértelmű.')
+        return
+      }
+
+      const { data, error } = await supabase.functions.invoke('core', {
+        body: {
+          action: 'prepare_update_target',
+          target_item_id: dateEditTarget.id,
+          changes: parsed.changes,
+        },
+      })
+
+      setCreateBusy(false)
+      if (error || data?.status !== 'needs_confirmation' || !data?.draft) {
+        setCreateError(error?.message ?? data?.error ?? 'A módosítást nem sikerült előkészíteni.')
+        return
+      }
+
+      setCreateMessage('')
+      setUpdateDraft(data.draft as UpdateDraft)
+      setCreateError(null)
+      return
+    }
+
     if (reminderEditTarget) {
       setCreateBusy(true)
       setCreateError(null)
@@ -1245,6 +1289,7 @@ export default function App() {
     setUpdateDraft(null)
     setReminderUpdateDraft(null)
     setReminderEditTarget(null)
+    setDateEditTarget(null)
     setDeleteDraft(null)
     setCreateError(null)
     setCreateSuccess(null)
@@ -1523,6 +1568,7 @@ export default function App() {
   }
 
   function startReminderEdit(itemId: string, title: string) {
+    setDateEditTarget(null)
     setReminderEditTarget({ id: itemId, title })
     setReminderUpdateDraft(null)
     setCreateMessage('')
@@ -1536,6 +1582,25 @@ export default function App() {
     setQueryResults([])
     setAssistantAnswer(
       `Saját emlékeztető módosítása: ${title}. Írd vagy mondd be az új időpontot, például: „előtte fél órával”, „aznap 18-kor”, vagy „nem kérek emlékeztetőt”.`,
+    )
+  }
+
+
+  function startDateEdit(itemId: string, title: string) {
+    setDateEditTarget({ id: itemId, title })
+    setReminderEditTarget(null)
+    setReminderUpdateDraft(null)
+    setCreateMessage('')
+    setCreateDraft(null)
+    setCompleteDraft(null)
+    setCompleteCandidates([])
+    setUpdateDraft(null)
+    setDeleteDraft(null)
+    setCreateError(null)
+    setCreateSuccess(null)
+    setQueryResults([])
+    setAssistantAnswer(
+      `Dátum/időpont módosítása: ${title}. Írd vagy mondd be az új dátumot vagy időpontot, például: „jövő kedden 14:30-kor” vagy „aznap 16:00-kor”.`,
     )
   }
 
@@ -1597,6 +1662,7 @@ export default function App() {
       setCreateSuccess(`Módosítva: ${data.item?.title ?? 'ügy'}`)
       setCreateMessage('')
       setUpdateDraft(null)
+      setDateEditTarget(null)
       return
     }
 
@@ -1758,6 +1824,7 @@ export default function App() {
     setUpdateDraft(null)
     setReminderUpdateDraft(null)
     setReminderEditTarget(null)
+    setDateEditTarget(null)
     setDeleteDraft(null)
     setCreateError(null)
     setCreateSuccess(null)
@@ -2150,11 +2217,11 @@ export default function App() {
                       setDeleteDraft(null)
                       setCreateError(null)
                       setCreateSuccess(null)
-                      if (!reminderEditTarget) setAssistantAnswer(null)
+                      if (!reminderEditTarget && !dateEditTarget) setAssistantAnswer(null)
                       setQueryResults([])
                       setVoiceError(null)
                     }}
-                    placeholder="Mondd vagy írd le, mit intézzünk…"
+                    placeholder={dateEditTarget ? 'Az ügy új dátuma/időpontja…' : reminderEditTarget ? 'Az új emlékeztetés időpontja…' : 'Mondd vagy írd le, mit intézzünk…'}
                     rows={4}
                     disabled={createBusy || voiceListening || voiceTranscribing}
                   />
@@ -2284,16 +2351,29 @@ export default function App() {
                             <strong className="query-owner-name">{item.responsible_display_name}:</strong>
                           )}{' '}
                           {labelWithoutOwner}
+                          {item.status === 'open' && item.reminder_missing && (
+                            <div className="confirmation-hint">Saját emlékeztető nincs beállítva</div>
+                          )}
                         </div>
                         {item.status === 'open' && (
-                          <button
-                            className="query-action-button"
-                            type="button"
-                            onClick={() => startReminderEdit(item.id, item.title)}
-                            disabled={createBusy}
-                          >
-                            Emlékeztető módosítása
-                          </button>
+                          <div className="confirmation-actions">
+                            <button
+                              className="query-action-button"
+                              type="button"
+                              onClick={() => startDateEdit(item.id, item.title)}
+                              disabled={createBusy}
+                            >
+                              Dátum/idő módosítása
+                            </button>
+                            <button
+                              className="query-action-button"
+                              type="button"
+                              onClick={() => startReminderEdit(item.id, item.title)}
+                              disabled={createBusy}
+                            >
+                              {item.reminder_missing ? 'Emlékeztető beállítása' : 'Emlékeztető módosítása'}
+                            </button>
+                          </div>
                         )}
                       </div>
                     )

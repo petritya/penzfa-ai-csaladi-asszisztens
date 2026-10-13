@@ -88,8 +88,9 @@ type QueryInterpretation = {
   subject_name: string | null
   responsible_name: string | null
   keywords: string | null
-  date_scope: 'none' | 'today' | 'tomorrow' | 'this_week' | 'next_7_days' | 'specific_date'
+  date_scope: 'none' | 'today' | 'tomorrow' | 'this_week' | 'next_week' | 'next_7_days' | 'specific_date'
   date_phrase: string | null
+  reminder_filter: 'any' | 'missing' | 'set'
 }
 
 const corsHeaders = {
@@ -925,10 +926,11 @@ function resolveQueryDateRange(
   if (scope === 'next_7_days') {
     return { start: today, end: addDays(today, 6) }
   }
-  if (scope === 'this_week') {
+  if (scope === 'this_week' || scope === 'next_week') {
     const weekday = weekdayOf(today)
     const daysFromMonday = (weekday + 6) % 7
-    const start = addDays(today, -daysFromMonday)
+    const monday = addDays(today, -daysFromMonday)
+    const start = scope === 'next_week' ? addDays(monday, 7) : monday
     return { start, end: addDays(start, 6) }
   }
 
@@ -1429,7 +1431,9 @@ async function interpretQueryWithOpenAI(
         'Ha konkrét eseményre kérdeznek rá, például "Mikor megy Anya fodrászhoz?", az esemény alanya legyen subject_name, akkor is, ha aktív felnőtt.',
         'A subject_name és responsible_name egyszerre is kitölthető, például "Mamus ügyei, amik Anyához tartoznak".',
         'keywords legyen rövid keresőkifejezés, például "fodrász", ha konkrét ügytípust keres. Általános listázásnál legyen null.',
-        'date_scope: today, tomorrow, this_week, next_7_days, specific_date vagy none.',
+        'date_scope: today, tomorrow, this_week (ezen a héten), next_week (jövő héten: következő hétfőtől vasárnapig), next_7_days (következő hét nap), specific_date vagy none.',
+        'reminder_filter: missing, ha a kérdés az emlékeztető/jelzés nélküli ügyekre vonatkozik ("melyikhez nincs emlékeztető", "nincs jelzés beállítva"); set, ha a beállított emlékeztetőjű ügyekre kérdez; egyébként any.',
+        'A hiányzó emlékeztetőre vonatkozó lekérdezésnél status=open legyen, és a "nincs emlékeztető" kifejezés NE kerüljön a keywords mezőbe.',
         'specific_date esetén a date_phrase őrizze meg az eredeti dátumkifejezést. Más scope esetén date_phrase legyen null.',
         'Példák: "Mi van holnap?" => open, family, subject_name=null, responsible_name=null, tomorrow.',
         '"Mikor megy Anya fodrászhoz?" => open, family, subject_name=Anya, responsible_name=null, keywords=fodrász, none.',
@@ -1439,6 +1443,8 @@ async function interpretQueryWithOpenAI(
         '"Mamusnak milyen ügyei vannak?" => open, family, subject_name=Mamus, responsible_name=null, none.',
         '"Mamus melyik ügyei tartoznak hozzám?" => open, mine, subject_name=Mamus, responsible_name=null, none.',
         '"Mamus melyik ügyei tartoznak Anyához?" => open, family, subject_name=Mamus, responsible_name=Anya, none.',
+        '"Melyik holnapi ügyemhez nincs emlékeztető?" => open, mine, tomorrow, reminder_filter=missing, keywords=null.',
+        '"Melyik jövő heti feladathoz nincs jelzés beállítva?" => open, family, next_week, reminder_filter=missing, keywords=null.',
       ].join('\n'),
       input: message,
       text: {
@@ -1458,9 +1464,10 @@ async function interpretQueryWithOpenAI(
               keywords: { type: ['string', 'null'] },
               date_scope: {
                 type: 'string',
-                enum: ['none', 'today', 'tomorrow', 'this_week', 'next_7_days', 'specific_date'],
+                enum: ['none', 'today', 'tomorrow', 'this_week', 'next_week', 'next_7_days', 'specific_date'],
               },
               date_phrase: { type: ['string', 'null'] },
+              reminder_filter: { type: 'string', enum: ['any', 'missing', 'set'] },
             },
             required: [
               'intent',
@@ -1471,6 +1478,7 @@ async function interpretQueryWithOpenAI(
               'keywords',
               'date_scope',
               'date_phrase',
+              'reminder_filter',
             ],
           },
         },
@@ -2380,6 +2388,39 @@ Deno.serve(async (req) => {
         }
       }
 
+
+      // Emlékeztető-szűrés a felhasználó SAJÁT emlékeztetői alapján.
+      // A családi ügyekhez másik felnőtt emlékeztetője nem számít saját jelzésnek.
+      const reminderAtByItemId = new Map<string, string>()
+      const scheduledReminderItemIds = new Set<string>()
+      if (filtered.length) {
+        const { data: reminderRows, error: reminderError } = await db
+          .from('reminders')
+          .select('item_id, first_reminder_at, specific_push_at, next_notification_at, enabled')
+          .eq('user_id', user.id)
+          .in('item_id', filtered.map((item) => item.id))
+
+        if (reminderError) throw reminderError
+
+        for (const reminder of reminderRows ?? []) {
+          if (!reminder.enabled) continue
+          const reminderAt = reminder.next_notification_at
+            ?? reminder.first_reminder_at
+            ?? reminder.specific_push_at
+          if (!reminderAt) continue
+          scheduledReminderItemIds.add(reminder.item_id)
+          if (!reminderAtByItemId.has(reminder.item_id)) {
+            reminderAtByItemId.set(reminder.item_id, reminderAt)
+          }
+        }
+      }
+
+      if (interpretation.reminder_filter === 'missing') {
+        filtered = filtered.filter((item) => !scheduledReminderItemIds.has(item.id))
+      } else if (interpretation.reminder_filter === 'set') {
+        filtered = filtered.filter((item) => scheduledReminderItemIds.has(item.id))
+      }
+
       const asksForLatestDone = interpretation.status === 'done'
         && /\b(utoljara|legutobb|legutobbi)\b/.test(normalize(message))
 
@@ -2448,27 +2489,6 @@ Deno.serve(async (req) => {
         })
       }
 
-      const visibleIds = visible.map((item) => item.id)
-      const reminderAtByItemId = new Map<string, string>()
-
-      if (visibleIds.length) {
-        const { data: reminderRows, error: reminderError } = await db
-          .from('reminders')
-          .select('item_id, user_id, next_notification_at, first_reminder_at, enabled')
-          .eq('user_id', user.id)
-          .in('item_id', visibleIds)
-
-        if (reminderError) throw reminderError
-
-        for (const reminder of reminderRows ?? []) {
-          if (!reminder.enabled) continue
-          const reminderAt = reminder.next_notification_at ?? reminder.first_reminder_at
-          if (reminderAt && !reminderAtByItemId.has(reminder.item_id)) {
-            reminderAtByItemId.set(reminder.item_id, reminderAt)
-          }
-        }
-      }
-
       const resultItems = visible.map((item) => {
         const rawSubjectName = item.subject_member_id
           ? memberNameById.get(item.subject_member_id) ?? null
@@ -2520,6 +2540,7 @@ Deno.serve(async (req) => {
           due_date: item.due_date,
           due_time: item.due_time,
           reminder_at: reminderAtByItemId.get(item.id) ?? null,
+          reminder_missing: !scheduledReminderItemIds.has(item.id),
           subject_display_name: rawSubjectName,
           subject_member_kind: subjectMember?.member_kind ?? null,
           responsible_display_name: itemResponsibleName,
@@ -3618,6 +3639,76 @@ Deno.serve(async (req) => {
       }
 
       return json({ status: 'needs_confirmation', draft })
+    }
+
+
+    if (body?.action === 'interpret_selected_item_change') {
+      const targetItemId = String(body?.target_item_id ?? '').trim()
+      const message = String(body?.message ?? '').trim()
+      if (!targetItemId || !message) {
+        return json({ error: 'Hiányzik a kiválasztott ügy vagy az új időpont.' }, 400)
+      }
+
+      const { data: item, error: itemError } = await db
+        .from('items')
+        .select('id, title')
+        .eq('id', targetItemId)
+        .eq('family_id', familyId)
+        .eq('status', 'open')
+        .maybeSingle()
+      if (itemError) throw itemError
+      if (!item) return json({ error: 'A kiválasztott nyitott ügy nem található.' }, 404)
+
+      const [{ data: members, error: membersError }, { data: settings }] = await Promise.all([
+        db.from('family_members')
+          .select('display_name, member_kind, user_id')
+          .eq('family_id', familyId),
+        db.from('user_settings')
+          .select('timezone')
+          .eq('user_id', user.id)
+          .maybeSingle(),
+      ])
+      if (membersError) throw membersError
+
+      // Ugyanazt a természetes nyelvű értelmezést használjuk, mint a meglévő módosításnál.
+      // A célügyet az ID rögzíti, így az AI nem választhat ki másik ügyet.
+      const parsed = await interpretUpdateWithOpenAI(
+        `A kiválasztott "${item.title}" ügy dátumát vagy időpontját módosítsd. Új időpont: ${message}`,
+        (members ?? []).map((member) => member.display_name),
+        (members ?? [])
+          .filter((member) => member.member_kind === 'active' && member.user_id)
+          .map((member) => member.display_name),
+      )
+
+      const timeZone = settings?.timezone ?? 'Europe/Budapest'
+      const newDate = parsed.new_date_phrase
+        ? resolveDatePhrase(parsed.new_date_phrase, timeZone)
+        : null
+      const newTime = validateTime(parsed.new_time)
+
+      if (parsed.new_date_phrase && !newDate) {
+        return json({
+          status: 'needs_clarification',
+          error: 'Az új dátum nem egyértelmű. Add meg másképp.',
+        })
+      }
+      if (parsed.new_time && !newTime) {
+        return json({
+          status: 'needs_clarification',
+          error: 'Az új időpont nem egyértelmű. Add meg például így: 14:30.',
+        })
+      }
+      if (!newDate && !newTime) {
+        return json({
+          status: 'needs_clarification',
+          error: 'Mondd meg az új dátumot vagy időpontot, például: holnap 14:30.',
+        })
+      }
+
+      return json({
+        status: 'ok',
+        changes: { due_date: newDate, due_time: newTime, title: null },
+      })
     }
 
     if (body?.action === 'prepare_update_target') {
