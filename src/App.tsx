@@ -1760,7 +1760,7 @@ export default function App() {
       }
     }
 
-    const { error } = await supabase.auth.signOut()
+    const { error } = await supabase.auth.signOut({ scope: 'local' })
 
     if (error) {
       setErrorMessage(error.message)
