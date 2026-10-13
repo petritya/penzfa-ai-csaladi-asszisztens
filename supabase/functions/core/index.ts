@@ -675,6 +675,19 @@ function parseHungarianNumber(value: string) {
     nyolc: 8,
     kilenc: 9,
     tiz: 10,
+    tizenegy: 11,
+    tizenketto: 12,
+    tizenharom: 13,
+    tizennegy: 14,
+    tizenot: 15,
+    tizenhat: 16,
+    tizenhet: 17,
+    tizennyolc: 18,
+    tizenkilenc: 19,
+    husz: 20,
+    huszonegy: 21,
+    huszonketto: 22,
+    huszonharom: 23,
   }
 
   return words[normalize(value)] ?? null
@@ -698,6 +711,24 @@ function reminderDaysBefore(phrase: string | null) {
   return null
 }
 
+function reminderMinutesBefore(phrase: string | null) {
+  if (!phrase) return null
+  const text = normalize(phrase)
+
+  if (/\bfel\s+oraval\s+(?:elotte|korabban)\b/.test(text)) return 30
+
+  const minuteMatch = text.match(/\b(\d+|egy|ket|ketto|harom|negy|ot|hat|het|nyolc|kilenc|tiz|tizenegy|tizenketto|tizenharom|tizennegy|tizenot|tizenhat|tizenhet|tizennyolc|tizenkilenc|husz|huszonegy|huszonketto|huszonharom)\s+perccel\s+(?:elotte|korabban)\b/)
+  if (minuteMatch) return parseHungarianNumber(minuteMatch[1])
+
+  const hourMatch = text.match(/\b(\d+|egy|ket|ketto|harom|negy|ot|hat|het|nyolc|kilenc|tiz|tizenegy|tizenketto|tizenharom|tizennegy|tizenot|tizenhat|tizenhet|tizennyolc|tizenkilenc|husz|huszonegy|huszonketto|huszonharom)\s+oraval\s+(?:elotte|korabban)\b/)
+  if (hourMatch) {
+    const hours = parseHungarianNumber(hourMatch[1])
+    return hours === null ? null : hours * 60
+  }
+
+  return null
+}
+
 function reminderTimeFromPhrase(phrase: string | null) {
   if (!phrase) return null
   const text = normalize(phrase)
@@ -707,12 +738,28 @@ function reminderTimeFromPhrase(phrase: string | null) {
     return `${clockMatch[1].padStart(2, '0')}:${clockMatch[2]}`
   }
 
-  const hourMatch = text.match(/\b([01]?\d|2[0-3])\s*(?:ora(?:kor)?|orakor|[- ]kor)\b/)
+  const hourMatch = text.match(/\b([01]?\d|2[0-3])\s*(?:ora(?:kor)?|orakor|[- ]?kor)\b/)
   if (hourMatch) {
     return `${hourMatch[1].padStart(2, '0')}:00`
   }
 
+  const wordHourMatch = text.match(/\b(egy|ket|ketto|harom|negy|ot|hat|het|nyolc|kilenc|tiz|tizenegy|tizenketto|tizenharom|tizennegy|tizenot|tizenhat|tizenhet|tizennyolc|tizenkilenc|husz|huszonegy|huszonketto|huszonharom)\s*(?:ora(?:kor)?|orakor|kor)\b/)
+  if (wordHourMatch) {
+    const hour = parseHungarianNumber(wordHourMatch[1])
+    if (hour !== null && hour >= 0 && hour <= 23) {
+      return `${String(hour).padStart(2, '0')}:00`
+    }
+  }
+
   return null
+}
+
+function reminderPhraseHasExplicitTimeCue(phrase: string | null) {
+  if (!phrase) return false
+  const text = normalize(phrase)
+  return /\b(?:[01]?\d|2[0-3]):[0-5]\d\b/.test(text)
+    || /\b(?:[01]?\d|2[0-3])\s*(?:ora(?:kor)?|orakor|[- ]?kor)\b/.test(text)
+    || /\b(?:egy|ket|ketto|harom|negy|ot|hat|het|nyolc|kilenc|tiz|tizenegy|tizenketto|tizenharom|tizennegy|tizenot|tizenhat|tizenhet|tizennyolc|tizenkilenc|husz|huszonegy|huszonketto|huszonharom)\s*(?:ora(?:kor)?|orakor|kor)\b/.test(text)
 }
 
 function explicitReminderDate(
@@ -2588,7 +2635,9 @@ Deno.serve(async (req) => {
       }
 
       const reminderOffsetDays = reminderDaysBefore(interpretation.reminder_phrase)
+      const reminderOffsetMinutes = reminderMinutesBefore(interpretation.reminder_phrase)
       let firstReminderAt: string | null = null
+      let reminderDate: string | null = null
 
       if (interpretation.reminder_phrase) {
         if (!dueDate) {
@@ -2608,28 +2657,60 @@ Deno.serve(async (req) => {
         )
         const explicitTime = reminderTimeFromPhrase(interpretation.reminder_phrase)
 
-        const reminderDate = reminderOffsetDays !== null
-          ? addDays(dueDate, -reminderOffsetDays)
-          : explicitDate
-
-        if (!reminderDate) {
+        if (
+          reminderOffsetMinutes === null
+          && reminderPhraseHasExplicitTimeCue(interpretation.reminder_phrase)
+          && !explicitTime
+        ) {
           return json({
             status: 'reminder_needs_clarification',
-            error: 'Az emlékeztetés időpontját még pontosítani kell.',
+            error: 'Az emlékeztetés óráját nem tudtam biztosan értelmezni. Add meg például így: aznap 10:00.',
             code: 'REMINDER_NEEDS_CLARIFICATION',
             reminder_phrase: interpretation.reminder_phrase,
             draft: reminderClarificationDraft,
           })
         }
 
-        const reminderTime = explicitTime
-          ?? (reminderOffsetDays !== null && dueTime ? dueTime : reminderBriefingTime)
+        if (reminderOffsetMinutes !== null) {
+          if (!dueTime) {
+            return json({
+              status: 'reminder_needs_clarification',
+              error: 'A „fél órával előtte” típusú emlékeztetéshez az ügy pontos időpontja is szükséges.',
+              code: 'REMINDER_NEEDS_CLARIFICATION',
+              reminder_phrase: interpretation.reminder_phrase,
+              draft: reminderClarificationDraft,
+            })
+          }
 
-        firstReminderAt = localDateTimeToUtcIso(
-          reminderDate,
-          reminderTime,
-          reminderTimeZone,
-        )
+          const dueAt = localDateTimeToUtcIso(dueDate, dueTime, reminderTimeZone)
+          firstReminderAt = new Date(
+            new Date(dueAt).getTime() - reminderOffsetMinutes * 60_000,
+          ).toISOString()
+          reminderDate = dateInTimezone(firstReminderAt, reminderTimeZone)
+        } else {
+          reminderDate = reminderOffsetDays !== null
+            ? addDays(dueDate, -reminderOffsetDays)
+            : explicitDate
+
+          if (!reminderDate) {
+            return json({
+              status: 'reminder_needs_clarification',
+              error: 'Az emlékeztetés időpontját még pontosítani kell.',
+              code: 'REMINDER_NEEDS_CLARIFICATION',
+              reminder_phrase: interpretation.reminder_phrase,
+              draft: reminderClarificationDraft,
+            })
+          }
+
+          const reminderTime = explicitTime
+            ?? (reminderOffsetDays !== null && dueTime ? dueTime : reminderBriefingTime)
+
+          firstReminderAt = localDateTimeToUtcIso(
+            reminderDate,
+            reminderTime,
+            reminderTimeZone,
+          )
+        }
 
         if (new Date(firstReminderAt).getTime() <= Date.now()) {
           return json({
@@ -2650,7 +2731,7 @@ Deno.serve(async (req) => {
               draft: reminderClarificationDraft,
             })
           }
-        } else if (reminderDate > dueDate) {
+        } else if (reminderDate && reminderDate > dueDate) {
           return json({
             status: 'reminder_needs_clarification',
             error: 'Az emlékeztető nem lehet az ügy dátuma után.',
@@ -2733,6 +2814,7 @@ Deno.serve(async (req) => {
       }
 
       const reminderOffsetDays = reminderDaysBefore(reminderPhrase)
+      const reminderOffsetMinutes = reminderMinutesBefore(reminderPhrase)
 
       const reminderOwnerUserId = draft.responsible_user_id ?? user.id
       const { data: settings } = await db
@@ -2746,36 +2828,59 @@ Deno.serve(async (req) => {
       const explicitDate = explicitReminderDate(reminderPhrase, draft.due_date, timeZone)
       const explicitTime = reminderTimeFromPhrase(reminderPhrase)
 
-      const reminderDate = reminderOffsetDays !== null
-        ? addDays(draft.due_date, -reminderOffsetDays)
-        : explicitDate
-
-      if (!reminderDate) {
+      if (
+        reminderOffsetMinutes === null
+        && reminderPhraseHasExplicitTimeCue(reminderPhrase)
+        && !explicitTime
+      ) {
         return json({
           status: 'reminder_needs_clarification',
-          error: 'Írd le például így: aznap 18-kor, egy nappal előtte vagy hétfőn 18 órakor.',
+          error: 'Az emlékeztetés óráját nem tudtam biztosan értelmezni. Add meg például így: aznap 10:00.',
           code: 'REMINDER_NEEDS_CLARIFICATION',
           draft,
         })
       }
 
-      const today = localDateInTimezone(timeZone)
+      let reminderDate: string | null = null
+      let firstReminderAt: string
 
-      if (reminderDate < today) {
-        return json({
-          status: 'reminder_needs_clarification',
-          error: 'Ez az emlékeztetési időpont már elmúlt. Adj meg későbbi jelzést.',
-          code: 'REMINDER_IN_PAST',
-          draft,
-        })
+      if (reminderOffsetMinutes !== null) {
+        if (!draft.due_time) {
+          return json({
+            status: 'reminder_needs_clarification',
+            error: 'A „fél órával előtte” típusú emlékeztetéshez az ügy pontos időpontja is szükséges.',
+            code: 'REMINDER_NEEDS_CLARIFICATION',
+            draft,
+          })
+        }
+
+        const dueTime = String(draft.due_time).slice(0, 5)
+        const dueAt = localDateTimeToUtcIso(draft.due_date, dueTime, timeZone)
+        firstReminderAt = new Date(
+          new Date(dueAt).getTime() - reminderOffsetMinutes * 60_000,
+        ).toISOString()
+        reminderDate = dateInTimezone(firstReminderAt, timeZone)
+      } else {
+        reminderDate = reminderOffsetDays !== null
+          ? addDays(draft.due_date, -reminderOffsetDays)
+          : explicitDate
+
+        if (!reminderDate) {
+          return json({
+            status: 'reminder_needs_clarification',
+            error: 'Írd le például így: aznap 18-kor, fél órával előtte vagy egy nappal előtte.',
+            code: 'REMINDER_NEEDS_CLARIFICATION',
+            draft,
+          })
+        }
+
+        const reminderTime = explicitTime
+          ?? (reminderOffsetDays !== null && draft.due_time
+            ? String(draft.due_time).slice(0, 5)
+            : briefingTime)
+
+        firstReminderAt = localDateTimeToUtcIso(reminderDate, reminderTime, timeZone)
       }
-
-      const reminderTime = explicitTime
-        ?? (reminderOffsetDays !== null && draft.due_time
-          ? String(draft.due_time).slice(0, 5)
-          : briefingTime)
-
-      const firstReminderAt = localDateTimeToUtcIso(reminderDate, reminderTime, timeZone)
 
       if (new Date(firstReminderAt).getTime() <= Date.now()) {
         return json({
@@ -2797,7 +2902,7 @@ Deno.serve(async (req) => {
             draft,
           })
         }
-      } else if (reminderDate > draft.due_date) {
+      } else if (reminderDate && reminderDate > draft.due_date) {
         return json({
           status: 'reminder_needs_clarification',
           error: 'Az emlékeztető nem lehet az ügy dátuma után.',
