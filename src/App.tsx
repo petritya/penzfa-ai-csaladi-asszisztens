@@ -442,6 +442,12 @@ export default function App() {
       '',
       `${url.pathname}${url.search}${url.hash}`,
     )
+
+    const timer = window.setTimeout(() => {
+      setEmailJustConfirmed(false)
+    }, 5000)
+
+    return () => window.clearTimeout(timer)
   }, [session, emailJustConfirmed])
 
   useEffect(() => {
