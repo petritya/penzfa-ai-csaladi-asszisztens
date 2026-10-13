@@ -714,15 +714,29 @@ function reminderDaysBefore(phrase: string | null) {
 function reminderMinutesBefore(phrase: string | null) {
   if (!phrase) return null
   const text = normalize(phrase)
+  const numberWord = '(?:\\d+|egy|ket|ketto|harom|negy|ot|hat|het|nyolc|kilenc|tiz|tizenegy|tizenketto|tizenharom|tizennegy|tizenot|tizenhat|tizenhet|tizennyolc|tizenkilenc|husz|huszonegy|huszonketto|huszonharom)'
+  const beforeWord = '(?:elotte|korabban|elobb)'
 
-  if (/\bfel\s+oraval\s+(?:elotte|korabban)\b/.test(text)) return 30
+  if (
+    new RegExp('\\bfel\\s+oraval\\s+' + beforeWord + '\\b').test(text)
+    || new RegExp('\\b' + beforeWord + '\\s+fel\\s+oraval\\b').test(text)
+  ) return 30
 
-  const minuteMatch = text.match(/\b(\d+|egy|ket|ketto|harom|negy|ot|hat|het|nyolc|kilenc|tiz|tizenegy|tizenketto|tizenharom|tizennegy|tizenot|tizenhat|tizenhet|tizennyolc|tizenkilenc|husz|huszonegy|huszonketto|huszonharom)\s+perccel\s+(?:elotte|korabban)\b/)
-  if (minuteMatch) return parseHungarianNumber(minuteMatch[1])
+  const minuteAfter = text.match(new RegExp('\\b(' + numberWord + ')\\s+perccel\\s+' + beforeWord + '\\b'))
+  if (minuteAfter) return parseHungarianNumber(minuteAfter[1])
 
-  const hourMatch = text.match(/\b(\d+|egy|ket|ketto|harom|negy|ot|hat|het|nyolc|kilenc|tiz|tizenegy|tizenketto|tizenharom|tizennegy|tizenot|tizenhat|tizenhet|tizennyolc|tizenkilenc|husz|huszonegy|huszonketto|huszonharom)\s+oraval\s+(?:elotte|korabban)\b/)
-  if (hourMatch) {
-    const hours = parseHungarianNumber(hourMatch[1])
+  const minuteBefore = text.match(new RegExp('\\b' + beforeWord + '\\s+(' + numberWord + ')\\s+perccel\\b'))
+  if (minuteBefore) return parseHungarianNumber(minuteBefore[1])
+
+  const hourAfter = text.match(new RegExp('\\b(' + numberWord + ')\\s+oraval\\s+' + beforeWord + '\\b'))
+  if (hourAfter) {
+    const hours = parseHungarianNumber(hourAfter[1])
+    return hours === null ? null : hours * 60
+  }
+
+  const hourBefore = text.match(new RegExp('\\b' + beforeWord + '\\s+(' + numberWord + ')\\s+oraval\\b'))
+  if (hourBefore) {
+    const hours = parseHungarianNumber(hourBefore[1])
     return hours === null ? null : hours * 60
   }
 
@@ -853,6 +867,12 @@ function formatHungarianDate(dateIso: string | null) {
   }).format(new Date(Date.UTC(year, month - 1, day)))
 }
 
+function formatHungarianMonthDay(dateIso: string) {
+  const [, month, day] = dateIso.split('-').map(Number)
+  const months = ['jan.', 'febr.', 'márc.', 'ápr.', 'máj.', 'jún.', 'júl.', 'aug.', 'szept.', 'okt.', 'nov.', 'dec.']
+  return `${months[month - 1]} ${day}.`
+}
+
 function dateInTimezone(isoTimestamp: string, timeZone: string) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone,
@@ -934,6 +954,7 @@ function queryItemLine(
   timeZone: string,
   showResponsible = false,
   ownerPrefixName: string | null = null,
+  reminderAt: string | null = null,
 ) {
   const ownerPrefix = ownerPrefixName ? `${ownerPrefixName}: ` : ''
   const subject = memberName
@@ -948,6 +969,13 @@ function queryItemLine(
   const responsible = showResponsible && responsibleName
     ? ` – felelős: ${responsibleName}`
     : ''
+  const reminderDate = reminderAt ? dateInTimezone(reminderAt, timeZone) : null
+  const reminderTime = reminderAt ? timeInTimezone(reminderAt, timeZone) : null
+  const reminder = reminderDate && reminderTime
+    ? reminderDate === item.due_date
+      ? ` – Emlékeztető: ${reminderTime}`
+      : ` – Emlékeztető: ${formatHungarianMonthDay(reminderDate)} ${reminderTime}`
+    : ''
 
   if (item.status === 'done') {
     const completedDate = item.completed_at
@@ -960,7 +988,7 @@ function queryItemLine(
     return `× ${ownerPrefix}${subject}${item.title}${item.due_date ? ` – eredetileg: ${formatHungarianDate(item.due_date)}${time}` : ''} – törölve${responsible}`
   }
 
-  return `• ${ownerPrefix}${subject}${item.title}${item.due_date ? ` – ${formatHungarianDate(item.due_date)}${time}` : ' – dátum nélkül'}${responsible}`
+  return `• ${ownerPrefix}${subject}${item.title}${item.due_date ? ` – ${formatHungarianDate(item.due_date)}${time}` : ' – dátum nélkül'}${responsible}${reminder}`
 }
 
 function updateCandidateLabel(candidate: UpdateCandidate) {
@@ -2401,6 +2429,26 @@ Deno.serve(async (req) => {
         })
       }
 
+      const visibleIds = visible.map((item) => item.id)
+      const reminderAtByItemId = new Map<string, string>()
+
+      if (visibleIds.length) {
+        const { data: reminderRows, error: reminderError } = await db
+          .from('reminders')
+          .select('item_id, next_notification_at, first_reminder_at, enabled')
+          .in('item_id', visibleIds)
+
+        if (reminderError) throw reminderError
+
+        for (const reminder of reminderRows ?? []) {
+          if (!reminder.enabled) continue
+          const reminderAt = reminder.next_notification_at ?? reminder.first_reminder_at
+          if (reminderAt && !reminderAtByItemId.has(reminder.item_id)) {
+            reminderAtByItemId.set(reminder.item_id, reminderAt)
+          }
+        }
+      }
+
       const resultItems = visible.map((item) => {
         const rawSubjectName = item.subject_member_id
           ? memberNameById.get(item.subject_member_id) ?? null
@@ -2441,6 +2489,7 @@ Deno.serve(async (req) => {
           timeZone,
           showResponsible,
           ownerPrefixName,
+          reminderAtByItemId.get(item.id) ?? null,
         )
 
         return {
@@ -2450,6 +2499,7 @@ Deno.serve(async (req) => {
           status: item.status,
           due_date: item.due_date,
           due_time: item.due_time,
+          reminder_at: reminderAtByItemId.get(item.id) ?? null,
           subject_display_name: rawSubjectName,
           subject_member_kind: subjectMember?.member_kind ?? null,
           responsible_display_name: itemResponsibleName,
