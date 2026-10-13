@@ -3727,26 +3727,33 @@ Deno.serve(async (req) => {
         return json({ error: 'Nincs végrehajtható módosítás.' })
       }
 
-      const { data: settings } = await db
-        .from('user_settings')
-        .select('timezone')
-        .eq('user_id', user.id)
-        .maybeSingle()
-      const timeZone = settings?.timezone ?? 'Europe/Budapest'
-
       if (changes.due_date && item.due_date) {
-        const { data: reminder } = await db
+        const { data: reminders, error: remindersError } = await db
           .from('reminders')
-          .select('id, first_reminder_at, next_notification_at, last_sent_at')
+          .select('id, user_id, first_reminder_at, next_notification_at, last_sent_at, enabled')
           .eq('item_id', item.id)
-          .maybeSingle()
 
-        if (reminder?.first_reminder_at && !reminder.last_sent_at) {
-          const oldReminderDate = dateInTimezone(reminder.first_reminder_at, timeZone)
-          const oldReminderTime = timeInTimezone(reminder.first_reminder_at, timeZone)
+        if (remindersError) throw remindersError
+
+        for (const reminder of reminders ?? []) {
+          if (!reminder.enabled || !reminder.first_reminder_at || reminder.last_sent_at) continue
+
+          const { data: reminderSettings } = await db
+            .from('user_settings')
+            .select('timezone')
+            .eq('user_id', reminder.user_id)
+            .maybeSingle()
+
+          const reminderTimeZone = reminderSettings?.timezone ?? 'Europe/Budapest'
+          const oldReminderDate = dateInTimezone(reminder.first_reminder_at, reminderTimeZone)
+          const oldReminderTime = timeInTimezone(reminder.first_reminder_at, reminderTimeZone)
           const offset = daysBetween(oldReminderDate, item.due_date)
           const newReminderDate = addDays(changes.due_date, -offset)
-          const newReminderAt = localDateTimeToUtcIso(newReminderDate, oldReminderTime, timeZone)
+          const newReminderAt = localDateTimeToUtcIso(
+            newReminderDate,
+            oldReminderTime,
+            reminderTimeZone,
+          )
 
           await db
             .from('reminders')
