@@ -2405,7 +2405,7 @@ export default function App() {
                         setSettingsMessage(null)
                       }}
                     />
-                    <span>Szóljon a másik ügygazdának, ha készre jelölök egy ügyet</span>
+                    <span>Szóljon a másik felnőttnek, ha készre jelölök egy teendőt</span>
                   </label>
 
                   {settingsMessage && <p className="notice success">{settingsMessage}</p>}
