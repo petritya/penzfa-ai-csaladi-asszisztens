@@ -2227,6 +2227,7 @@ Deno.serve(async (req) => {
           title: type === 'reminder' ? 'Emlékeztető' : 'Ügy',
           message: `${subjectPrefix}${item.title} – ${dateText}${timeText}.`,
           item_id: item.id,
+          item_title: item.title,
         })
       }
 
