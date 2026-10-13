@@ -143,7 +143,7 @@ async function sendAssignmentPush(
   const dateText = dueDate ? formatHungarianDate(dueDate) : null
   const timeText = dueTime ? ` ${String(dueTime).slice(0, 5)}` : ''
   const when = dateText ? ` – ${dateText}${timeText}` : ''
-  const message = `${assignerName} új ügyet adott neked: ${subjectPrefix}${itemTitle}${when}.`
+  const message = `${assignerName} új teendőt adott neked: ${subjectPrefix}${itemTitle}${when}.`
 
   const response = await fetch('https://api.onesignal.com/notifications', {
     method: 'POST',
@@ -155,7 +155,7 @@ async function sendAssignmentPush(
       app_id: appId,
       include_aliases: { external_id: [userId] },
       target_channel: 'push',
-      headings: { en: 'Pénzfa – új ügy' },
+      headings: { en: 'AI családi asszisztens – új teendő' },
       contents: { en: message },
       url: `${Deno.env.get('APP_URL') ?? 'https://penzfa-ai-csaladi-asszisztens.petritya.workers.dev'}/?push=item&item_id=${encodeURIComponent(itemId)}`,
     }),
@@ -199,7 +199,7 @@ async function sendCompletionPush(
       app_id: appId,
       include_aliases: { external_id: [userId] },
       target_channel: 'push',
-      headings: { en: 'Pénzfa – ügy elintézve' },
+      headings: { en: 'AI családi asszisztens – teendő elintézve' },
       contents: { en: message },
       url: `${Deno.env.get('APP_URL') ?? 'https://penzfa-ai-csaladi-asszisztens.petritya.workers.dev'}/?push=item&item_id=${encodeURIComponent(itemId)}`,
     }),
