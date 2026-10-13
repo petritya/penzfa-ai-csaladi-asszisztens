@@ -2186,16 +2186,27 @@ Deno.serve(async (req) => {
         const itemId = String(body?.item_id ?? '').trim()
         if (!itemId) return json({ error: 'Hiányzó ügyazonosító.' }, 400)
 
+        if (type === 'reminder') {
+          const { data: ownedReminder, error: reminderError } = await db
+            .from('reminders')
+            .select('id')
+            .eq('item_id', itemId)
+            .eq('user_id', user.id)
+            .maybeSingle()
+
+          if (reminderError) throw reminderError
+          if (!ownedReminder) return json({ error: 'Ehhez az ügyhöz nincs saját emlékeztetőd.' }, 404)
+        }
+
         const { data: item, error: itemError } = await db
           .from('items')
           .select('id, title, due_date, due_time, status, subject_member_id, responsible_user_id')
           .eq('id', itemId)
           .eq('family_id', familyId)
-          .eq('responsible_user_id', user.id)
           .maybeSingle()
 
         if (itemError) throw itemError
-        if (!item) return json({ error: 'Ezt az emlékeztetett ügyet nem találtam.' }, 404)
+        if (!item) return json({ error: 'Ezt az ügyet nem találtam.' }, 404)
 
         const { data: subject } = item.subject_member_id
           ? await db
@@ -2984,6 +2995,271 @@ Deno.serve(async (req) => {
       }
 
       return json({ status: 'needs_confirmation', draft: updatedDraft })
+    }
+
+    if (body?.action === 'prepare_reminder_update') {
+      const itemId = String(body?.target_item_id ?? '').trim()
+      const reminderPhrase = String(body?.reminder_phrase ?? '').trim()
+
+      if (!itemId || !reminderPhrase) {
+        return json({ error: 'Hiányzik az ügy vagy az új emlékeztetés.' }, 400)
+      }
+
+      const { data: item, error: itemError } = await db
+        .from('items')
+        .select('id, title, due_date, due_time, status')
+        .eq('id', itemId)
+        .eq('family_id', familyId)
+        .eq('status', 'open')
+        .maybeSingle()
+
+      if (itemError) throw itemError
+      if (!item) return json({ error: 'A módosítandó nyitott ügy nem található.' }, 404)
+
+      const { data: settings } = await db
+        .from('user_settings')
+        .select('timezone, briefing_time')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      const timeZone = settings?.timezone ?? 'Europe/Budapest'
+      const briefingTime = String(settings?.briefing_time ?? '07:00:00').slice(0, 5)
+
+      const { data: existingReminder, error: existingReminderError } = await db
+        .from('reminders')
+        .select('id, first_reminder_at, next_notification_at, enabled')
+        .eq('item_id', item.id)
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (existingReminderError) throw existingReminderError
+
+      const normalized = normalize(reminderPhrase)
+      const disableReminder = Boolean(
+        /\bnem\s+kerek\b/.test(normalized)
+        || /\bnem\s+kell\b.*\bemlekeztet/.test(normalized)
+        || /\bne\s+emlekeztess\b/.test(normalized)
+        || /\bemlekezteto\s+nelkul\b/.test(normalized)
+        || /\bkapcsold\s+ki\b.*\bemlekeztet/.test(normalized)
+      )
+
+      let newReminderAt: string | null = null
+
+      if (!disableReminder) {
+        if (!item.due_date) {
+          return json({
+            status: 'reminder_needs_clarification',
+            error: 'Ehhez az ügyhöz előbb dátum szükséges az emlékeztetéshez.',
+          })
+        }
+
+        const offsetDays = reminderDaysBefore(reminderPhrase)
+        const offsetMinutes = reminderMinutesBefore(reminderPhrase)
+        const explicitDate = explicitReminderDate(reminderPhrase, item.due_date, timeZone)
+        const explicitTime = reminderTimeFromPhrase(reminderPhrase)
+
+        if (
+          offsetMinutes === null
+          && reminderPhraseHasExplicitTimeCue(reminderPhrase)
+          && !explicitTime
+        ) {
+          return json({
+            status: 'reminder_needs_clarification',
+            error: 'Az emlékeztetés óráját nem tudtam biztosan értelmezni. Add meg például így: aznap 10:00.',
+          })
+        }
+
+        if (offsetMinutes !== null) {
+          if (!item.due_time) {
+            return json({
+              status: 'reminder_needs_clarification',
+              error: 'Az „előtte” típusú emlékeztetéshez az ügy pontos időpontja is szükséges.',
+            })
+          }
+
+          const dueTime = String(item.due_time).slice(0, 5)
+          const dueAt = localDateTimeToUtcIso(item.due_date, dueTime, timeZone)
+          newReminderAt = new Date(
+            new Date(dueAt).getTime() - offsetMinutes * 60_000,
+          ).toISOString()
+        } else {
+          const reminderDate = offsetDays !== null
+            ? addDays(item.due_date, -offsetDays)
+            : explicitDate
+
+          if (!reminderDate) {
+            return json({
+              status: 'reminder_needs_clarification',
+              error: 'Add meg például így: aznap 18-kor, előtte fél órával vagy egy nappal előtte.',
+            })
+          }
+
+          const reminderTime = explicitTime
+            ?? (offsetDays !== null && item.due_time
+              ? String(item.due_time).slice(0, 5)
+              : briefingTime)
+
+          newReminderAt = localDateTimeToUtcIso(reminderDate, reminderTime, timeZone)
+        }
+
+        if (new Date(newReminderAt).getTime() <= Date.now()) {
+          return json({
+            status: 'reminder_needs_clarification',
+            error: 'A kért emlékeztetési időpont már elmúlt.',
+          })
+        }
+
+        if (item.due_date && item.due_time) {
+          const dueAt = localDateTimeToUtcIso(
+            item.due_date,
+            String(item.due_time).slice(0, 5),
+            timeZone,
+          )
+          if (new Date(newReminderAt).getTime() >= new Date(dueAt).getTime()) {
+            return json({
+              status: 'reminder_needs_clarification',
+              error: 'Az emlékeztetőnek az ügy időpontja előtt kell lennie.',
+            })
+          }
+        }
+      }
+
+      const oldAt = existingReminder?.enabled
+        ? existingReminder.next_notification_at ?? existingReminder.first_reminder_at
+        : null
+      const oldText = oldAt
+        ? `${formatHungarianMonthDay(dateInTimezone(oldAt, timeZone))} ${timeInTimezone(oldAt, timeZone)}`
+        : 'nincs beállítva'
+      const newText = disableReminder || !newReminderAt
+        ? 'kikapcsolva'
+        : `${formatHungarianMonthDay(dateInTimezone(newReminderAt, timeZone))} ${timeInTimezone(newReminderAt, timeZone)}`
+
+      const { data: pending, error: pendingError } = await db
+        .from('pending_actions')
+        .insert({
+          family_id: familyId,
+          actor_user_id: user.id,
+          intent: 'update',
+          target_item_id: item.id,
+          payload: {
+            kind: 'reminder_update',
+            reminder_phrase: reminderPhrase,
+            disable_reminder: disableReminder,
+            new_reminder_at: newReminderAt,
+            before: {
+              reminder_at: oldAt,
+              enabled: Boolean(existingReminder?.enabled),
+            },
+          },
+        })
+        .select('id')
+        .single()
+
+      if (pendingError) throw pendingError
+
+      return json({
+        status: 'needs_confirmation',
+        draft: {
+          pending_action_id: pending.id,
+          target_item_id: item.id,
+          confirmation_text: `${item.title}. Saját emlékeztető: ${oldText} → ${newText}. Módosítsam?`,
+        },
+      })
+    }
+
+    if (body?.action === 'confirm_reminder_update') {
+      const pendingActionId = String(body?.pending_action_id ?? '').trim()
+      if (!pendingActionId) return json({ error: 'Hiányzó függőben lévő művelet.' }, 400)
+
+      const { data: pending } = await db
+        .from('pending_actions')
+        .select('id, target_item_id, payload, status, expires_at')
+        .eq('id', pendingActionId)
+        .eq('actor_user_id', user.id)
+        .eq('family_id', familyId)
+        .maybeSingle()
+
+      if (!pending || pending.status !== 'pending' || pending.payload?.kind !== 'reminder_update') {
+        return json({ error: 'Ez az emlékeztető-módosítás már nem aktív.' })
+      }
+
+      if (new Date(pending.expires_at).getTime() < Date.now()) {
+        await db
+          .from('pending_actions')
+          .update({ status: 'expired', resolved_at: new Date().toISOString() })
+          .eq('id', pending.id)
+        return json({ error: 'A módosítási megerősítés lejárt. Indítsd újra.' })
+      }
+
+      const { data: item } = await db
+        .from('items')
+        .select('id, title, status')
+        .eq('id', pending.target_item_id)
+        .eq('family_id', familyId)
+        .eq('status', 'open')
+        .maybeSingle()
+
+      if (!item) return json({ error: 'A módosítandó ügy már nem található.' })
+
+      const disableReminder = Boolean(pending.payload?.disable_reminder)
+      const reminderAt = pending.payload?.new_reminder_at
+        ? String(pending.payload.new_reminder_at)
+        : null
+
+      const reminderValues = disableReminder
+        ? {
+            item_id: item.id,
+            user_id: user.id,
+            first_reminder_at: null,
+            specific_push_at: null,
+            next_notification_at: null,
+            follow_up_step: 0,
+            last_sent_at: null,
+            enabled: false,
+          }
+        : {
+            item_id: item.id,
+            user_id: user.id,
+            first_reminder_at: reminderAt,
+            specific_push_at: reminderAt,
+            next_notification_at: reminderAt,
+            follow_up_step: 0,
+            last_sent_at: null,
+            enabled: true,
+          }
+
+      const { error: reminderError } = await db
+        .from('reminders')
+        .upsert(reminderValues, { onConflict: 'item_id,user_id' })
+
+      if (reminderError) throw reminderError
+
+      await db
+        .from('pending_actions')
+        .update({
+          status: 'confirmed',
+          resolved_at: new Date().toISOString(),
+        })
+        .eq('id', pending.id)
+
+      await db.from('activity_log').insert({
+        family_id: familyId,
+        actor_user_id: user.id,
+        item_id: item.id,
+        action: 'reminder_updated',
+        details: {
+          before: pending.payload?.before ?? null,
+          reminder_at: reminderAt,
+          enabled: !disableReminder,
+        },
+      })
+
+      return json({
+        status: 'reminder_updated',
+        item,
+        reminder_at: reminderAt,
+        enabled: !disableReminder,
+      })
     }
 
     if (body?.action === 'confirm_create') {
