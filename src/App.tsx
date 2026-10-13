@@ -70,6 +70,10 @@ type ReminderEditTarget = {
   title: string
 }
 
+type ReminderFollowUp = ReminderEditTarget & {
+  reminder_at: string | null
+}
+
 type PushStatus = 'idle' | 'loading' | 'ready' | 'enabled' | 'blocked' | 'unsupported' | 'error'
 
 type UserSettings = {
@@ -284,6 +288,7 @@ export default function App() {
   const [reminderUpdateDraft, setReminderUpdateDraft] = useState<UpdateDraft | null>(null)
   const [reminderEditTarget, setReminderEditTarget] = useState<ReminderEditTarget | null>(null)
   const [dateEditTarget, setDateEditTarget] = useState<ReminderEditTarget | null>(null)
+  const [reminderFollowUp, setReminderFollowUp] = useState<ReminderFollowUp | null>(null)
   const [deleteDraft, setDeleteDraft] = useState<DeleteDraft | null>(null)
   const [assistantAnswer, setAssistantAnswer] = useState<string | null>(null)
   const [queryResults, setQueryResults] = useState<QueryResultItem[]>([])
@@ -316,6 +321,7 @@ export default function App() {
     setReminderUpdateDraft(null)
     setReminderEditTarget(null)
     setDateEditTarget(null)
+    setReminderFollowUp(null)
     setDeleteDraft(null)
     setCreateError(null)
     setCreateSuccess(null)
@@ -1290,6 +1296,7 @@ export default function App() {
     setReminderUpdateDraft(null)
     setReminderEditTarget(null)
     setDateEditTarget(null)
+    setReminderFollowUp(null)
     setDeleteDraft(null)
     setCreateError(null)
     setCreateSuccess(null)
@@ -1568,6 +1575,7 @@ export default function App() {
   }
 
   function startReminderEdit(itemId: string, title: string) {
+    setReminderFollowUp(null)
     setDateEditTarget(null)
     setReminderEditTarget({ id: itemId, title })
     setReminderUpdateDraft(null)
@@ -1581,12 +1589,13 @@ export default function App() {
     setCreateSuccess(null)
     setQueryResults([])
     setAssistantAnswer(
-      `Saját emlékeztető módosítása: ${title}. Írd vagy mondd be az új időpontot, például: „előtte fél órával”, „aznap 18-kor”, vagy „nem kérek emlékeztetőt”.`,
+      `Emlékeztető módosítása: ${title}. Írd vagy mondd be az új időpontot, például: „előtte fél órával”, „aznap 18-kor”, vagy „nem kérek emlékeztetőt”.`,
     )
   }
 
 
   function startDateEdit(itemId: string, title: string) {
+    setReminderFollowUp(null)
     setDateEditTarget({ id: itemId, title })
     setReminderEditTarget(null)
     setReminderUpdateDraft(null)
@@ -1626,7 +1635,7 @@ export default function App() {
     }
 
     if (data?.status === 'reminder_updated') {
-      setCreateSuccess(`Saját emlékeztető módosítva: ${data.item?.title ?? reminderEditTarget?.title ?? 'ügy'}`)
+      setCreateSuccess(`Emlékeztető módosítva: ${data.item?.title ?? reminderEditTarget?.title ?? 'ügy'}`)
       setReminderUpdateDraft(null)
       setReminderEditTarget(null)
       setAssistantAnswer(null)
@@ -1634,6 +1643,32 @@ export default function App() {
     }
 
     setCreateError(data?.error ?? 'Az emlékeztetőt most nem sikerült módosítani.')
+  }
+
+  async function handleDisableReminderFromFollowUp() {
+    if (!supabase || !reminderFollowUp) return
+
+    setCreateBusy(true)
+    setCreateError(null)
+    const target = reminderFollowUp
+    const { data, error } = await supabase.functions.invoke('core', {
+      body: {
+        action: 'prepare_reminder_update',
+        target_item_id: target.id,
+        reminder_phrase: 'nem kérek emlékeztetőt',
+      },
+    })
+    setCreateBusy(false)
+
+    if (error || data?.status !== 'needs_confirmation' || !data?.draft) {
+      setCreateError(error?.message ?? data?.error ?? 'Az emlékeztető kikapcsolását nem sikerült előkészíteni.')
+      return
+    }
+
+    setReminderFollowUp(null)
+    setReminderEditTarget(target)
+    setReminderUpdateDraft(data.draft as UpdateDraft)
+    setCreateSuccess(null)
   }
 
   async function handleConfirmUpdate() {
@@ -1663,6 +1698,16 @@ export default function App() {
       setCreateMessage('')
       setUpdateDraft(null)
       setDateEditTarget(null)
+      const review = data.reminder_review as { reminder_at: string | null } | null
+      if (review && data.item?.id) {
+        setReminderFollowUp({
+          id: String(data.item.id),
+          title: String(data.item.title),
+          reminder_at: review.reminder_at,
+        })
+      } else {
+        setReminderFollowUp(null)
+      }
       return
     }
 
@@ -1825,6 +1870,7 @@ export default function App() {
     setReminderUpdateDraft(null)
     setReminderEditTarget(null)
     setDateEditTarget(null)
+    setReminderFollowUp(null)
     setDeleteDraft(null)
     setCreateError(null)
     setCreateSuccess(null)
@@ -2191,7 +2237,7 @@ export default function App() {
                   )}
                   disabled={createBusy}
                 >
-                  Saját emlékeztető módosítása
+                  Emlékeztető módosítása
                 </button>
               )}
             </section>
@@ -2452,6 +2498,45 @@ export default function App() {
                     >
                       Mégse
                     </button>
+                  </div>
+                </div>
+              )}
+
+              {reminderFollowUp && (
+                <div className="confirmation-card">
+                  <strong>Mi legyen az emlékeztetővel?</strong>
+                  <p>
+                    {reminderFollowUp.reminder_at
+                      ? `A feladat időpontja megváltozott, de az emlékeztető maradt: ${new Date(reminderFollowUp.reminder_at).toLocaleString('hu-HU', { dateStyle: 'long', timeStyle: 'short' })}. Megtartod, módosítod vagy kikapcsolod?`
+                      : 'A feladat időpontja megváltozott. Ehhez az ügyhöz nincs beállított emlékeztető. Szeretnél beállítani egyet?'}
+                  </p>
+                  <div className="confirmation-actions">
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => setReminderFollowUp(null)}
+                      disabled={createBusy}
+                    >
+                      {reminderFollowUp.reminder_at ? 'Maradjon az eredeti' : 'Maradjon emlékeztető nélkül'}
+                    </button>
+                    <button
+                      className="primary-button"
+                      type="button"
+                      onClick={() => startReminderEdit(reminderFollowUp.id, reminderFollowUp.title)}
+                      disabled={createBusy}
+                    >
+                      {reminderFollowUp.reminder_at ? 'Emlékeztető módosítása' : 'Emlékeztető beállítása'}
+                    </button>
+                    {reminderFollowUp.reminder_at && (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => void handleDisableReminderFromFollowUp()}
+                        disabled={createBusy}
+                      >
+                        Emlékeztető kikapcsolása
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
