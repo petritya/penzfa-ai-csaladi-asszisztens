@@ -120,6 +120,7 @@ async function sendOneSignalPush(
       app_id: appId,
       include_aliases: { external_id: [userId] },
       target_channel: 'push',
+      priority: 10, // Android / Chrome: high priority (Doze módban is sürgős)
       headings: { en: title },
       contents: { en: message },
       ...(launchUrl ? { url: launchUrl } : {}),
