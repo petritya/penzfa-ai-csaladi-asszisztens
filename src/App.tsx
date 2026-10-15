@@ -201,6 +201,7 @@ export default function App() {
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [showHelp, setShowHelp] = useState(false)
   const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null)
   const [resendBusy, setResendBusy] = useState(false)
   const [resendCooldown, setResendCooldown] = useState(0)
@@ -1986,6 +1987,7 @@ export default function App() {
       return
     }
 
+    setShowHelp(false)
     setMode('sign-in')
     setEmail('')
     setPassword('')
@@ -2029,6 +2031,136 @@ export default function App() {
     const exampleText = exampleManagedMember
       ? `${exampleManagedMember.display_name} kontrollja jövő kedden 10-kor.`
       : 'Jövő kedden 10-kor kontroll.'
+
+    if (showHelp) {
+      return (
+        <main className="shell">
+          <section className="card help-page">
+            <button
+              className="help-back-button"
+              type="button"
+              onClick={() => {
+                setShowHelp(false)
+                window.scrollTo({ top: 0, behavior: 'smooth' })
+              }}
+            >
+              ← Vissza
+            </button>
+
+            <header className="app-header help-header">
+              <p className="eyebrow">AI családi asszisztens</p>
+              <h1>Súgó</h1>
+              <p className="lead">
+                Írd vagy mondd természetesen, mit szeretnél. Nem kell parancsokat megtanulnod.
+              </p>
+            </header>
+
+            <div className="help-sections">
+              <details className="help-section" open>
+                <summary>Feladat vagy esemény rögzítése</summary>
+                <p>
+                  Mondd el, mi a teendő, kire vonatkozik és mikorra kell.
+                  A rendszer rögzítés előtt visszakérdez és megerősítést kér.
+                </p>
+                <div className="help-examples">
+                  <strong>Példák</strong>
+                  <ul>
+                    <li>„Holnap 10-kor hívjam fel a könyvelőt.”</li>
+                    <li>„Bence kontrollja jövő kedden 10-kor.”</li>
+                    <li>„Anya pénteken hívja fel a szerelőt.”</li>
+                  </ul>
+                </div>
+              </details>
+
+              <details className="help-section">
+                <summary>Emlékeztetők</summary>
+                <p>
+                  Az emlékeztetőt megadhatod már a rögzítéskor, vagy később is.
+                  Ha másik felnőtt a felelős, a saját emlékeztetőjét ő kapja.
+                </p>
+                <div className="help-examples">
+                  <strong>Példák</strong>
+                  <ul>
+                    <li>„Szólj egy órával előtte.”</li>
+                    <li>„Másfél órával előtte.”</li>
+                    <li>„Emlékeztess hétfőn 18:00-kor.”</li>
+                  </ul>
+                </div>
+              </details>
+
+              <details className="help-section">
+                <summary>Keresés és lekérdezés</summary>
+                <p>
+                  Kérdezhetsz a saját vagy a család nyitott és korábbi feladatairól.
+                  Családtag, felelős és időszak szerint is szűrhetsz.
+                </p>
+                <div className="help-examples">
+                  <strong>Példák</strong>
+                  <ul>
+                    <li>„Mik a nyitott feladataim?”</li>
+                    <li>„Milyen feladataim vannak Bencével ezen a héten?”</li>
+                    <li>„Melyik feladathoz nincs emlékeztető?”</li>
+                  </ul>
+                </div>
+              </details>
+
+              <details className="help-section">
+                <summary>Módosítás</summary>
+                <p>
+                  Meglévő feladat dátuma, időpontja és emlékeztetője módosítható.
+                  Ha több találat van, előbb válaszd ki a megfelelő feladatot.
+                </p>
+                <div className="help-examples">
+                  <strong>Példák</strong>
+                  <ul>
+                    <li>„A fogorvost tedd át péntekre.”</li>
+                    <li>„Ennek az emlékeztetőjét tedd holnap 8-ra.”</li>
+                  </ul>
+                </div>
+              </details>
+
+              <details className="help-section">
+                <summary>Készre jelölés és törlés</summary>
+                <p>
+                  Készre jelölésnél és törlésnél a rendszer azonosítja a feladatot,
+                  és bizonytalan vagy végleges művelet előtt megerősítést kér.
+                </p>
+                <div className="help-examples">
+                  <strong>Példák</strong>
+                  <ul>
+                    <li>„A könyvelőt elintéztem.”</li>
+                    <li>„Töröld a pénteki fodrászt.”</li>
+                  </ul>
+                </div>
+              </details>
+
+              <details className="help-section">
+                <summary>Családtagok és másik felnőtt</summary>
+                <p>
+                  A Családtagok résznél név szerint felvehetsz kezelt családtagokat.
+                  Egy másik felnőttet e-mailben meghívhatsz, így ketten használhatjátok ugyanazt a családot.
+                </p>
+                <p>
+                  Ha a másik felnőttnek adsz feladatot, értesítést kap róla, ha nála az értesítések engedélyezve vannak.
+                </p>
+              </details>
+
+              <details className="help-section">
+                <summary>Értesítések, reggeli briefing és telepítés</summary>
+                <p>
+                  Az értesítéseket eszközönként kell engedélyezni a Fiók és értesítések részben.
+                  A reggeli briefing időpontja a Beállítások alatt módosítható.
+                </p>
+                <p>
+                  Ha még böngészőből használod az alkalmazást, a Telepítés a telefonra résznél
+                  kiteheted a kezdőképernyőre.
+                </p>
+              </details>
+            </div>
+          </section>
+        </main>
+      )
+    }
 
     return (
       <main className="shell">
@@ -2812,6 +2944,19 @@ export default function App() {
               Kijelentkezés
             </button>
           </details>
+
+          {familyName && (
+            <button
+              className="secondary-button help-entry-button"
+              type="button"
+              onClick={() => {
+                setShowHelp(true)
+                window.scrollTo({ top: 0, behavior: 'smooth' })
+              }}
+            >
+              Súgó
+            </button>
+          )}
 
           {errorMessage && <p className="notice error">{errorMessage}</p>}
         </section>
