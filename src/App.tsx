@@ -2774,7 +2774,7 @@ export default function App() {
                   <li key={`${member.family_id}-${member.display_name}`}>
                     <span>{member.display_name}</span>
                     <small>
-                      {member.member_kind === 'active' ? 'Családi felhasználó' : 'Családtag'}
+                      {member.member_kind === 'active' ? 'Családi felhasználó' : 'Kezelt családtag'}
                     </small>
                   </li>
                 ))}
@@ -2795,7 +2795,7 @@ export default function App() {
                   type="submit"
                   disabled={familyActionBusy || !newFamilyMemberName.trim()}
                 >
-                  Családtag hozzáadása
+                  Kezelt családtag hozzáadása
                 </button>
               </form>
 
