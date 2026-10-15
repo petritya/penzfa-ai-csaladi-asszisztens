@@ -281,14 +281,11 @@ Deno.serve(async (req) => {
         return reminderLocal.date === local.date && reminderLocal.time <= briefingTime
       })
 
-      const missingReminder = items.filter((item) =>
-        Boolean(item.due_date)
-        && item.due_date > local.date
-        && (() => {
-          const reminder = reminderByItem.get(item.id)
-          return !reminder?.enabled || !reminder.next_notification_at
-        })()
-      )
+      const missingReminder = items.filter((item) => {
+        if (!item.due_date || item.due_date <= local.date) return false
+        const reminder = reminderByItem.get(item.id)
+        return !reminder?.enabled || !reminder.next_notification_at
+      })
 
       const message = buildBriefingMessage(
         membership.display_name,
