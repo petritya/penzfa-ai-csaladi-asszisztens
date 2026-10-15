@@ -300,7 +300,7 @@ function explicitAssignedOwnerFromMessage(
 
     // MVP nyelvi szabály:
     // ha egy aktív családi felhasználó neve ragozatlanul, a mondat eleji alanyi
-    // pozícióban szerepel, ő az ügygazda.
+    // pozícióban szerepel, ő a felelős családi felhasználó.
     // Pl. "Anya hétfőn hívja fel a szerelőt."
     for (let start = 0; start <= Math.min(4, words.length - ownerWords.length); start += 1) {
       const slice = words.slice(start, start + ownerWords.length).join(' ')
@@ -1005,7 +1005,7 @@ function updateCandidateLabel(candidate: UpdateCandidate) {
   const date = candidate.due_date ? formatHungarianDate(candidate.due_date) : 'dátum nélkül'
   const time = candidate.due_time ? ` ${String(candidate.due_time).slice(0, 5)}` : ''
   const responsible = candidate.responsible_display_name
-    ? ` – ügygazda: ${candidate.responsible_display_name}`
+    ? ` – felelős: ${candidate.responsible_display_name}`
     : ''
   return `${subject}${candidate.title} – ${date}${time}${responsible}`
 }
@@ -1126,8 +1126,8 @@ async function interpretWithOpenAI(
         `Aktív családi felhasználók: ${activeOwnerNames.length ? activeOwnerNames.join(', ') : 'nincs'}.`,
         'A responsible_name azt jelenti, hogy melyik aktív családi felhasználó intézi a feladatot.',
         'Ha egy aktív családi felhasználó a mondat nyelvtani alanya, responsible_name legyen az ő neve. Ilyenkor ne tedd őt subject_name mezőbe csak azért, mert a neve szerepel a mondatban.',
-        'Ha egy kezelt családtag a mondat alanya vagy az ügy rá vonatkozik, subject_name legyen az ő neve, responsible_name pedig maradjon null; ilyenkor a rögzítő ügygazda intézi.',
-        'Ha nincs megnevezett aktív családi felhasználó alanyként vagy felelősként, responsible_name legyen null, mert az alapértelmezett ügygazda a rögzítő felhasználó.',
+        'Ha egy kezelt családtag a mondat alanya vagy az ügy rá vonatkozik, subject_name legyen az ő neve, responsible_name pedig maradjon null; ilyenkor a rögzítő családi felhasználó intézi.',
+        'Ha nincs megnevezett aktív családi felhasználó alanyként vagy felelősként, responsible_name legyen null, mert az alapértelmezett felelős a rögzítő családi felhasználó.',
         'Példa: "Anya hétfőn hívja fel a szerelőt" => subject_name=null, responsible_name=Anya.',
         'Példa: "Hétfőn Anya hívja fel a szerelőt" => subject_name=null, responsible_name=Anya.',
         'Példa: "Anyának hétfőn fodrásza van" => subject_name=Anya, responsible_name=null.',
@@ -1680,7 +1680,7 @@ Deno.serve(async (req) => {
 
       if (invitationError) throw invitationError
       if (!invitation) {
-        return json({ error: 'Nem találtam érvényes ügygazda-meghívást ehhez a fiókhoz.' }, 404)
+        return json({ error: 'Nem találtam érvényes családi felhasználói meghívást ehhez a fiókhoz.' }, 404)
       }
 
       const { count: activeOwnerCount, error: ownerCountError } = await db
@@ -1990,7 +1990,7 @@ Deno.serve(async (req) => {
     if (body?.action === 'add_managed_member') {
       const displayName = String(body?.display_name ?? '').trim()
       if (!displayName) {
-        return json({ error: 'Add meg a családtag nevét.' }, 400)
+        return json({ error: 'Add meg a kezelt családtag nevét.' }, 400)
       }
 
       const { data: existingMembers, error: existingMembersError } = await db
