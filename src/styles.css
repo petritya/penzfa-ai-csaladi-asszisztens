@@ -753,6 +753,74 @@ h2 {
   width: 100%;
 }
 
+.help-entry-button {
+  width: 100%;
+  margin-top: 14px;
+}
+
+.help-page {
+  align-self: start;
+}
+
+.help-back-button {
+  border: 0;
+  padding: 0;
+  margin: 0 0 18px;
+  background: transparent;
+  color: #475569;
+  font-weight: 800;
+}
+
+.help-header {
+  margin-bottom: 18px;
+}
+
+.help-header .eyebrow {
+  margin-bottom: 4px;
+}
+
+.help-sections {
+  display: grid;
+  gap: 10px;
+}
+
+.help-section {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 0 14px;
+  background: #f8fafc;
+}
+
+.help-section summary {
+  cursor: pointer;
+  padding: 14px 0;
+  font-weight: 800;
+}
+
+.help-section[open] summary {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.help-section p {
+  margin: 12px 0;
+  color: #475569;
+  line-height: 1.55;
+}
+
+.help-examples {
+  margin: 12px 0 14px;
+}
+
+.help-examples ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+.help-examples li {
+  margin: 6px 0;
+  line-height: 1.45;
+}
+
 @media (max-width: 520px) {
   body {
     background: #fff;
@@ -867,6 +935,8 @@ h2 {
 
 :root[data-theme='dark'] .lead,
 :root[data-theme='dark'] .capture-help,
+:root[data-theme='dark'] .help-section p,
+:root[data-theme='dark'] .help-back-button,
 :root[data-theme='dark'] .capture-actions small,
 :root[data-theme='dark'] .settings-hint,
 :root[data-theme='dark'] .member-list small,
@@ -910,7 +980,8 @@ h2 {
 :root[data-theme='dark'] .member-list li,
 :root[data-theme='dark'] .settings-form,
 :root[data-theme='dark'] .account,
-:root[data-theme='dark'] .push-settings {
+:root[data-theme='dark'] .push-settings,
+:root[data-theme='dark'] .help-section {
   background: #172033;
 }
 
@@ -945,7 +1016,9 @@ h2 {
 :root[data-theme='dark'] .capture-primary,
 :root[data-theme='dark'] .query-item,
 :root[data-theme='dark'] .push-settings,
-:root[data-theme='dark'] .secondary-details {
+:root[data-theme='dark'] .secondary-details,
+:root[data-theme='dark'] .help-section,
+:root[data-theme='dark'] .help-section[open] summary {
   border-color: #2b3a50;
 }
 
