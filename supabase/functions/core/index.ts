@@ -118,7 +118,7 @@ async function sendOwnerInvite(
   const { data, error } = await dbClient.auth.admin.inviteUserByEmail(email, options)
 
   if (error || !data?.user?.id) {
-    throw new Error(error?.message ?? 'Nem sikerült elküldeni a második ügygazda meghívóját.')
+    throw new Error(error?.message ?? 'Nem sikerült elküldeni a másik családi felhasználó meghívóját.')
   }
 
   return data.user.id as string
@@ -299,7 +299,7 @@ function explicitAssignedOwnerFromMessage(
     }
 
     // MVP nyelvi szabály:
-    // ha egy aktív ügygazda neve ragozatlanul, a mondat eleji alanyi
+    // ha egy aktív családi felhasználó neve ragozatlanul, a mondat eleji alanyi
     // pozícióban szerepel, ő az ügygazda.
     // Pl. "Anya hétfőn hívja fel a szerelőt."
     for (let start = 0; start <= Math.min(4, words.length - ownerWords.length); start += 1) {
@@ -1123,11 +1123,11 @@ async function interpretWithOpenAI(
         'A time mezőt HH:MM formára normalizálhatod, ha az időpont egyértelmű.',
         'A subject_name azt jelenti, hogy kire vonatkozik az ügy. Lehetőleg a megadott családtag-nevek egyikének alapalakja legyen.',
         `Ismert családtagok: ${memberNames.length ? memberNames.join(', ') : 'nincs'}.`,
-        `Aktív ügygazdák: ${activeOwnerNames.length ? activeOwnerNames.join(', ') : 'nincs'}.`,
-        'A responsible_name azt jelenti, hogy melyik aktív ügygazda intézi a feladatot.',
-        'Ha egy aktív ügygazda a mondat nyelvtani alanya, responsible_name legyen az ő neve. Ilyenkor ne tedd őt subject_name mezőbe csak azért, mert a neve szerepel a mondatban.',
+        `Aktív családi felhasználók: ${activeOwnerNames.length ? activeOwnerNames.join(', ') : 'nincs'}.`,
+        'A responsible_name azt jelenti, hogy melyik aktív családi felhasználó intézi a feladatot.',
+        'Ha egy aktív családi felhasználó a mondat nyelvtani alanya, responsible_name legyen az ő neve. Ilyenkor ne tedd őt subject_name mezőbe csak azért, mert a neve szerepel a mondatban.',
         'Ha egy kezelt családtag a mondat alanya vagy az ügy rá vonatkozik, subject_name legyen az ő neve, responsible_name pedig maradjon null; ilyenkor a rögzítő ügygazda intézi.',
-        'Ha nincs megnevezett aktív ügygazda alanyként vagy felelősként, responsible_name legyen null, mert az alapértelmezett ügygazda a rögzítő felhasználó.',
+        'Ha nincs megnevezett aktív családi felhasználó alanyként vagy felelősként, responsible_name legyen null, mert az alapértelmezett ügygazda a rögzítő felhasználó.',
         'Példa: "Anya hétfőn hívja fel a szerelőt" => subject_name=null, responsible_name=Anya.',
         'Példa: "Hétfőn Anya hívja fel a szerelőt" => subject_name=null, responsible_name=Anya.',
         'Példa: "Anyának hétfőn fodrásza van" => subject_name=Anya, responsible_name=null.',
@@ -1215,9 +1215,9 @@ async function interpretUpdateWithOpenAI(
         'Példa: "A fogorvost tedd át péntekre" => target_title=fogorvos.',
         'A subject_name azt jelenti, hogy kire vonatkozik az ügy.',
         `Ismert családtagok: ${memberNames.length ? memberNames.join(', ') : 'nincs'}.`,
-        `Aktív ügygazdák: ${activeOwnerNames.length ? activeOwnerNames.join(', ') : 'nincs'}.`,
-        'A responsible_name azt jelenti, hogy melyik aktív ügygazda felelős a módosítandó ügyért.',
-        'Ha a felhasználó egy aktív ügygazda saját feladatára hivatkozik, responsible_name legyen az ő neve; ne tedd automatikusan subject_name mezőbe.',
+        `Aktív családi felhasználók: ${activeOwnerNames.length ? activeOwnerNames.join(', ') : 'nincs'}.`,
+        'A responsible_name azt jelenti, hogy melyik aktív családi felhasználó felelős a módosítandó ügyért.',
+        'Ha a felhasználó egy aktív családi felhasználó saját feladatára hivatkozik, responsible_name legyen az ő neve; ne tedd automatikusan subject_name mezőbe.',
         'Ha kezelt családtag ügyére hivatkozik, subject_name legyen a családtag neve.',
         'Ha egyik sem derül ki egyértelműen, mindkettő legyen null.',
         'Példa: "Anya szerelős ügyét tedd keddre" => responsible_name=Anya, subject_name=null, target_title=szerelő.',
@@ -1298,9 +1298,9 @@ async function interpretCompleteWithOpenAI(
         'Példa: "A szerelőt elintéztem" => target_title=szerelő.',
         'A subject_name azt jelenti, hogy kire vonatkozik az ügy.',
         `Ismert családtagok: ${memberNames.length ? memberNames.join(', ') : 'nincs'}.`,
-        `Aktív ügygazdák: ${activeOwnerNames.length ? activeOwnerNames.join(', ') : 'nincs'}.`,
-        'A responsible_name azt jelenti, hogy melyik aktív ügygazda felelős a lezárandó ügyért.',
-        'Ha a felhasználó egy aktív ügygazda saját feladatára hivatkozik, responsible_name legyen az ő neve; ne tedd automatikusan subject_name mezőbe.',
+        `Aktív családi felhasználók: ${activeOwnerNames.length ? activeOwnerNames.join(', ') : 'nincs'}.`,
+        'A responsible_name azt jelenti, hogy melyik aktív családi felhasználó felelős a lezárandó ügyért.',
+        'Ha a felhasználó egy aktív családi felhasználó saját feladatára hivatkozik, responsible_name legyen az ő neve; ne tedd automatikusan subject_name mezőbe.',
         'Ha kezelt családtag ügyére hivatkozik, subject_name legyen a családtag neve.',
         'Ha egyik sem derül ki egyértelműen, mindkettő legyen null.',
         'Példa: "Anya szerelős ügye kész" => responsible_name=Anya, subject_name=null, target_title=szerelő.',
@@ -1360,11 +1360,11 @@ async function interpretDeleteWithOpenAI(
         'Ne módosíts adatbázist. Csak azonosítsd a célügyet.',
         'A target_title legyen rövid, természetes keresőkifejezés.',
         `Ismert családtagok: ${memberNames.length ? memberNames.join(', ') : 'nincs'}.`,
-        `Aktív ügygazdák: ${activeOwnerNames.length ? activeOwnerNames.join(', ') : 'nincs'}.`,
+        `Aktív családi felhasználók: ${activeOwnerNames.length ? activeOwnerNames.join(', ') : 'nincs'}.`,
         'subject_name azt jelenti, hogy kire vonatkozik az ügy.',
-        'responsible_name azt jelenti, hogy melyik aktív ügygazda felelős érte.',
+        'responsible_name azt jelenti, hogy melyik aktív családi felhasználó felelős érte.',
         'Ha kezelt családtag ügyére hivatkozik, subject_name legyen a neve.',
-        'Ha aktív ügygazda saját feladatára hivatkozik, responsible_name legyen a neve.',
+        'Ha aktív családi felhasználó saját feladatára hivatkozik, responsible_name legyen a neve.',
         'Ha egyik sem egyértelmű, mindkettő legyen null.',
         'A target_date_phrase csak akkor legyen kitöltve, ha dátummal azonosítja a törlendő ügyet.',
       ].join('\n'),
@@ -1422,13 +1422,13 @@ async function interpretQueryWithOpenAI(
         'status=open: nyitott vagy jövőbeli ügyek; done: elintézett/kész előzmények; deleted: törölt vagy visszavont ügyek; all: csak ha a kérdés tényleg a nyitott és kész ügyeket együtt kéri. A törölt ügyek csak kifejezett kérésre legyenek deleted státuszúak.',
         'Az "utoljára", "legutóbb", "legutóbbi" múltbeli kérdéseknél status=done legyen.',
         'responsibility=mine, ha a felhasználó kifejezetten a saját felelősségi körére kérdez (pl. "ami hozzám tartozik", "az én feladataim"). Egyébként family.',
-        `Aktív felnőttek: ${activeMemberNames.length ? activeMemberNames.join(', ') : 'nincs'}.`,
+        `Aktív családi felhasználók: ${activeMemberNames.length ? activeMemberNames.join(', ') : 'nincs'}.`,
         `Kezelt családtagok: ${managedMemberNames.length ? managedMemberNames.join(', ') : 'nincs'}.`,
         'subject_name azt jelenti, hogy kire vonatkozik az ügy. Kezelt családtagnál általában ezt használd.',
-        'responsible_name azt jelenti, hogy melyik aktív felnőtt felelős az ügyért. Csak aktív felnőtt neve kerülhet ide.',
-        'Ha azt kérdezik, hogy egy aktív felnőttnek milyen feladatai/ügyei vannak, responsible_name legyen az ő neve.',
+        'responsible_name azt jelenti, hogy melyik aktív családi felhasználó felelős az ügyért. Csak aktív családi felhasználó neve kerülhet ide.',
+        'Ha azt kérdezik, hogy egy aktív családi felhasználónek milyen feladatai/ügyei vannak, responsible_name legyen az ő neve.',
         'Ha azt kérdezik, hogy egy kezelt családtagnak (gyerek, nagyszülő) milyen ügyei vannak, subject_name legyen az ő neve.',
-        'Ha konkrét eseményre kérdeznek rá, például "Mikor megy Anya fodrászhoz?", az esemény alanya legyen subject_name, akkor is, ha aktív felnőtt.',
+        'Ha konkrét eseményre kérdeznek rá, például "Mikor megy Anya fodrászhoz?", az esemény alanya legyen subject_name, akkor is, ha aktív családi felhasználó.',
         'A subject_name és responsible_name egyszerre is kitölthető, például "Mamus ügyei, amik Anyához tartoznak".',
         'keywords legyen rövid keresőkifejezés, például "fodrász", ha konkrét ügytípust keres. Általános listázásnál legyen null.',
         'date_scope: today, tomorrow, this_week (ezen a héten), next_week (jövő héten: következő hétfőtől vasárnapig), next_7_days (következő hét nap), specific_date vagy none.',
@@ -1691,7 +1691,7 @@ Deno.serve(async (req) => {
 
       if (ownerCountError) throw ownerCountError
       if ((activeOwnerCount ?? 0) >= 2) {
-        return json({ error: 'Ebben a családban már megvan a két ügygazda.' }, 409)
+        return json({ error: 'Ebben a családban már megvan a két családi felhasználó.' }, 409)
       }
 
       const { data: familyMembers, error: familyMembersError } = await db
@@ -1811,11 +1811,11 @@ Deno.serve(async (req) => {
       }
 
       if (secondOwnerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(secondOwnerEmail)) {
-        return json({ error: 'A második ügygazda e-mail címe nem érvényes.' }, 400)
+        return json({ error: 'A másik családi felhasználó e-mail címe nem érvényes.' }, 400)
       }
 
       if (secondOwnerEmail && normalize(secondOwnerEmail) === normalize(user.email ?? '')) {
-        return json({ error: 'A második ügygazda e-mail címe nem lehet a saját e-mail címed.' }, 400)
+        return json({ error: 'A másik családi felhasználó e-mail címe nem lehet a saját e-mail címed.' }, 400)
       }
 
       const { data: family, error: familyError } = await db
@@ -2037,7 +2037,7 @@ Deno.serve(async (req) => {
       }
 
       if (normalize(email) === normalize(user.email ?? '')) {
-        return json({ error: 'A saját e-mail címedet nem hívhatod meg második ügygazdaként.' }, 400)
+        return json({ error: 'A saját e-mail címedet nem hívhatod meg másik családi felhasználóként.' }, 400)
       }
 
       const { count: ownerCount, error: ownerCountError } = await db
@@ -2048,7 +2048,7 @@ Deno.serve(async (req) => {
 
       if (ownerCountError) throw ownerCountError
       if ((ownerCount ?? 0) >= 2) {
-        return json({ error: 'Ebben a családban már megvan a két ügygazda.' }, 409)
+        return json({ error: 'Ebben a családban már megvan a két családi felhasználó.' }, 409)
       }
 
       const { data: existingPending, error: pendingError } = await db
@@ -2060,7 +2060,7 @@ Deno.serve(async (req) => {
 
       if (pendingError) throw pendingError
       if (existingPending) {
-        return json({ error: 'Már van kiküldött, elfogadásra váró ügygazda-meghívó.' }, 409)
+        return json({ error: 'Már van kiküldött, elfogadásra váró családi felhasználói meghívó.' }, 409)
       }
 
       const { data: invitation, error: invitationError } = await db
@@ -2390,7 +2390,7 @@ Deno.serve(async (req) => {
 
 
       // Emlékeztető-szűrés a felhasználó SAJÁT emlékeztetői alapján.
-      // A családi ügyekhez másik felnőtt emlékeztetője nem számít saját jelzésnek.
+      // A családi ügyekhez másik családi felhasználó emlékeztetője nem számít saját jelzésnek.
       const reminderAtByItemId = new Map<string, string>()
       const scheduledReminderItemIds = new Set<string>()
       if (filtered.length) {
@@ -2705,7 +2705,7 @@ Deno.serve(async (req) => {
       const timeText = dueTime ? ` ${dueTime}` : ''
       const subjectText = subject ? `${subject.display_name}: ` : ''
       const responsibleText = responsibleUserId !== user.id
-        ? ` Ügygazda: ${responsibleDisplayName}.`
+        ? ` Felelős: ${responsibleDisplayName}.`
         : ''
 
       const reminderClarificationDraft: CreateDraft = {
@@ -3004,7 +3004,7 @@ Deno.serve(async (req) => {
 
       const subjectText = draft.subject_display_name ? `${draft.subject_display_name}: ` : ''
       const responsibleText = draft.responsible_user_id !== user.id
-        ? ` Ügygazda: ${draft.responsible_display_name}.`
+        ? ` Felelős: ${draft.responsible_display_name}.`
         : ''
       const dateText = formatHungarianDate(draft.due_date)
       const timeText = draft.due_time ? ` ${String(draft.due_time).slice(0, 5)}` : ''
@@ -3311,7 +3311,7 @@ Deno.serve(async (req) => {
         .maybeSingle()
 
       if (!responsibleMember?.user_id) {
-        return json({ error: 'A megadott ügygazda nem aktív tagja ennek a családnak.' }, 400)
+        return json({ error: 'A megadott családi felhasználó nem aktív tagja ennek a családnak.' }, 400)
       }
 
       const duplicate = await findExactOpenDuplicate(
@@ -3820,7 +3820,7 @@ Deno.serve(async (req) => {
       }
 
       // Az ügy dátumának módosítása önmagában nem írhatja át a személyes
-      // vagy a másik felnőtthöz tartozó emlékeztetőt. A felhasználó a
+      // vagy a másik családi felhasználóhoz tartozó emlékeztetőt. A felhasználó a
       // mentés után külön dönthet a megtartásról, módosításról, kikapcsolásról.
       const dateOrTimeChanged = Boolean(
         (changes.due_date && changes.due_date !== item.due_date)
@@ -4747,7 +4747,7 @@ Deno.serve(async (req) => {
 
         partnerNotificationSent = delivery.sent
         if (!delivery.sent) {
-          partnerNotificationWarning = 'Az ügy készre lett jelölve, de a másik ügygazda push értesítése nem kézbesíthető.'
+          partnerNotificationWarning = 'A teendő készre lett jelölve, de a másik családi felhasználó push értesítése nem kézbesíthető.'
         }
       }
 
