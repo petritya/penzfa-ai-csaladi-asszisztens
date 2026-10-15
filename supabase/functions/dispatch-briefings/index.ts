@@ -151,12 +151,15 @@ function buildBriefingMessage(
   dueToday: any[],
   overdue: any[],
   reminderToday: any[],
-  _missingReminder: any[],
+  missingReminder: any[],
 ) {
   const lines: string[] = [`Jó reggelt, ${displayName}!`]
 
   if (!dueToday.length && !overdue.length && !reminderToday.length) {
     lines.push('Mára nincs esedékes vagy jelzendő nyitott ügy.')
+    if (missingReminder.length) {
+      lines.push(`Pontosítás: ${missingReminder.length} nyitott ügyhöz nincs emlékeztető.`)
+    }
     return lines.join('\n')
   }
 
@@ -178,6 +181,9 @@ function buildBriefingMessage(
   const total = dueToday.length + overdue.length + reminderToday.length
 
   if (total > shown) lines.push(`+ még ${total - shown} ügy`)
+  if (missingReminder.length) {
+    lines.push(`Pontosítás: ${missingReminder.length} nyitott ügyhöz nincs emlékeztető.`)
+  }
 
   return lines.join('\n')
 }
@@ -275,11 +281,11 @@ Deno.serve(async (req) => {
         return reminderLocal.date === local.date && reminderLocal.time <= briefingTime
       })
 
-      const missingReminder = items.filter((item) =>
-        Boolean(item.due_date)
-        && item.due_date > local.date
-        && !reminderByItem.has(item.id)
-      )
+      const missingReminder = items.filter((item) => {
+        if (!item.due_date || item.due_date <= local.date) return false
+        const reminder = reminderByItem.get(item.id)
+        return !reminder?.enabled || !reminder.next_notification_at
+      })
 
       const message = buildBriefingMessage(
         membership.display_name,
