@@ -908,7 +908,7 @@ export default function App() {
     if (data?.status === 'created' || data?.status === 'exists') {
       if (data?.second_owner_invitation_warning) {
         setSetupMessage(
-          `A család elkészült, de a második ügygazda meghívása nem sikerült: ${data.second_owner_invitation_warning}`,
+          `A család elkészült, de a másik családi felhasználó meghívása nem sikerült: ${data.second_owner_invitation_warning}`,
         )
       } else {
         setSetupMessage('A család elkészült.')
@@ -978,7 +978,7 @@ export default function App() {
     }
 
     setSecondOwnerInviteEmail('')
-    setFamilyActionMessage('Meghívó elküldve a másik felnőttnek.')
+    setFamilyActionMessage('Meghívó elküldve a másik családi felhasználónak.')
   }
 
   async function handleAcceptOwnerInvitation(event: FormEvent<HTMLFormElement>) {
@@ -2057,6 +2057,36 @@ export default function App() {
 
             <div className="help-sections">
               <details className="help-section" open>
+                <summary>Mi az AI családi asszisztens?</summary>
+                <p>
+                  Az AI családi asszisztens abban segít, hogy ne kelljen fejben tartanod
+                  a család mindennapi teendőit, időpontjait és határidőit.
+                  Természetes nyelven elmondhatod vagy leírhatod, mit kell elintézni.
+                </p>
+                <p>
+                  A rendszer értelmezi a kérésedet, strukturáltan eltárolja a fontos adatokat,
+                  emlékeztethet rá, reggeli összefoglalót készíthet, és később vissza is keresheted.
+                </p>
+                <div className="help-examples">
+                  <strong>Alapfogalmak</strong>
+                  <ul>
+                    <li>
+                      <strong>Családi felhasználó:</strong> saját fiókkal rendelkezik, be tud lépni,
+                      használhatja az alkalmazást, feladatokat kezelhet és értesítéseket kaphat.
+                    </li>
+                    <li>
+                      <strong>Kezelt családtag:</strong> nincs saját belépése, de a hozzá kapcsolódó
+                      feladatokat és eseményeket a családi felhasználók kezelhetik.
+                    </li>
+                    <li>
+                      Egy családhoz jelenleg legfeljebb két családi felhasználó tartozhat,
+                      kezelt családtagból pedig több is felvehető.
+                    </li>
+                  </ul>
+                </div>
+              </details>
+
+              <details className="help-section">
                 <summary>Feladat vagy esemény rögzítése</summary>
                 <p>
                   Mondd el, mi a teendő, kire vonatkozik és mikorra kell.
@@ -2076,7 +2106,7 @@ export default function App() {
                 <summary>Emlékeztetők</summary>
                 <p>
                   Az emlékeztetőt megadhatod már a rögzítéskor, vagy később is.
-                  Ha másik felnőtt a felelős, a saját emlékeztetőjét ő kapja.
+                  Ha másik családi felhasználó a felelős, a saját emlékeztetőjét ő kapja.
                 </p>
                 <div className="help-examples">
                   <strong>Példák</strong>
@@ -2135,13 +2165,13 @@ export default function App() {
               </details>
 
               <details className="help-section">
-                <summary>Családtagok és másik felnőtt</summary>
+                <summary>Családi felhasználók és kezelt családtagok</summary>
                 <p>
                   A Családtagok résznél név szerint felvehetsz kezelt családtagokat.
-                  Egy másik felnőttet e-mailben meghívhatsz, így ketten használhatjátok ugyanazt a családot.
+                  Egy másik családi felhasználót e-mailben meghívhatsz, így ketten használhatjátok ugyanazt a családot.
                 </p>
                 <p>
-                  Ha a másik felnőttnek adsz feladatot, értesítést kap róla, ha nála az értesítések engedélyezve vannak.
+                  Ha a másik családi felhasználónak adsz feladatot, értesítést kap róla, ha nála az értesítések engedélyezve vannak.
                 </p>
               </details>
 
@@ -2283,7 +2313,7 @@ export default function App() {
                   </label>
 
                   <label>
-                    Másik felnőtt e-mailje
+                    Másik családi felhasználó e-mailje
                     <input
                       type="email"
                       value={setupSecondOwnerEmail}
@@ -2744,7 +2774,7 @@ export default function App() {
                   <li key={`${member.family_id}-${member.display_name}`}>
                     <span>{member.display_name}</span>
                     <small>
-                      {member.member_kind === 'active' ? 'Felnőtt felhasználó' : 'Családtag'}
+                      {member.member_kind === 'active' ? 'Családi felhasználó' : 'Családtag'}
                     </small>
                   </li>
                 ))}
@@ -2772,7 +2802,7 @@ export default function App() {
               {familyMembers.filter((member) => member.member_kind === 'active').length < 2 && (
                 <form className="setup-form" onSubmit={handleInviteSecondOwner}>
                   <label>
-                    Másik felnőtt meghívása
+                    Másik családi felhasználó meghívása
                     <input
                       type="email"
                       value={secondOwnerInviteEmail}
@@ -2857,7 +2887,7 @@ export default function App() {
                         setSettingsMessage(null)
                       }}
                     />
-                    <span>Szóljon a másik felnőttnek, ha készre jelölök egy teendőt</span>
+                    <span>Szóljon a másik családi felhasználónak, ha készre jelölök egy teendőt</span>
                   </label>
 
                   {settingsMessage && <p className="notice success">{settingsMessage}</p>}
