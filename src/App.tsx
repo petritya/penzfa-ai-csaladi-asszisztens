@@ -264,6 +264,7 @@ export default function App() {
   const [pushSubscriptionId, setPushSubscriptionId] = useState<string | null>(null)
   const [pushBusy, setPushBusy] = useState(false)
   const [pushError, setPushError] = useState<string | null>(null)
+  const [pushRepairMessage, setPushRepairMessage] = useState<string | null>(null)
 
   const [settingsLoading, setSettingsLoading] = useState(false)
   const [settingsBusy, setSettingsBusy] = useState(false)
@@ -623,6 +624,7 @@ export default function App() {
       setPushAppId(null)
       setPushSubscriptionId(null)
       setPushError(null)
+      setPushRepairMessage(null)
       return
     }
 
@@ -637,6 +639,7 @@ export default function App() {
       setPushStatus('loading')
       setPushSubscriptionId(null)
       setPushError(null)
+      setPushRepairMessage(null)
 
       const { data: authData } = await supabase!.auth.getSession()
       const currentSession = authData.session
@@ -804,6 +807,7 @@ export default function App() {
 
     setPushBusy(true)
     setPushError(null)
+    setPushRepairMessage(null)
 
     try {
       const oneSignal = await getOneSignalClient(pushAppId)
@@ -837,6 +841,58 @@ export default function App() {
     } catch (error) {
       setPushStatus('error')
       setPushError(error instanceof Error ? error.message : 'Az értesítések bekapcsolása nem sikerült.')
+    } finally {
+      setPushBusy(false)
+    }
+  }
+
+  async function handleRepairPush() {
+    if (!session || !pushAppId || pushBusy) return
+    const confirmed = window.confirm(
+      'Újraregisztráljam ennek a készüléknek a push-feliratkozását? '
+      + 'A művelet rövid időre lekapcsolja, majd újra bekapcsolja az értesítéseket. '
+      + 'A többi készülék feliratkozását nem érinti.',
+    )
+    if (!confirmed) return
+
+    setPushBusy(true)
+    setPushError(null)
+    setPushRepairMessage(null)
+
+    try {
+      const oneSignal = await getOneSignalClient(pushAppId)
+      // Kizárólag kifejezett felhasználói kérésre regisztráljuk újra a helyi
+      // feliratkozást. A fiókhoz tartozó többi eszköz érintetlen marad.
+      await oneSignal.User.PushSubscription.optOut()
+      await oneSignal.login(session.user.id)
+
+      if (Notification.permission !== 'granted') {
+        await oneSignal.Notifications.requestPermission()
+      }
+      if (Notification.permission !== 'granted') {
+        setPushStatus(Notification.permission === 'denied' ? 'blocked' : 'ready')
+        setPushRepairMessage('Az újraregisztráláshoz engedélyezni kell az értesítéseket.')
+        return
+      }
+
+      await oneSignal.User.PushSubscription.optIn()
+      await oneSignal.login(session.user.id)
+      const subscribed = await waitForPushSubscription(oneSignal)
+      setPushSubscriptionId(oneSignal.User.PushSubscription.id ?? null)
+      setPushStatus(subscribed ? 'enabled' : 'ready')
+      if (subscribed) {
+        setPushRepairMessage(
+          'A helyi push-kapcsolat újraregisztrálása megtörtént. '
+          + 'Ellenőrizzük, hogy a OneSignal szerverén is „Subscribed” lett-e.',
+        )
+      } else {
+        setPushError('A push token nem állt helyre. Ellenőrizzük a telefon böngészőjének beállításait.')
+      }
+    } catch (error) {
+      setPushStatus('error')
+      setPushError(
+        error instanceof Error ? error.message : 'Nem sikerült a push-kapcsolatot újraregisztrálni.',
+      )
     } finally {
       setPushBusy(false)
     }
@@ -2988,6 +3044,17 @@ export default function App() {
                       : 'Értesítések bekapcsolása'}
                   </button>
                 )}
+                {pushStatus === 'enabled' && (
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={handleRepairPush}
+                    disabled={pushBusy}
+                  >
+                    {pushBusy ? 'Újraregisztrálás…' : 'Push-kapcsolat helyreállítása'}
+                  </button>
+                )}
+                {pushRepairMessage && <small>{pushRepairMessage}</small>}
               </section>
             )}
 
