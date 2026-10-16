@@ -76,6 +76,20 @@ type ReminderFollowUp = ReminderEditTarget & {
 
 type PushStatus = 'idle' | 'loading' | 'ready' | 'enabled' | 'blocked' | 'unsupported' | 'error'
 
+type PushDiagnostics = {
+  browser: string
+  operatingSystem: string
+  userAgent: string
+  notificationPermission: string
+  oneSignalTokenPresent: boolean | null
+  workers: Array<{
+    scope: string
+    script: string
+    state: string
+    browserPushSubscription: 'van' | 'nincs' | 'nem ellenőrizhető'
+  }>
+}
+
 type UserSettings = {
   briefing_enabled: boolean
   briefing_time: string
@@ -266,6 +280,9 @@ export default function App() {
   const [pushBusy, setPushBusy] = useState(false)
   const [pushError, setPushError] = useState<string | null>(null)
   const [pushRepairMessage, setPushRepairMessage] = useState<string | null>(null)
+  const [pushDiagnostics, setPushDiagnostics] = useState<PushDiagnostics | null>(null)
+  const [pushDiagnosticsBusy, setPushDiagnosticsBusy] = useState(false)
+  const [pushDiagnosticsError, setPushDiagnosticsError] = useState<string | null>(null)
 
   const [settingsLoading, setSettingsLoading] = useState(false)
   const [settingsBusy, setSettingsBusy] = useState(false)
@@ -896,6 +913,77 @@ export default function App() {
       )
     } finally {
       setPushBusy(false)
+    }
+  }
+
+  async function handleCheckPushDiagnostics() {
+    setPushDiagnosticsBusy(true)
+    setPushDiagnosticsError(null)
+
+    try {
+      const ua = window.navigator.userAgent
+      const operatingSystem = /Android/i.test(ua) ? 'Android'
+        : /iPad|iPhone|iPod/i.test(ua) ? 'iOS / iPadOS'
+          : /Windows/i.test(ua) ? 'Windows'
+            : /Macintosh|Mac OS X/i.test(ua) ? 'macOS'
+              : /Linux/i.test(ua) ? 'Linux'
+                : 'Ismeretlen'
+      const browser = /EdgA?\\/|EdgiOS\\//i.test(ua) ? 'Edge'
+        : /OPR\\/|Opera/i.test(ua) ? 'Opera'
+          : /CriOS\\/|Chrome\\//i.test(ua) ? 'Chrome'
+            : /Firefox\\/|FxiOS\\//i.test(ua) ? 'Firefox'
+              : /Safari\\//i.test(ua) ? 'Safari'
+                : 'Ismeretlen'
+
+      // Csak lekérdezünk: sem az SDK-feliratkozást, sem a böngésző
+      // PushManager-feliratkozását nem kapcsoljuk ki vagy be.
+      const registrations = 'serviceWorker' in navigator
+        ? await navigator.serviceWorker.getRegistrations()
+        : []
+      const workers: PushDiagnostics['workers'] = []
+      for (const registration of registrations) {
+        const worker = registration.active ?? registration.waiting ?? registration.installing
+        let browserPushSubscription: PushDiagnostics['workers'][number]['browserPushSubscription'] = 'nem ellenőrizhető'
+        try {
+          const subscription = await registration.pushManager.getSubscription()
+          browserPushSubscription = subscription ? 'van' : 'nincs'
+        } catch {
+          // A diagnosztika a többi adatot hiba esetén is megmutatja.
+        }
+        workers.push({
+          scope: new URL(registration.scope).pathname,
+          script: worker ? new URL(worker.scriptURL).pathname : 'Nincs aktív worker',
+          state: worker?.state ?? 'nincs',
+          browserPushSubscription,
+        })
+      }
+
+      let oneSignalTokenPresent: boolean | null = null
+      if (pushAppId) {
+        try {
+          const oneSignal = await getOneSignalClient(pushAppId)
+          oneSignalTokenPresent = Boolean(oneSignal.User.PushSubscription.token?.trim())
+        } catch {
+          // Az SDK állapotának olvasási hibája nem rejti el a böngésző adatait.
+        }
+      }
+
+      setPushDiagnostics({
+        browser,
+        operatingSystem,
+        userAgent: ua,
+        notificationPermission: typeof Notification === 'undefined'
+          ? 'nem támogatott'
+          : Notification.permission,
+        oneSignalTokenPresent,
+        workers,
+      })
+    } catch (error) {
+      setPushDiagnosticsError(
+        error instanceof Error ? error.message : 'A diagnosztikai adatok nem olvashatók.',
+      )
+    } finally {
+      setPushDiagnosticsBusy(false)
     }
   }
 
@@ -3056,6 +3144,42 @@ export default function App() {
                   </button>
                 )}
                 {pushRepairMessage && <small>{pushRepairMessage}</small>}
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => void handleCheckPushDiagnostics()}
+                  disabled={pushDiagnosticsBusy}
+                >
+                  {pushDiagnosticsBusy ? 'Ellenőrzés…' : 'Push diagnosztika'}
+                </button>
+                {pushDiagnosticsError && <small>{pushDiagnosticsError}</small>}
+                {pushDiagnostics && (
+                  <div className="push-diagnostics">
+                    <strong>Eszköz és böngésző</strong>
+                    <small>{pushDiagnostics.operatingSystem} / {pushDiagnostics.browser}</small>
+                    <small className="push-diagnostics-raw">
+                      Böngészőazonosító: <code>{pushDiagnostics.userAgent}</code>
+                    </small>
+                    <small>Értesítési engedély: {pushDiagnostics.notificationPermission}</small>
+                    <small>
+                      Helyi OneSignal push token: {pushDiagnostics.oneSignalTokenPresent === null
+                        ? 'nem ellenőrizhető'
+                        : pushDiagnostics.oneSignalTokenPresent ? 'van' : 'nincs'}
+                    </small>
+                    <strong>Service worker és böngészős push</strong>
+                    {pushDiagnostics.workers.length === 0 && (
+                      <small>Nem található regisztrált service worker.</small>
+                    )}
+                    {pushDiagnostics.workers.map((worker, index) => (
+                      <div key={`${worker.scope}-${index}`}>
+                        <small>Hatókör: {worker.scope}</small>
+                        <small>Worker: {worker.script} ({worker.state})</small>
+                        <small>Böngészős push-feliratkozás: {worker.browserPushSubscription}</small>
+                      </div>
+                    ))}
+                    <small>Csak helyi ellenőrzés. Nem módosítja a feliratkozást.</small>
+                  </div>
+                )}
               </section>
             )}
 
