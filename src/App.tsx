@@ -928,11 +928,11 @@ export default function App() {
             : /Macintosh|Mac OS X/i.test(ua) ? 'macOS'
               : /Linux/i.test(ua) ? 'Linux'
                 : 'Ismeretlen'
-      const browser = /EdgA?\\/|EdgiOS\\//i.test(ua) ? 'Edge'
-        : /OPR\\/|Opera/i.test(ua) ? 'Opera'
-          : /CriOS\\/|Chrome\\//i.test(ua) ? 'Chrome'
-            : /Firefox\\/|FxiOS\\//i.test(ua) ? 'Firefox'
-              : /Safari\\//i.test(ua) ? 'Safari'
+      const browser = /EdgA|EdgiOS|Edg/i.test(ua) ? 'Edge'
+        : /OPR|Opera/i.test(ua) ? 'Opera'
+          : /CriOS|Chrome/i.test(ua) ? 'Chrome'
+            : /Firefox|FxiOS/i.test(ua) ? 'Firefox'
+              : /Safari/i.test(ua) ? 'Safari'
                 : 'Ismeretlen'
 
       // Csak lekérdezünk: sem az SDK-feliratkozást, sem a böngésző
