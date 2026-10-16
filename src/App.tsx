@@ -126,6 +126,7 @@ type OneSignalClient = {
       token: string | null | undefined
       optedIn: boolean
       optIn: () => Promise<void>
+      optOut: () => Promise<void>
     }
   }
 }
