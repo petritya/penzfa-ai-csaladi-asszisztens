@@ -666,10 +666,8 @@ export default function App() {
       try {
         const oneSignal = await getOneSignalClient(data.app_id)
 
-        // Minden belépéskor kösd újra biztosan ezt az eszközt az aktuális
-        // Pénzfa-felhasználóhoz. Ez helyrehozza azt az esetet is, amikor
-        // ugyanazon a telefonon korábban másik családi felhasználó volt belépve.
-        await oneSignal.logout()
+        // A login a most bejelentkezett fiókhoz rendeli az eszközt;
+        // kijelentkeztetni csak tényleges fiókból kilépéskor szükséges.
         await oneSignal.login(currentSession.user.id)
 
         if (cancelled) return
@@ -719,7 +717,6 @@ export default function App() {
 
       try {
         const oneSignal = await getOneSignalClient(resolvedPushAppId)
-        await oneSignal.logout()
         await oneSignal.login(currentUserId)
 
         if (
