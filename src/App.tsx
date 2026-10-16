@@ -261,6 +261,7 @@ export default function App() {
 
   const [pushStatus, setPushStatus] = useState<PushStatus>('idle')
   const [pushAppId, setPushAppId] = useState<string | null>(null)
+  const [pushSubscriptionId, setPushSubscriptionId] = useState<string | null>(null)
   const [pushBusy, setPushBusy] = useState(false)
   const [pushError, setPushError] = useState<string | null>(null)
 
@@ -620,6 +621,7 @@ export default function App() {
     if (!supabase || !session || !familyName) {
       setPushStatus('idle')
       setPushAppId(null)
+      setPushSubscriptionId(null)
       setPushError(null)
       return
     }
@@ -633,6 +635,7 @@ export default function App() {
       }
 
       setPushStatus('loading')
+      setPushSubscriptionId(null)
       setPushError(null)
 
       const { data: authData } = await supabase!.auth.getSession()
@@ -684,6 +687,8 @@ export default function App() {
           await oneSignal.login(currentSession.user.id)
 
           const subscribed = await waitForPushSubscription(oneSignal)
+          if (cancelled) return
+          setPushSubscriptionId(subscribed ? oneSignal.User.PushSubscription.id ?? null : null)
           setPushStatus(subscribed ? 'enabled' : 'ready')
         } else {
           setPushStatus('ready')
@@ -728,6 +733,11 @@ export default function App() {
             await oneSignal.User.PushSubscription.optIn()
           }
           await oneSignal.login(currentUserId)
+          const subscribed = await waitForPushSubscription(oneSignal)
+          if (!cancelled) {
+            setPushSubscriptionId(subscribed ? oneSignal.User.PushSubscription.id ?? null : null)
+            setPushStatus(subscribed ? 'enabled' : 'ready')
+          }
         }
       } catch {
         // A háttérből visszatéréskor végzett push-helyreállítás
@@ -816,8 +826,10 @@ export default function App() {
       const subscribed = await waitForPushSubscription(oneSignal)
 
       if (subscribed) {
+        setPushSubscriptionId(oneSignal.User.PushSubscription.id ?? null)
         setPushStatus('enabled')
       } else {
+        setPushSubscriptionId(null)
         setPushStatus('error')
         setPushError(
           'A böngésző engedélyezte az értesítéseket, de a OneSignal push-feliratkozás még nem jött létre.',
@@ -2948,6 +2960,11 @@ export default function App() {
                   <strong>Értesítések</strong>
                   {pushStatus === 'loading' && <small>Ellenőrzés…</small>}
                   {pushStatus === 'enabled' && <small className="push-enabled">Bekapcsolva ezen az eszközön.</small>}
+                  {pushStatus === 'enabled' && (
+                    <small className="push-subscription-id">
+                      OneSignal Subscription ID: <code>{pushSubscriptionId ?? 'Még nem elérhető'}</code>
+                    </small>
+                  )}
                   {pushStatus === 'blocked' && <small>Az értesítések le vannak tiltva a böngésző/PWA beállításaiban.</small>}
                   {pushStatus === 'unsupported' && <small>Ez a böngésző vagy eszköz nem támogatja a webes push értesítéseket.</small>}
                   {pushStatus === 'error' && <small>{pushError ?? 'A push szolgáltatás nem érhető el.'}</small>}
