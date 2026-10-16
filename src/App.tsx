@@ -179,7 +179,7 @@ function getOneSignalClient(appId: string) {
 async function waitForPushSubscription(oneSignal: OneSignalClient) {
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const subscription = oneSignal.User.PushSubscription
-    if (subscription.optedIn && subscription.id) return true
+    if (subscription.optedIn && subscription.id && subscription.token?.trim()) return true
     await new Promise((resolve) => window.setTimeout(resolve, 300))
   }
 
@@ -688,7 +688,7 @@ export default function App() {
 
           const subscribed = await waitForPushSubscription(oneSignal)
           if (cancelled) return
-          setPushSubscriptionId(subscribed ? oneSignal.User.PushSubscription.id ?? null : null)
+          setPushSubscriptionId(oneSignal.User.PushSubscription.id ?? null)
           setPushStatus(subscribed ? 'enabled' : 'ready')
         } else {
           setPushStatus('ready')
@@ -735,7 +735,7 @@ export default function App() {
           await oneSignal.login(currentUserId)
           const subscribed = await waitForPushSubscription(oneSignal)
           if (!cancelled) {
-            setPushSubscriptionId(subscribed ? oneSignal.User.PushSubscription.id ?? null : null)
+            setPushSubscriptionId(oneSignal.User.PushSubscription.id ?? null)
             setPushStatus(subscribed ? 'enabled' : 'ready')
           }
         }
@@ -825,14 +825,13 @@ export default function App() {
 
       const subscribed = await waitForPushSubscription(oneSignal)
 
+      setPushSubscriptionId(oneSignal.User.PushSubscription.id ?? null)
       if (subscribed) {
-        setPushSubscriptionId(oneSignal.User.PushSubscription.id ?? null)
         setPushStatus('enabled')
       } else {
-        setPushSubscriptionId(null)
-        setPushStatus('error')
+        setPushStatus('ready')
         setPushError(
-          'A böngésző engedélyezte az értesítéseket, de a OneSignal push-feliratkozás még nem jött létre.',
+          'Nincs működő push token ezen az eszközön. Próbáld meg újra a bekapcsolást.',
         )
       }
     } catch (error) {
@@ -2960,15 +2959,21 @@ export default function App() {
                   <strong>Értesítések</strong>
                   {pushStatus === 'loading' && <small>Ellenőrzés…</small>}
                   {pushStatus === 'enabled' && <small className="push-enabled">Bekapcsolva ezen az eszközön.</small>}
-                  {pushStatus === 'enabled' && (
+                  {(pushStatus === 'enabled' || pushStatus === 'ready') && pushSubscriptionId && (
                     <small className="push-subscription-id">
-                      OneSignal Subscription ID: <code>{pushSubscriptionId ?? 'Még nem elérhető'}</code>
+                      OneSignal Subscription ID: <code>{pushSubscriptionId}</code>
                     </small>
                   )}
                   {pushStatus === 'blocked' && <small>Az értesítések le vannak tiltva a böngésző/PWA beállításaiban.</small>}
                   {pushStatus === 'unsupported' && <small>Ez a böngésző vagy eszköz nem támogatja a webes push értesítéseket.</small>}
                   {pushStatus === 'error' && <small>{pushError ?? 'A push szolgáltatás nem érhető el.'}</small>}
-                  {pushStatus === 'ready' && <small>Kapcsold be, hogy ezen az eszközön megérkezzenek a családi értesítések.</small>}
+                  {pushStatus === 'ready' && (
+                    <small>
+                      {typeof Notification !== 'undefined' && Notification.permission === 'granted'
+                        ? 'Az értesítések engedélyezettek, de a OneSignal push token hiányzik. A készülék jelenleg nem tud értesítést fogadni.'
+                        : 'Kapcsold be, hogy ezen az eszközön megérkezzenek a családi értesítések.'}
+                    </small>
+                  )}
                 </div>
 
                 {pushStatus === 'ready' && (
@@ -2978,7 +2983,9 @@ export default function App() {
                     onClick={handleEnablePush}
                     disabled={pushBusy}
                   >
-                    {pushBusy ? 'Bekapcsolás…' : 'Értesítések bekapcsolása'}
+                    {pushBusy ? 'Ellenőrzés…' : typeof Notification !== 'undefined' && Notification.permission === 'granted'
+                      ? 'Értesítések újrapróbálása'
+                      : 'Értesítések bekapcsolása'}
                   </button>
                 )}
               </section>
