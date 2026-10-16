@@ -741,6 +741,13 @@ h2 {
   font-weight: 700;
 }
 
+.push-subscription-id code {
+  display: block;
+  overflow-wrap: anywhere;
+  user-select: text;
+  font-size: 0.78rem;
+}
+
 .push-settings .secondary-button {
   justify-self: start;
 }
