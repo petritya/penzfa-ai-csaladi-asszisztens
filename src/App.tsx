@@ -2514,7 +2514,7 @@ export default function App() {
                   {pushContext.message
                     .split('\n')
                     .map((line) => line.trim())
-                    .filter((line) => line && !line.startsWith('Pontosítás:'))
+                    .filter((line) => line.length > 0)
                     .map((line, index) => {
                       if (index === 0) {
                         return <p className="briefing-greeting" key={`briefing-${index}`}>{line}</p>
