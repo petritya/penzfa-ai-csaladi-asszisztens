@@ -6,6 +6,7 @@ ALTER TABLE public.items
 CREATE INDEX IF NOT EXISTS items_due_time_push_idx
   ON public.items (due_date, due_time)
   WHERE status = 'open'
+    AND due_push_sent_key = ''
     AND due_date IS NOT NULL
     AND due_time IS NOT NULL
     AND responsible_user_id IS NOT NULL;
