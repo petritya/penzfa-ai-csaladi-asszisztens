@@ -76,20 +76,6 @@ type ReminderFollowUp = ReminderEditTarget & {
 
 type PushStatus = 'idle' | 'loading' | 'ready' | 'enabled' | 'blocked' | 'unsupported' | 'error'
 
-type PushDiagnostics = {
-  browser: string
-  operatingSystem: string
-  userAgent: string
-  notificationPermission: string
-  oneSignalTokenPresent: boolean | null
-  workers: Array<{
-    scope: string
-    script: string
-    state: string
-    browserPushSubscription: 'van' | 'nincs' | 'nem ellenőrizhető'
-  }>
-}
-
 type UserSettings = {
   briefing_enabled: boolean
   briefing_time: string
@@ -140,7 +126,6 @@ type OneSignalClient = {
       token: string | null | undefined
       optedIn: boolean
       optIn: () => Promise<void>
-      optOut: () => Promise<void>
     }
   }
 }
@@ -276,13 +261,8 @@ export default function App() {
 
   const [pushStatus, setPushStatus] = useState<PushStatus>('idle')
   const [pushAppId, setPushAppId] = useState<string | null>(null)
-  const [pushSubscriptionId, setPushSubscriptionId] = useState<string | null>(null)
   const [pushBusy, setPushBusy] = useState(false)
   const [pushError, setPushError] = useState<string | null>(null)
-  const [pushRepairMessage, setPushRepairMessage] = useState<string | null>(null)
-  const [pushDiagnostics, setPushDiagnostics] = useState<PushDiagnostics | null>(null)
-  const [pushDiagnosticsBusy, setPushDiagnosticsBusy] = useState(false)
-  const [pushDiagnosticsError, setPushDiagnosticsError] = useState<string | null>(null)
 
   const [settingsLoading, setSettingsLoading] = useState(false)
   const [settingsBusy, setSettingsBusy] = useState(false)
@@ -640,9 +620,7 @@ export default function App() {
     if (!supabase || !session || !familyName) {
       setPushStatus('idle')
       setPushAppId(null)
-      setPushSubscriptionId(null)
       setPushError(null)
-      setPushRepairMessage(null)
       return
     }
 
@@ -655,9 +633,7 @@ export default function App() {
       }
 
       setPushStatus('loading')
-      setPushSubscriptionId(null)
       setPushError(null)
-      setPushRepairMessage(null)
 
       const { data: authData } = await supabase!.auth.getSession()
       const currentSession = authData.session
@@ -709,7 +685,6 @@ export default function App() {
 
           const subscribed = await waitForPushSubscription(oneSignal)
           if (cancelled) return
-          setPushSubscriptionId(oneSignal.User.PushSubscription.id ?? null)
           setPushStatus(subscribed ? 'enabled' : 'ready')
         } else {
           setPushStatus('ready')
@@ -756,7 +731,6 @@ export default function App() {
           await oneSignal.login(currentUserId)
           const subscribed = await waitForPushSubscription(oneSignal)
           if (!cancelled) {
-            setPushSubscriptionId(oneSignal.User.PushSubscription.id ?? null)
             setPushStatus(subscribed ? 'enabled' : 'ready')
           }
         }
@@ -825,7 +799,6 @@ export default function App() {
 
     setPushBusy(true)
     setPushError(null)
-    setPushRepairMessage(null)
 
     try {
       const oneSignal = await getOneSignalClient(pushAppId)
@@ -846,14 +819,12 @@ export default function App() {
       await oneSignal.login(session.user.id)
 
       const subscribed = await waitForPushSubscription(oneSignal)
-
-      setPushSubscriptionId(oneSignal.User.PushSubscription.id ?? null)
       if (subscribed) {
         setPushStatus('enabled')
       } else {
         setPushStatus('ready')
         setPushError(
-          'Nincs működő push token ezen az eszközön. Próbáld meg újra a bekapcsolást.',
+          'Ezen az eszközön még nem működnek az értesítések. Próbáld meg újra a bekapcsolást.',
         )
       }
     } catch (error) {
@@ -861,129 +832,6 @@ export default function App() {
       setPushError(error instanceof Error ? error.message : 'Az értesítések bekapcsolása nem sikerült.')
     } finally {
       setPushBusy(false)
-    }
-  }
-
-  async function handleRepairPush() {
-    if (!session || !pushAppId || pushBusy) return
-    const confirmed = window.confirm(
-      'Újraregisztráljam ennek a készüléknek a push-feliratkozását? '
-      + 'A művelet rövid időre lekapcsolja, majd újra bekapcsolja az értesítéseket. '
-      + 'A többi készülék feliratkozását nem érinti.',
-    )
-    if (!confirmed) return
-
-    setPushBusy(true)
-    setPushError(null)
-    setPushRepairMessage(null)
-
-    try {
-      const oneSignal = await getOneSignalClient(pushAppId)
-      // Kizárólag kifejezett felhasználói kérésre regisztráljuk újra a helyi
-      // feliratkozást. A fiókhoz tartozó többi eszköz érintetlen marad.
-      await oneSignal.User.PushSubscription.optOut()
-      await oneSignal.login(session.user.id)
-
-      if (Notification.permission !== 'granted') {
-        await oneSignal.Notifications.requestPermission()
-      }
-      if (Notification.permission !== 'granted') {
-        setPushStatus(Notification.permission === 'denied' ? 'blocked' : 'ready')
-        setPushRepairMessage('Az újraregisztráláshoz engedélyezni kell az értesítéseket.')
-        return
-      }
-
-      await oneSignal.User.PushSubscription.optIn()
-      await oneSignal.login(session.user.id)
-      const subscribed = await waitForPushSubscription(oneSignal)
-      setPushSubscriptionId(oneSignal.User.PushSubscription.id ?? null)
-      setPushStatus(subscribed ? 'enabled' : 'ready')
-      if (subscribed) {
-        setPushRepairMessage(
-          'A helyi push-kapcsolat újraregisztrálása megtörtént. '
-          + 'Ellenőrizzük, hogy a OneSignal szerverén is „Subscribed” lett-e.',
-        )
-      } else {
-        setPushError('A push token nem állt helyre. Ellenőrizzük a telefon böngészőjének beállításait.')
-      }
-    } catch (error) {
-      setPushStatus('error')
-      setPushError(
-        error instanceof Error ? error.message : 'Nem sikerült a push-kapcsolatot újraregisztrálni.',
-      )
-    } finally {
-      setPushBusy(false)
-    }
-  }
-
-  async function handleCheckPushDiagnostics() {
-    setPushDiagnosticsBusy(true)
-    setPushDiagnosticsError(null)
-
-    try {
-      const ua = window.navigator.userAgent
-      const operatingSystem = /Android/i.test(ua) ? 'Android'
-        : /iPad|iPhone|iPod/i.test(ua) ? 'iOS / iPadOS'
-          : /Windows/i.test(ua) ? 'Windows'
-            : /Macintosh|Mac OS X/i.test(ua) ? 'macOS'
-              : /Linux/i.test(ua) ? 'Linux'
-                : 'Ismeretlen'
-      const browser = /EdgA|EdgiOS|Edg/i.test(ua) ? 'Edge'
-        : /OPR|Opera/i.test(ua) ? 'Opera'
-          : /CriOS|Chrome/i.test(ua) ? 'Chrome'
-            : /Firefox|FxiOS/i.test(ua) ? 'Firefox'
-              : /Safari/i.test(ua) ? 'Safari'
-                : 'Ismeretlen'
-
-      // Csak lekérdezünk: sem az SDK-feliratkozást, sem a böngésző
-      // PushManager-feliratkozását nem kapcsoljuk ki vagy be.
-      const registrations = 'serviceWorker' in navigator
-        ? await navigator.serviceWorker.getRegistrations()
-        : []
-      const workers: PushDiagnostics['workers'] = []
-      for (const registration of registrations) {
-        const worker = registration.active ?? registration.waiting ?? registration.installing
-        let browserPushSubscription: PushDiagnostics['workers'][number]['browserPushSubscription'] = 'nem ellenőrizhető'
-        try {
-          const subscription = await registration.pushManager.getSubscription()
-          browserPushSubscription = subscription ? 'van' : 'nincs'
-        } catch {
-          // A diagnosztika a többi adatot hiba esetén is megmutatja.
-        }
-        workers.push({
-          scope: new URL(registration.scope).pathname,
-          script: worker ? new URL(worker.scriptURL).pathname : 'Nincs aktív worker',
-          state: worker?.state ?? 'nincs',
-          browserPushSubscription,
-        })
-      }
-
-      let oneSignalTokenPresent: boolean | null = null
-      if (pushAppId) {
-        try {
-          const oneSignal = await getOneSignalClient(pushAppId)
-          oneSignalTokenPresent = Boolean(oneSignal.User.PushSubscription.token?.trim())
-        } catch {
-          // Az SDK állapotának olvasási hibája nem rejti el a böngésző adatait.
-        }
-      }
-
-      setPushDiagnostics({
-        browser,
-        operatingSystem,
-        userAgent: ua,
-        notificationPermission: typeof Notification === 'undefined'
-          ? 'nem támogatott'
-          : Notification.permission,
-        oneSignalTokenPresent,
-        workers,
-      })
-    } catch (error) {
-      setPushDiagnosticsError(
-        error instanceof Error ? error.message : 'A diagnosztikai adatok nem olvashatók.',
-      )
-    } finally {
-      setPushDiagnosticsBusy(false)
     }
   }
 
@@ -3104,18 +2952,13 @@ export default function App() {
                   <strong>Értesítések</strong>
                   {pushStatus === 'loading' && <small>Ellenőrzés…</small>}
                   {pushStatus === 'enabled' && <small className="push-enabled">Bekapcsolva ezen az eszközön.</small>}
-                  {(pushStatus === 'enabled' || pushStatus === 'ready') && pushSubscriptionId && (
-                    <small className="push-subscription-id">
-                      OneSignal Subscription ID: <code>{pushSubscriptionId}</code>
-                    </small>
-                  )}
                   {pushStatus === 'blocked' && <small>Az értesítések le vannak tiltva a böngésző/PWA beállításaiban.</small>}
                   {pushStatus === 'unsupported' && <small>Ez a böngésző vagy eszköz nem támogatja a webes push értesítéseket.</small>}
                   {pushStatus === 'error' && <small>{pushError ?? 'A push szolgáltatás nem érhető el.'}</small>}
                   {pushStatus === 'ready' && (
                     <small>
                       {typeof Notification !== 'undefined' && Notification.permission === 'granted'
-                        ? 'Az értesítések engedélyezettek, de a OneSignal push token hiányzik. A készülék jelenleg nem tud értesítést fogadni.'
+                        ? 'Az értesítések engedélyezettek, de ezen az eszközön még nem működik a pushküldés.'
                         : 'Kapcsold be, hogy ezen az eszközön megérkezzenek a családi értesítések.'}
                     </small>
                   )}
@@ -3132,53 +2975,6 @@ export default function App() {
                       ? 'Értesítések újrapróbálása'
                       : 'Értesítések bekapcsolása'}
                   </button>
-                )}
-                {pushStatus === 'enabled' && (
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={handleRepairPush}
-                    disabled={pushBusy}
-                  >
-                    {pushBusy ? 'Újraregisztrálás…' : 'Push-kapcsolat helyreállítása'}
-                  </button>
-                )}
-                {pushRepairMessage && <small>{pushRepairMessage}</small>}
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={() => void handleCheckPushDiagnostics()}
-                  disabled={pushDiagnosticsBusy}
-                >
-                  {pushDiagnosticsBusy ? 'Ellenőrzés…' : 'Push diagnosztika'}
-                </button>
-                {pushDiagnosticsError && <small>{pushDiagnosticsError}</small>}
-                {pushDiagnostics && (
-                  <div className="push-diagnostics">
-                    <strong>Eszköz és böngésző</strong>
-                    <small>{pushDiagnostics.operatingSystem} / {pushDiagnostics.browser}</small>
-                    <small className="push-diagnostics-raw">
-                      Böngészőazonosító: <code>{pushDiagnostics.userAgent}</code>
-                    </small>
-                    <small>Értesítési engedély: {pushDiagnostics.notificationPermission}</small>
-                    <small>
-                      Helyi OneSignal push token: {pushDiagnostics.oneSignalTokenPresent === null
-                        ? 'nem ellenőrizhető'
-                        : pushDiagnostics.oneSignalTokenPresent ? 'van' : 'nincs'}
-                    </small>
-                    <strong>Service worker és böngészős push</strong>
-                    {pushDiagnostics.workers.length === 0 && (
-                      <small>Nem található regisztrált service worker.</small>
-                    )}
-                    {pushDiagnostics.workers.map((worker, index) => (
-                      <div key={`${worker.scope}-${index}`}>
-                        <small>Hatókör: {worker.scope}</small>
-                        <small>Worker: {worker.script} ({worker.state})</small>
-                        <small>Böngészős push-feliratkozás: {worker.browserPushSubscription}</small>
-                      </div>
-                    ))}
-                    <small>Csak helyi ellenőrzés. Nem módosítja a feliratkozást.</small>
-                  </div>
                 )}
               </section>
             )}
