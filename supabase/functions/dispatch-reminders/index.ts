@@ -251,41 +251,45 @@ async function sendDueItemPushes(nowIso: string) {
       ?? 'https://penzfa-ai-csaladi-asszisztens.petritya.workers.dev'
     const launchUrl = `${appUrl}/?push=item&item_id=${encodeURIComponent(item.id)}`
 
+    let delivery: Awaited<ReturnType<typeof sendOneSignalPush>>
     try {
-      const delivery = await sendOneSignalPush(
+      delivery = await sendOneSignalPush(
         item.responsible_user_id,
         'Pénzfa – esedékes ügy',
         message,
         launchUrl,
       )
-      if (!delivery.sent) {
-        await releaseDuePush(item.id, key)
-        results.push({ item_id: item.id, sent: false, error: delivery.error })
-        continue
-      }
-
-      sent += 1
-      await db.from('activity_log').insert({
-        family_id: item.family_id,
-        actor_user_id: null,
-        item_id: item.id,
-        action: 'item_due_push_sent',
-        details: {
-          due_push_key: key,
-          due_push_user_id: item.responsible_user_id,
-          notification_id: delivery.notification_id ?? null,
-        },
-      })
-      results.push({ item_id: item.id, sent: true })
     } catch (error) {
-      // Egy sikertelen küldés után a következő cron még próbálkozhat.
+      // Csak a bizonyosan sikertelen küldést próbáljuk újra.
       await releaseDuePush(item.id, key)
       results.push({
         item_id: item.id,
         sent: false,
         error: error instanceof Error ? error.message : String(error),
       })
+      continue
     }
+
+    if (!delivery.sent) {
+      await releaseDuePush(item.id, key)
+      results.push({ item_id: item.id, sent: false, error: delivery.error })
+      continue
+    }
+
+    sent += 1
+    const { error: logError } = await db.from('activity_log').insert({
+      family_id: item.family_id,
+      actor_user_id: null,
+      item_id: item.id,
+      action: 'item_due_push_sent',
+      details: {
+        due_push_key: key,
+        due_push_user_id: item.responsible_user_id,
+        notification_id: delivery.notification_id ?? null,
+      },
+    })
+    if (logError) console.error('Eseménykori push naplózási hiba:', logError)
+    results.push({ item_id: item.id, sent: true })
   }
   return { processed, sent, results }
 }
@@ -470,7 +474,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      const subjectPrefix = subject?.display_name ? `${subject.display_name}: `
+      const subjectPrefix = subject?.display_name ? `${subject.display_name}: ` : ''
       const dateText = formatDate(item.due_date)
       const timeText = item.due_time ? ` ${String(item.due_time).slice(0, 5)}` : ''
       const message = dateText
