@@ -741,31 +741,8 @@ h2 {
   font-weight: 700;
 }
 
-.push-subscription-id code {
-  display: block;
-  overflow-wrap: anywhere;
-  user-select: text;
-  font-size: 0.78rem;
-}
-
 .push-settings .secondary-button {
   justify-self: start;
-}
-
-.push-diagnostics {
-  margin-top: 6px;
-  padding-top: 12px;
-  border-top: 1px solid #cbd5e1;
-}
-
-.push-diagnostics-raw code {
-  overflow-wrap: anywhere;
-  user-select: text;
-}
-
-.push-diagnostics > div {
-  padding: 6px 0;
-  border-bottom: 1px solid #e2e8f0;
 }
 
 .account-details {
