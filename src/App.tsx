@@ -2390,7 +2390,7 @@ export default function App() {
               ) : (
                 <p>{pushContext.message}</p>
               )}
-              {pushContext.type !== 'briefing' && pushContext.item_id && (
+              {pushContext.type === 'reminder' && pushContext.item_id && (
                 <button
                   className="secondary-button push-context-action"
                   type="button"
