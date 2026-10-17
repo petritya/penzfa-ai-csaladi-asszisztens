@@ -148,6 +148,153 @@ async function sendOneSignalPush(
   return { configured: true, sent: true, notification_id: data.id }
 }
 
+// Az ügy pontos időpontjához és felelőséhez tartozó deduplikációs kulcs.
+// A DB-trigger dátum-, idő- vagy felelősváltozáskor kiüríti ezt a jelzőt.
+function duePushKey(item: {
+  due_date: string | null
+  due_time: string | null
+  responsible_user_id: string | null
+}) {
+  if (!item.due_date || !item.due_time || !item.responsible_user_id) return null
+  return `${item.due_date}|${String(item.due_time).slice(0, 5)}|${item.responsible_user_id}`
+}
+
+async function claimDuePush(item: {
+  id: string
+  due_date: string | null
+  due_time: string | null
+  responsible_user_id: string | null
+}, key: string) {
+  const { data, error } = await db
+    .from('items')
+    .update({ due_push_sent_key: key })
+    .eq('id', item.id)
+    .eq('status', 'open')
+    .eq('due_date', item.due_date)
+    .eq('due_time', item.due_time)
+    .eq('responsible_user_id', item.responsible_user_id)
+    .eq('due_push_sent_key', '')
+    .select('id')
+    .maybeSingle()
+
+  if (error) throw error
+  return Boolean(data)
+}
+
+async function releaseDuePush(itemId: string, key: string) {
+  // Ha közben átírták az ügyet, az újabb állapotot nem írjuk felül.
+  const { error } = await db
+    .from('items')
+    .update({ due_push_sent_key: '' })
+    .eq('id', itemId)
+    .eq('due_push_sent_key', key)
+  if (error) throw error
+}
+
+async function sendDueItemPushes(nowIso: string) {
+  // UTC ±1 nap elég minden valós időzónához; a pontos percet
+  // minden felelős saját időzónájában határozzuk meg.
+  const utcDate = nowIso.slice(0, 10)
+  const { data: items, error } = await db
+    .from('items')
+    .select('id, family_id, title, due_date, due_time, responsible_user_id, subject_member_id')
+    .eq('status', 'open')
+    .eq('due_push_sent_key', '')
+    .not('responsible_user_id', 'is', null)
+    .not('due_time', 'is', null)
+    .gte('due_date', addDays(utcDate, -1))
+    .lte('due_date', addDays(utcDate, 1))
+    .order('due_date')
+    .order('due_time')
+    .limit(500)
+
+  if (error) throw error
+  if (!items?.length) return { processed: 0, sent: 0, results: [] as unknown[] }
+
+  const userIds = [...new Set(items.map((item) => item.responsible_user_id as string))]
+  const { data: userSettings, error: settingsError } = await db
+    .from('user_settings')
+    .select('user_id, timezone')
+    .in('user_id', userIds)
+  if (settingsError) throw settingsError
+
+  const timezones = new Map((userSettings ?? []).map((setting) => [setting.user_id, setting.timezone]))
+  const now = Date.parse(nowIso)
+  let sent = 0
+  let processed = 0
+  const results: unknown[] = []
+
+  for (const item of items) {
+    const key = duePushKey(item)
+    if (!key) continue
+    const zone = timezones.get(item.responsible_user_id) ?? 'Europe/Budapest'
+    const dueAt = Date.parse(
+      localDateTimeToUtcIso(item.due_date, String(item.due_time).slice(0, 5), zone),
+    )
+    // Nem küldünk előre, és a régi lejárt ügyek sem kapnak hirtelen push-t.
+    // Néhány perces ütemező-késést viszont elviselünk.
+    if (now < dueAt || now - dueAt > 3 * 60 * 1000) continue
+
+    const claimed = await claimDuePush(item, key)
+    if (!claimed) continue
+    processed += 1
+
+    const { data: subject } = item.subject_member_id
+      ? await db.from('family_members')
+          .select('display_name')
+          .eq('id', item.subject_member_id)
+          .maybeSingle()
+      : { data: null }
+
+    const subjectPrefix = subject?.display_name ? `${subject.display_name}: ` : ''
+    const message = `${subjectPrefix}${item.title} – ${formatDate(item.due_date)} ${String(item.due_time).slice(0, 5)}.`
+    const appUrl = Deno.env.get('APP_URL')
+      ?? 'https://penzfa-ai-csaladi-asszisztens.petritya.workers.dev'
+    const launchUrl = `${appUrl}/?push=item&item_id=${encodeURIComponent(item.id)}`
+
+    let delivery: Awaited<ReturnType<typeof sendOneSignalPush>>
+    try {
+      delivery = await sendOneSignalPush(
+        item.responsible_user_id,
+        'Pénzfa – esedékes ügy',
+        message,
+        launchUrl,
+      )
+    } catch (error) {
+      // Csak a bizonyosan sikertelen küldést próbáljuk újra.
+      await releaseDuePush(item.id, key)
+      results.push({
+        item_id: item.id,
+        sent: false,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      continue
+    }
+
+    if (!delivery.sent) {
+      await releaseDuePush(item.id, key)
+      results.push({ item_id: item.id, sent: false, error: delivery.error })
+      continue
+    }
+
+    sent += 1
+    const { error: logError } = await db.from('activity_log').insert({
+      family_id: item.family_id,
+      actor_user_id: null,
+      item_id: item.id,
+      action: 'item_due_push_sent',
+      details: {
+        due_push_key: key,
+        due_push_user_id: item.responsible_user_id,
+        notification_id: delivery.notification_id ?? null,
+      },
+    })
+    if (logError) console.error('Eseménykori push naplózási hiba:', logError)
+    results.push({ item_id: item.id, sent: true })
+  }
+  return { processed, sent, results }
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'Csak POST kérés támogatott.' }, 405)
 
@@ -198,6 +345,10 @@ Deno.serve(async (req) => {
     }
 
     const nowIso = new Date().toISOString()
+    // A pontos eseményidőpontú push a személyes emlékeztetők nélkül is működik.
+    // Előbb az esemény-pusht dolgozzuk fel, hogy az ugyanarra a percre
+    // beállított emlékeztető ne küldjön duplán.
+    const duePush = await sendDueItemPushes(nowIso)
 
     const { data: dueReminders, error: dueError } = await db
       .from('reminders')
@@ -209,7 +360,16 @@ Deno.serve(async (req) => {
       .limit(100)
 
     if (dueError) throw dueError
-    if (!dueReminders?.length) return json({ status: 'ok', processed: 0, sent: 0 })
+    if (!dueReminders?.length) {
+      return json({
+        status: 'ok',
+        processed: 0,
+        sent: 0,
+        due_push_processed: duePush.processed,
+        due_push_sent: duePush.sent,
+        due_push_results: duePush.results,
+      })
+    }
 
     let sent = 0
     const results: unknown[] = []
@@ -282,6 +442,39 @@ Deno.serve(async (req) => {
 
       if (!claimed) continue
 
+      // Az ügy kezdetének percére eső személyes emlékeztető és az
+      // eseménykori push ugyanannak a felelősnek csak egyszer jelezzen.
+      const eventKey = duePushKey(item)
+      const eventAt = eventKey
+        ? localDateTimeToUtcIso(
+            item.due_date,
+            String(item.due_time).slice(0, 5),
+            timeZone,
+          )
+        : null
+      const overlapsEvent = Boolean(
+        eventKey
+        && eventAt
+        && item.responsible_user_id === reminder.user_id
+        && originalNextNotificationAt
+        && Math.floor(Date.parse(originalNextNotificationAt) / 60000)
+          === Math.floor(Date.parse(eventAt) / 60000)
+      )
+
+      let claimedEventKey = false
+      if (overlapsEvent && eventKey) {
+        claimedEventKey = await claimDuePush(item, eventKey)
+        if (!claimedEventKey) {
+          // Már elindult/megérkezett az esedékességi push.
+          await db.from('reminders').update({
+            enabled: false,
+            next_notification_at: null,
+          }).eq('id', reminder.id)
+          results.push({ reminder_id: reminder.id, sent: false, duplicate_due_push: true })
+          continue
+        }
+      }
+
       const subjectPrefix = subject?.display_name ? `${subject.display_name}: ` : ''
       const dateText = formatDate(item.due_date)
       const timeText = item.due_time ? ` ${String(item.due_time).slice(0, 5)}` : ''
@@ -301,6 +494,7 @@ Deno.serve(async (req) => {
       )
 
       if (!delivery.sent) {
+        if (claimedEventKey && eventKey) await releaseDuePush(item.id, eventKey)
         await db
           .from('reminders')
           .update({
@@ -366,6 +560,9 @@ Deno.serve(async (req) => {
       processed: dueReminders.length,
       sent,
       results,
+      due_push_processed: duePush.processed,
+      due_push_sent: duePush.sent,
+      due_push_results: duePush.results,
     })
   } catch (error) {
     console.error(error)
