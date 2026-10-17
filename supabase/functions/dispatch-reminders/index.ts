@@ -173,7 +173,7 @@ async function claimDuePush(item: {
     .eq('due_date', item.due_date)
     .eq('due_time', item.due_time)
     .eq('responsible_user_id', item.responsible_user_id)
-    .neq('due_push_sent_key', key)
+    .eq('due_push_sent_key', '')
     .select('id')
     .maybeSingle()
 
@@ -199,6 +199,7 @@ async function sendDueItemPushes(nowIso: string) {
     .from('items')
     .select('id, family_id, title, due_date, due_time, responsible_user_id, subject_member_id')
     .eq('status', 'open')
+    .eq('due_push_sent_key', '')
     .not('responsible_user_id', 'is', null)
     .not('due_time', 'is', null)
     .gte('due_date', addDays(utcDate, -1))
