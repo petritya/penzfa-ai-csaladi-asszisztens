@@ -872,7 +872,7 @@ export default function App() {
     const next = { ...previous, ...change }
     // A natív időválasztó szerkesztés közben üres értéket is adhat.
     // Csak teljes, érvényes időpontot mentünk.
-    if (!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(next.briefing_time)) return
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(next.briefing_time)) return
 
     settingsSavingRef.current = true
     setSettingsBusy(true)
