@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { hasSupabaseConfig, supabase } from './lib/supabase'
+import { detectAppLocale, detectDeviceLanguage, detectDeviceTimezone, uiText } from './lib/locale'
+import type { AppLocale } from './lib/locale'
 
 type AuthMode = 'sign-in' | 'sign-up'
 type AppearanceMode = 'system' | 'light' | 'dark'
@@ -77,6 +79,8 @@ type ReminderFollowUp = ReminderEditTarget & {
 type PushStatus = 'idle' | 'loading' | 'ready' | 'enabled' | 'blocked' | 'unsupported' | 'error'
 
 type UserSettings = {
+  timezone: string
+  ui_locale: AppLocale | null
   briefing_enabled: boolean
   briefing_time: string
   notify_partner_on_complete: boolean
@@ -186,10 +190,10 @@ async function waitForPushSubscription(oneSignal: OneSignalClient) {
   return false
 }
 
-function greetingForHour(hour: number) {
-  if (hour < 10) return 'Jó reggelt'
-  if (hour < 18) return 'Szép napot'
-  return 'Jó estét'
+function greetingForHour(hour: number, locale: AppLocale) {
+  if (hour < 10) return uiText(locale, 'greetingMorning')
+  if (hour < 18) return uiText(locale, 'greetingDay')
+  return uiText(locale, 'greetingEvening')
 }
 
 export default function App() {
@@ -264,9 +268,19 @@ export default function App() {
   const [pushBusy, setPushBusy] = useState(false)
   const [pushError, setPushError] = useState<string | null>(null)
 
+  const [appLocale, setAppLocale] = useState<AppLocale>(detectAppLocale)
+  const [deviceLanguage] = useState(detectDeviceLanguage)
+  const [deviceTimezone] = useState(detectDeviceTimezone)
+  const [localeBusy, setLocaleBusy] = useState(false)
+  const [localeMessage, setLocaleMessage] = useState<string | null>(null)
+  const [localeError, setLocaleError] = useState<string | null>(null)
+  const t = (key: Parameters<typeof uiText>[1]) => uiText(appLocale, key)
+
   const [settingsLoading, setSettingsLoading] = useState(false)
   const [settingsBusy, setSettingsBusy] = useState(false)
   const [settings, setSettings] = useState<UserSettings>({
+    timezone: 'Europe/Budapest',
+    ui_locale: null,
     briefing_enabled: true,
     briefing_time: '07:00',
     notify_partner_on_complete: false,
@@ -334,6 +348,10 @@ export default function App() {
     setPushContext(null)
     setPushContextLoading(false)
   }, [session?.user.id])
+
+  useEffect(() => {
+    document.documentElement.lang = appLocale
+  }, [appLocale])
 
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)')
@@ -752,10 +770,13 @@ export default function App() {
   useEffect(() => {
     if (!supabase || !session || !familyName) {
       setSettings({
+        timezone: 'Europe/Budapest',
+        ui_locale: null,
         briefing_enabled: true,
         briefing_time: '07:00',
         notify_partner_on_complete: false,
       })
+      setAppLocale(detectAppLocale())
       setSettingsError(null)
       setSettingsMessage(null)
       return
@@ -780,7 +801,13 @@ export default function App() {
         return
       }
 
+      const locale: AppLocale = data.settings.ui_locale === 'da-DK' || data.settings.ui_locale === 'hu-HU'
+        ? data.settings.ui_locale : detectAppLocale()
+      setAppLocale(locale)
       setSettings({
+        timezone: String(data.settings.timezone ?? 'Europe/Budapest'),
+        ui_locale: data.settings.ui_locale === 'da-DK' || data.settings.ui_locale === 'hu-HU'
+          ? data.settings.ui_locale as AppLocale : null,
         briefing_enabled: Boolean(data.settings.briefing_enabled),
         briefing_time: String(data.settings.briefing_time ?? '07:00').slice(0, 5),
         notify_partner_on_complete: Boolean(data.settings.notify_partner_on_complete),
@@ -860,14 +887,49 @@ export default function App() {
     }
 
     if (data?.settings) {
-      setSettings({
+      setSettings((current) => ({
+        ...current,
         briefing_enabled: Boolean(data.settings.briefing_enabled),
         briefing_time: String(data.settings.briefing_time ?? settings.briefing_time).slice(0, 5),
         notify_partner_on_complete: Boolean(data.settings.notify_partner_on_complete),
-      })
+      }))
     }
 
-    setSettingsMessage('Beállítások mentve.')
+    setSettingsMessage(t('saved'))
+  }
+
+  async function handleLocalePreference(locale: AppLocale, useDeviceTimezone = false) {
+    if (!supabase || !session || !familyName || localeBusy) return
+    if (useDeviceTimezone && !deviceTimezone) return
+
+    const previousLocale = appLocale
+    if (!useDeviceTimezone) setAppLocale(locale)
+    setLocaleBusy(true)
+    setLocaleError(null)
+    setLocaleMessage(null)
+
+    try {
+      const { data, error } = await supabase.functions.invoke('core', {
+        body: {
+          action: 'update_locale_preferences',
+          ui_locale: locale,
+          ...(useDeviceTimezone && deviceTimezone ? { timezone: deviceTimezone } : {}),
+        },
+      })
+      if (error || data?.error) throw new Error(error?.message ?? data?.error ?? uiText(locale, 'localeError'))
+      setAppLocale(locale)
+      setSettings((current) => ({
+        ...current,
+        ui_locale: locale,
+        timezone: String(data.settings?.timezone ?? current.timezone),
+      }))
+      setLocaleMessage(uiText(locale, useDeviceTimezone ? 'timezoneSaved' : 'localeSaved'))
+    } catch (error) {
+      if (!useDeviceTimezone) setAppLocale(previousLocale)
+      setLocaleError(error instanceof Error ? error.message : uiText(previousLocale, useDeviceTimezone ? 'timezoneError' : 'localeError'))
+    } finally {
+      setLocaleBusy(false)
+    }
   }
 
   async function handleFamilySetup(event: FormEvent<HTMLFormElement>) {
@@ -896,6 +958,8 @@ export default function App() {
         managed_members: managedMembers,
         second_owner_email: setupSecondOwnerEmail.trim() || null,
         redirect_to: window.location.origin,
+        device_locale: appLocale,
+        device_timezone: deviceTimezone,
       },
     })
 
@@ -1006,6 +1070,8 @@ export default function App() {
       body: {
         action: 'accept_owner_invitation',
         display_name: displayName,
+        device_locale: appLocale,
+        device_timezone: deviceTimezone,
       },
     })
 
@@ -2027,7 +2093,7 @@ export default function App() {
 
   if (session) {
     const activeUserMember = familyMembers.find((member) => member.user_id === session.user.id) ?? null
-    const greeting = greetingForHour(new Date().getHours())
+    const greeting = greetingForHour(new Date().getHours(), appLocale)
     const exampleManagedMember = familyMembers.find((member) => member.member_kind === 'managed') ?? null
     const exampleText = exampleManagedMember
       ? `${exampleManagedMember.display_name} kontrollja jövő kedden 10-kor.`
@@ -2408,9 +2474,9 @@ export default function App() {
 
           {familyName && (
             <section className="capture-block capture-primary" aria-label="Kommunikáció">
-              <h2>Mit intézzünk?</h2>
+              <h2>{t('captureHeading')}</h2>
               <p className="capture-help">
-                Írd be vagy diktáld természetesen. Például: „{exampleText}” vagy „Mik a nyitott ügyeink?”
+                {appLocale === 'da-DK' ? t('captureDescription') : <>Írd be vagy diktáld természetesen. Például: „{exampleText}” vagy „Mik a nyitott ügyeink?”</>}
               </p>
 
               <form className="capture-form" onSubmit={handleMessage}>
@@ -2496,7 +2562,7 @@ export default function App() {
                       || !createMessage.trim()
                     }
                   >
-                    {createBusy ? 'Feldolgozás…' : 'Küldés'}
+                    {createBusy ? (appLocale === 'da-DK' ? 'Behandler…' : 'Feldolgozás…') : t('send')}
                   </button>
                 </div>
 
@@ -2769,7 +2835,7 @@ export default function App() {
 
           {!familyLoading && familyName && (
             <details className="secondary-details">
-              <summary>Családtagok</summary>
+              <summary>{t('familyMembers')}</summary>
               <ul className="member-list">
                 {familyMembers.map((member) => (
                   <li key={`${member.family_id}-${member.display_name}`}>
@@ -2828,20 +2894,49 @@ export default function App() {
 
           {familyName && (
             <details className="secondary-details settings-details">
-              <summary>Beállítások</summary>
+              <summary>{t('settings')}</summary>
               {settingsLoading ? (
-                <p className="settings-hint">Betöltés…</p>
+                <p className="settings-hint">{t('loading')}</p>
               ) : (
                 <form className="settings-form" onSubmit={handleSaveSettings}>
+                  <label className="settings-time">
+                    <span>{t('language')}</span>
+                    <select
+                      value={appLocale}
+                      disabled={localeBusy}
+                      onChange={(event) => void handleLocalePreference(event.target.value as AppLocale)}
+                    >
+                      <option value="hu-HU">Magyar</option>
+                      <option value="da-DK">Dansk</option>
+                    </select>
+                  </label>
+                  <div className="locale-device-details">
+                    <small>{t('detectedLanguage')}: {deviceLanguage}</small>
+                    <small>{t('detectedTimezone')}: {deviceTimezone ?? t('noDeviceTimezone')}</small>
+                    <small>{t('savedTimezone')}: {settings.timezone}</small>
+                    {deviceTimezone && deviceTimezone !== settings.timezone && (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        disabled={localeBusy}
+                        onClick={() => void handleLocalePreference(appLocale, true)}
+                      >
+                        {t('applyTimezone')}
+                      </button>
+                    )}
+                    {localeMessage && <small className="locale-success">{localeMessage}</small>}
+                    {localeError && <small className="locale-error">{localeError}</small>}
+                    {appLocale === 'da-DK' && <small>{t('previewNote')}</small>}
+                  </div>
                   <label className="settings-time appearance-setting">
-                    <span>Megjelenés</span>
+                    <span>{t('appearance')}</span>
                     <select
                       value={appearanceMode}
                       onChange={(event) => setAppearanceMode(event.target.value as AppearanceMode)}
                     >
-                      <option value="system">Rendszer beállítása</option>
-                      <option value="light">Világos</option>
-                      <option value="dark">Sötét</option>
+                      <option value="system">{t('systemAppearance')}</option>
+                      <option value="light">{t('lightAppearance')}</option>
+                      <option value="dark">{t('darkAppearance')}</option>
                     </select>
                   </label>
                   <label className="settings-toggle">
@@ -2856,11 +2951,11 @@ export default function App() {
                         setSettingsMessage(null)
                       }}
                     />
-                    <span>Reggeli briefing</span>
+                    <span>{t('morningBriefing')}</span>
                   </label>
 
                   <label className="settings-time">
-                    <span>Briefing időpontja</span>
+                    <span>{t('briefingTime')}</span>
                     <input
                       type="time"
                       value={settings.briefing_time}
@@ -2888,14 +2983,14 @@ export default function App() {
                         setSettingsMessage(null)
                       }}
                     />
-                    <span>Szóljon a másik családi felhasználónak, ha készre jelölök egy teendőt</span>
+                    <span>{t('partnerDone')}</span>
                   </label>
 
                   {settingsMessage && <p className="notice success">{settingsMessage}</p>}
                   {settingsError && <p className="notice error">{settingsError}</p>}
 
                   <button className="secondary-button" type="submit" disabled={settingsBusy}>
-                    {settingsBusy ? 'Mentés…' : 'Beállítások mentése'}
+                    {settingsBusy ? t('saving') : t('saveSettings')}
                   </button>
                 </form>
               )}
@@ -2904,7 +2999,7 @@ export default function App() {
 
           {familyName && !isStandalone && (
             <details className="secondary-details">
-              <summary>Telepítés a telefonra</summary>
+              <summary>{t('install')}</summary>
               <section className="push-settings" aria-label="Telepítés a telefonra">
                 <div>
                   <strong>AI családi asszisztens a kezdőképernyőn</strong>
@@ -2937,11 +3032,11 @@ export default function App() {
           )}
 
           <details className="secondary-details account-details">
-            <summary>Fiók és értesítések</summary>
+            <summary>{t('account')}</summary>
 
             <dl className="account">
               <div>
-                <dt>Belépett fiók</dt>
+                <dt>{t('signedIn')}</dt>
                 <dd>{session.user.email ?? 'Ismeretlen e-mail'}</dd>
               </div>
             </dl>
@@ -2949,9 +3044,9 @@ export default function App() {
             {familyName && (
               <section className="push-settings" aria-label="Értesítések">
                 <div>
-                  <strong>Értesítések</strong>
+                  <strong>{t('notifications')}</strong>
                   {pushStatus === 'loading' && <small>Ellenőrzés…</small>}
-                  {pushStatus === 'enabled' && <small className="push-enabled">Bekapcsolva ezen az eszközön.</small>}
+                  {pushStatus === 'enabled' && <small className="push-enabled">{t('enabled')}</small>}
                   {pushStatus === 'blocked' && <small>Az értesítések le vannak tiltva a böngésző/PWA beállításaiban.</small>}
                   {pushStatus === 'unsupported' && <small>Ez a böngésző vagy eszköz nem támogatja a webes push értesítéseket.</small>}
                   {pushStatus === 'error' && <small>{pushError ?? 'A push szolgáltatás nem érhető el.'}</small>}
@@ -2980,7 +3075,7 @@ export default function App() {
             )}
 
             <button className="secondary-button sign-out-button" type="button" onClick={handleSignOut}>
-              Kijelentkezés
+              {t('signOut')}
             </button>
           </details>
 
@@ -2993,7 +3088,7 @@ export default function App() {
                 window.scrollTo({ top: 0, behavior: 'smooth' })
               }}
             >
-              Súgó
+              {t('help')}
             </button>
           )}
 

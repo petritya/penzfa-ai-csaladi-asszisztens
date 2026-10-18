@@ -1100,6 +1100,21 @@ async function interpretIntentWithOpenAI(
   return interpretation
 }
 
+// A böngészőből érkező locale és időzóna érvényesítése.
+function supportedUiLocale(value: unknown): 'hu-HU' | 'da-DK' | null {
+  return value === 'hu-HU' || value === 'da-DK' ? value : null
+}
+
+function validDeviceTimezone(value: unknown): string | null {
+  if (typeof value !== 'string' || !value || value.length > 100) return null
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: value })
+    return value
+  } catch {
+    return null
+  }
+}
+
 async function interpretWithOpenAI(
   message: string,
   memberNames: string[],
@@ -1769,7 +1784,11 @@ Deno.serve(async (req) => {
         memberId = inserted.id
       }
 
-      await db.from('user_settings').upsert({ user_id: user.id })
+      await db.from('user_settings').upsert({
+        user_id: user.id,
+        timezone: validDeviceTimezone(body?.device_timezone) ?? 'Europe/Budapest',
+        ui_locale: supportedUiLocale(body?.device_locale),
+      })
 
       const { error: acceptError } = await db
         .from('family_owner_invitations')
@@ -1896,7 +1915,11 @@ Deno.serve(async (req) => {
         }
       }
 
-      await db.from('user_settings').upsert({ user_id: user.id })
+      await db.from('user_settings').upsert({
+        user_id: user.id,
+        timezone: validDeviceTimezone(body?.device_timezone) ?? 'Europe/Budapest',
+        ui_locale: supportedUiLocale(body?.device_locale),
+      })
       await db.from('activity_log').insert({
         family_id: family.id,
         actor_user_id: user.id,
@@ -2111,10 +2134,35 @@ Deno.serve(async (req) => {
       return json({ status: 'invited' })
     }
 
+    if (body?.action === 'update_locale_preferences') {
+      const uiLocale = supportedUiLocale(body?.ui_locale)
+      if (!uiLocale) return json({ error: 'Nem támogatott nyelvi beállítás.' }, 400)
+
+      // A telefon időzónája csak kifejezett felhasználói műveletre frissül.
+      const hasTimezone = body?.timezone !== undefined
+      const timezone = hasTimezone ? validDeviceTimezone(body.timezone) : null
+      if (hasTimezone && !timezone) {
+        return json({ error: 'Érvénytelen időzóna.' }, 400)
+      }
+
+      const { data: settings, error: settingsError } = await db
+        .from('user_settings')
+        .upsert({
+          user_id: user.id,
+          ui_locale: uiLocale,
+          ...(timezone ? { timezone } : {}),
+        })
+        .select('ui_locale, timezone')
+        .single()
+
+      if (settingsError) throw settingsError
+      return json({ status: 'updated', settings })
+    }
+
     if (body?.action === 'get_settings') {
       const { data: settings, error: settingsError } = await db
         .from('user_settings')
-        .select('timezone, briefing_enabled, briefing_time, notify_partner_on_complete')
+        .select('timezone, ui_locale, briefing_enabled, briefing_time, notify_partner_on_complete')
         .eq('user_id', user.id)
         .maybeSingle()
 
@@ -2123,6 +2171,7 @@ Deno.serve(async (req) => {
       return json({
         settings: settings ?? {
           timezone: 'Europe/Budapest',
+          ui_locale: null,
           briefing_enabled: true,
           briefing_time: '07:00:00',
           notify_partner_on_complete: false,
@@ -2148,7 +2197,7 @@ Deno.serve(async (req) => {
           notify_partner_on_complete: notifyPartnerOnComplete,
           updated_at: new Date().toISOString(),
         })
-        .select('timezone, briefing_enabled, briefing_time, notify_partner_on_complete')
+        .select('timezone, ui_locale, briefing_enabled, briefing_time, notify_partner_on_complete')
         .single()
 
       if (settingsError) throw settingsError

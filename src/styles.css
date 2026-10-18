@@ -688,6 +688,31 @@ h2 {
   color: #64748b;
 }
 
+.locale-device-details {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  min-width: 0;
+}
+
+.locale-device-details small {
+  overflow-wrap: anywhere;
+}
+
+.locale-device-details .secondary-button {
+  justify-self: start;
+}
+
+.locale-success {
+  color: #166534;
+}
+
+.locale-error {
+  color: #b91c1c;
+}
+
 .settings-form .secondary-button {
   justify-self: start;
 }
