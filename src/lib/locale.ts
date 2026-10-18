@@ -4,6 +4,8 @@ const messages = {
   'hu-HU': {
     language: 'Nyelv',
     detectedLanguage: 'Telefon / böngésző nyelve',
+    timezone: 'Időzóna',
+    timezoneMatches: 'egyezik a telefonnal',
     detectedTimezone: 'Telefon időzónája',
     savedTimezone: 'Értesítések időzónája',
     applyTimezone: 'Telefon időzónájának használata',
@@ -43,6 +45,8 @@ const messages = {
   'da-DK': {
     language: 'Sprog',
     detectedLanguage: 'Telefonens / browserens sprog',
+    timezone: 'Tidszone',
+    timezoneMatches: 'samme som på telefonen',
     detectedTimezone: 'Telefonens tidszone',
     savedTimezone: 'Tidszone for påmindelser',
     applyTimezone: 'Brug telefonens tidszone',
