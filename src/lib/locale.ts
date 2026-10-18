@@ -22,7 +22,7 @@ const messages = {
     saving: 'Mentés…',
     loading: 'Betöltés…',
     saved: 'Mentve.',
-    saveError: 'A beállítást nem sikerült menteni. Az előző érték visszaállítva.'
+    saveError: 'A beállítást nem sikerült menteni. Az előző érték visszaállítva.',
     familyMembers: 'Családtagok',
     account: 'Fiók és értesítések',
     signedIn: 'Belépett fiók',
@@ -61,7 +61,7 @@ const messages = {
     saving: 'Gemmer…',
     loading: 'Indlæser…',
     saved: 'Gemt.',
-    saveError: 'Indstillingen kunne ikke gemmes. Den tidligere værdi er gendannet.'
+    saveError: 'Indstillingen kunne ikke gemmes. Den tidligere værdi er gendannet.',
     familyMembers: 'Familiemedlemmer',
     account: 'Konto og notifikationer',
     signedIn: 'Logget ind som',
