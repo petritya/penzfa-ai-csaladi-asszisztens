@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { hasSupabaseConfig, supabase } from './lib/supabase'
-import { detectAppLocale, detectDeviceLanguage, detectDeviceTimezone, uiText } from './lib/locale'
+import { detectAppLocale, detectDeviceTimezone, uiText } from './lib/locale'
 import type { AppLocale } from './lib/locale'
 
 type AuthMode = 'sign-in' | 'sign-up'
@@ -269,7 +269,6 @@ export default function App() {
   const [pushError, setPushError] = useState<string | null>(null)
 
   const [appLocale, setAppLocale] = useState<AppLocale>(detectAppLocale)
-  const [deviceLanguage] = useState(detectDeviceLanguage)
   const [deviceTimezone] = useState(detectDeviceTimezone)
   const [localeBusy, setLocaleBusy] = useState(false)
   const [localeMessage, setLocaleMessage] = useState<string | null>(null)
@@ -2930,18 +2929,28 @@ export default function App() {
                     </select>
                   </label>
                   <div className="locale-device-details">
-                    <small>{t('detectedLanguage')}: {deviceLanguage}</small>
-                    <small>{t('detectedTimezone')}: {deviceTimezone ?? t('noDeviceTimezone')}</small>
-                    <small>{t('savedTimezone')}: {settings.timezone}</small>
-                    {deviceTimezone && deviceTimezone !== settings.timezone && (
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        disabled={localeBusy}
-                        onClick={() => void handleLocalePreference(appLocale, true)}
-                      >
-                        {t('applyTimezone')}
-                      </button>
+                    {deviceTimezone === settings.timezone ? (
+                      <small>
+                        <span aria-hidden="true">✓ </span>
+                        {t('timezone')}: {settings.timezone} – {t('timezoneMatches')}
+                      </small>
+                    ) : deviceTimezone ? (
+                      <>
+                        <small>{t('detectedTimezone')}: {deviceTimezone}</small>
+                        <small>{t('savedTimezone')}: {settings.timezone}</small>
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          disabled={localeBusy}
+                          onClick={() => void handleLocalePreference(appLocale, true)}
+                        >
+                          {t('applyTimezone')}
+                        </button>
+                      </>
+                    ) : (
+                      <small>
+                        {t('savedTimezone')}: {settings.timezone} – {t('noDeviceTimezone')}
+                      </small>
                     )}
                     {localeMessage && <small className="locale-success">{localeMessage}</small>}
                     {localeError && <small className="locale-error">{localeError}</small>}
