@@ -1,7 +1,8 @@
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { hasSupabaseConfig, supabase } from './lib/supabase'
-import { AppLocale, detectAppLocale, detectDeviceLanguage, detectDeviceTimezone, uiText } from './lib/locale'
+import { detectAppLocale, detectDeviceLanguage, detectDeviceTimezone, uiText } from './lib/locale'
+import type { AppLocale } from './lib/locale'
 
 type AuthMode = 'sign-in' | 'sign-up'
 type AppearanceMode = 'system' | 'light' | 'dark'
@@ -2561,7 +2562,7 @@ export default function App() {
                       || !createMessage.trim()
                     }
                   >
-                    {createBusy ? 'Feldolgozás…' : 'Küldés'}
+                    {createBusy ? (appLocale === 'da-DK' ? 'Behandler…' : 'Feldolgozás…') : t('send')}
                   </button>
                 </div>
 
@@ -3035,7 +3036,7 @@ export default function App() {
 
             <dl className="account">
               <div>
-                <dt>Belépett fiók</dt>
+                <dt>{t('signedIn')}</dt>
                 <dd>{session.user.email ?? 'Ismeretlen e-mail'}</dd>
               </div>
             </dl>
@@ -3043,9 +3044,9 @@ export default function App() {
             {familyName && (
               <section className="push-settings" aria-label="Értesítések">
                 <div>
-                  <strong>Értesítések</strong>
+                  <strong>{t('notifications')}</strong>
                   {pushStatus === 'loading' && <small>Ellenőrzés…</small>}
-                  {pushStatus === 'enabled' && <small className="push-enabled">Bekapcsolva ezen az eszközön.</small>}
+                  {pushStatus === 'enabled' && <small className="push-enabled">{t('enabled')}</small>}
                   {pushStatus === 'blocked' && <small>Az értesítések le vannak tiltva a böngésző/PWA beállításaiban.</small>}
                   {pushStatus === 'unsupported' && <small>Ez a böngésző vagy eszköz nem támogatja a webes push értesítéseket.</small>}
                   {pushStatus === 'error' && <small>{pushError ?? 'A push szolgáltatás nem érhető el.'}</small>}
@@ -3074,7 +3075,7 @@ export default function App() {
             )}
 
             <button className="secondary-button sign-out-button" type="button" onClick={handleSignOut}>
-              Kijelentkezés
+              {t('signOut')}
             </button>
           </details>
 
@@ -3087,7 +3088,7 @@ export default function App() {
                 window.scrollTo({ top: 0, behavior: 'smooth' })
               }}
             >
-              Súgó
+              {t('help')}
             </button>
           )}
 
