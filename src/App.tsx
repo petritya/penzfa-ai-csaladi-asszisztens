@@ -278,6 +278,7 @@ export default function App() {
 
   const [settingsLoading, setSettingsLoading] = useState(false)
   const [settingsBusy, setSettingsBusy] = useState(false)
+  const settingsSavingRef = useRef(false)
   const [settings, setSettings] = useState<UserSettings>({
     timezone: 'Europe/Budapest',
     ui_locale: null,
@@ -862,40 +863,58 @@ export default function App() {
     }
   }
 
-  async function handleSaveSettings(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!supabase || !session) return
+  async function saveSettingChange(
+    change: Partial<Pick<UserSettings, 'briefing_enabled' | 'briefing_time' | 'notify_partner_on_complete'>>,
+  ) {
+    if (!supabase || !session || !familyName || settingsSavingRef.current) return
 
+    const previous = settings
+    const next = { ...previous, ...change }
+    // A natív időválasztó szerkesztés közben üres értéket is adhat.
+    // Csak teljes, érvényes időpontot mentünk.
+    if (!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(next.briefing_time)) return
+
+    settingsSavingRef.current = true
     setSettingsBusy(true)
+    setSettings(next)
     setSettingsError(null)
     setSettingsMessage(null)
 
-    const { data, error } = await supabase.functions.invoke('core', {
-      body: {
-        action: 'update_settings',
-        briefing_enabled: settings.briefing_enabled,
-        briefing_time: settings.briefing_time,
-        notify_partner_on_complete: settings.notify_partner_on_complete,
-      },
-    })
+    try {
+      const { data, error } = await supabase.functions.invoke('core', {
+        body: {
+          action: 'update_settings',
+          briefing_enabled: next.briefing_enabled,
+          briefing_time: next.briefing_time,
+          notify_partner_on_complete: next.notify_partner_on_complete,
+        },
+      })
 
-    setSettingsBusy(false)
+      if (error || data?.error || !data?.settings) {
+        throw new Error(error?.message ?? data?.error ?? uiText(appLocale, 'saveError'))
+      }
 
-    if (error || data?.error) {
-      setSettingsError(error?.message ?? data?.error ?? 'A beállításokat nem sikerült menteni.')
-      return
-    }
-
-    if (data?.settings) {
       setSettings((current) => ({
         ...current,
         briefing_enabled: Boolean(data.settings.briefing_enabled),
-        briefing_time: String(data.settings.briefing_time ?? settings.briefing_time).slice(0, 5),
+        briefing_time: String(data.settings.briefing_time ?? next.briefing_time).slice(0, 5),
         notify_partner_on_complete: Boolean(data.settings.notify_partner_on_complete),
       }))
+      setSettingsMessage(uiText(appLocale, 'saved'))
+    } catch (error) {
+      // Csak a három mentett mezőt állítjuk vissza; a nyelv és
+      // az időzóna egy másik, független mentési folyamat része.
+      setSettings((current) => ({
+        ...current,
+        briefing_enabled: previous.briefing_enabled,
+        briefing_time: previous.briefing_time,
+        notify_partner_on_complete: previous.notify_partner_on_complete,
+      }))
+      setSettingsError(error instanceof Error ? error.message : uiText(appLocale, 'saveError'))
+    } finally {
+      settingsSavingRef.current = false
+      setSettingsBusy(false)
     }
-
-    setSettingsMessage(t('saved'))
   }
 
   async function handleLocalePreference(locale: AppLocale, useDeviceTimezone = false) {
@@ -2898,7 +2917,7 @@ export default function App() {
               {settingsLoading ? (
                 <p className="settings-hint">{t('loading')}</p>
               ) : (
-                <form className="settings-form" onSubmit={handleSaveSettings}>
+                <div className="settings-form">
                   <label className="settings-time">
                     <span>{t('language')}</span>
                     <select
@@ -2943,13 +2962,10 @@ export default function App() {
                     <input
                       type="checkbox"
                       checked={settings.briefing_enabled}
-                      onChange={(event) => {
-                        setSettings((current) => ({
-                          ...current,
-                          briefing_enabled: event.target.checked,
-                        }))
-                        setSettingsMessage(null)
-                      }}
+                      disabled={settingsBusy}
+                      onChange={(event) => void saveSettingChange({
+                        briefing_enabled: event.target.checked,
+                      })}
                     />
                     <span>{t('morningBriefing')}</span>
                   </label>
@@ -2959,14 +2975,10 @@ export default function App() {
                     <input
                       type="time"
                       value={settings.briefing_time}
-                      disabled={!settings.briefing_enabled}
-                      onChange={(event) => {
-                        setSettings((current) => ({
-                          ...current,
-                          briefing_time: event.target.value,
-                        }))
-                        setSettingsMessage(null)
-                      }}
+                      disabled={!settings.briefing_enabled || settingsBusy}
+                      onChange={(event) => void saveSettingChange({
+                        briefing_time: event.target.value,
+                      })}
                       required
                     />
                   </label>
@@ -2975,24 +2987,22 @@ export default function App() {
                     <input
                       type="checkbox"
                       checked={settings.notify_partner_on_complete}
-                      onChange={(event) => {
-                        setSettings((current) => ({
-                          ...current,
-                          notify_partner_on_complete: event.target.checked,
-                        }))
-                        setSettingsMessage(null)
-                      }}
+                      disabled={settingsBusy}
+                      onChange={(event) => void saveSettingChange({
+                        notify_partner_on_complete: event.target.checked,
+                      })}
                     />
                     <span>{t('partnerDone')}</span>
                   </label>
 
-                  {settingsMessage && <p className="notice success">{settingsMessage}</p>}
                   {settingsError && <p className="notice error">{settingsError}</p>}
 
-                  <button className="secondary-button" type="submit" disabled={settingsBusy}>
-                    {settingsBusy ? t('saving') : t('saveSettings')}
-                  </button>
-                </form>
+                  {(settingsBusy || settingsMessage) && (
+                    <p className="settings-hint" role="status">
+                      {settingsBusy ? t('saving') : settingsMessage}
+                    </p>
+                  )}
+                </div>
               )}
             </details>
           )}
