@@ -75,13 +75,13 @@ const messages = {
     help: 'Hjælp',
     install: 'Installer på telefonen',
     captureHeading: 'Hvad skal vi ordne?',
-    captureDescription: 'Skriv eller indtal din besked med almindelige ord.',
+    captureDescription: 'Skriv eller indtal din opgave på dansk. Gennemgå oplysningerne før du gemmer.',
     send: 'Send',
     greetingMorning: 'Godmorgen',
     greetingDay: 'Goddag',
     greetingEvening: 'Godaften',
     noDeviceTimezone: 'Kunne ikke registreres',
-    previewNote: 'Dansk forståelse af opgaver og AI-svar er endnu ikke klar. Brug foreløbig ungarsk til beskeder.',
+    previewNote: 'Du kan nu skrive eller indtale opgaver på dansk.',
   },
 } as const
 
