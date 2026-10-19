@@ -1113,7 +1113,10 @@ export default function App() {
   // Csak felhasználónak megjelenítendő szöveget fordítunk dánra.
   async function invokeLocalizedCore(options: { body: Record<string, unknown> }) {
     if (!supabase) throw new Error('Nincs aktív kapcsolat.')
-    const result = await supabase.functions.invoke('core', options)
+    const result = await supabase.functions.invoke('core', {
+      ...options,
+      body: { ...options.body, ui_locale: appLocale },
+    })
     if (appLocale !== 'da-DK' || result.error || !result.data) return result
     const data = result.data as Record<string, any>
     const strings: string[] = []
@@ -1139,7 +1142,7 @@ export default function App() {
       try {
         const chunk = strings.slice(offset, offset + 10)
         const translated = await supabase.functions.invoke('core', {
-          body: { action: 'localize_display_text', texts: chunk },
+          body: { action: 'localize_display_text', texts: chunk, ui_locale: appLocale },
         })
         if (translated.error || !Array.isArray(translated.data?.translations)
           || translated.data.translations.length !== chunk.length) continue
