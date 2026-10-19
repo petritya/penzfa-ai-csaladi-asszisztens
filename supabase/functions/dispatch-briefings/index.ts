@@ -113,6 +113,7 @@ async function sendOneSignalPush(
       app_id: appId,
       include_aliases: { external_id: [userId] },
       target_channel: 'push',
+      priority: 10, // Magas prioritás a lezárt Android / Chrome készülékekhez
       headings: { en: title },
       contents: { en: message },
       ...(launchUrl ? { url: launchUrl } : {}),
