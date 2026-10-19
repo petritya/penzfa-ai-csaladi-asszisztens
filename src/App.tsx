@@ -2506,6 +2506,9 @@ export default function App() {
               <p className="capture-help">
                 {appLocale === 'da-DK' ? t('captureDescription') : <>Írd be vagy diktáld természetesen. Például: „{exampleText}” vagy „Mik a nyitott ügyeink?”</>}
               </p>
+              {appLocale === 'da-DK' && (
+                <p className="capture-help">{t('previewNote')}</p>
+              )}
 
               <form className="capture-form" onSubmit={handleMessage}>
                 <div className="capture-input-shell">
