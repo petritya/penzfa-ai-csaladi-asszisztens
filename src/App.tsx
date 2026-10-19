@@ -3,6 +3,8 @@ import type { Session } from '@supabase/supabase-js'
 import { hasSupabaseConfig, supabase } from './lib/supabase'
 import { detectAppLocale, detectDeviceTimezone, uiText } from './lib/locale'
 import type { AppLocale } from './lib/locale'
+import { translateUi } from './lib/ui-copy'
+import DanishHelp from './DanishHelp'
 
 type AuthMode = 'sign-in' | 'sign-up'
 type AppearanceMode = 'system' | 'light' | 'dark'
@@ -274,6 +276,7 @@ export default function App() {
   const [localeMessage, setLocaleMessage] = useState<string | null>(null)
   const [localeError, setLocaleError] = useState<string | null>(null)
   const t = (key: Parameters<typeof uiText>[1]) => uiText(appLocale, key)
+  const tr = (hungarian: string) => translateUi(appLocale, hungarian)
 
   const [settingsLoading, setSettingsLoading] = useState(false)
   const [settingsBusy, setSettingsBusy] = useState(false)
@@ -2084,14 +2087,13 @@ export default function App() {
     return (
       <main className="shell">
         <section className="card">
-          <p className="eyebrow">AI családi asszisztens</p>
-          <h1>Beállítás szükséges</h1>
+          <p className="eyebrow">{tr("AI családi asszisztens")}</p>
+          <h1>{tr("Beállítás szükséges")}</h1>
           <p className="lead">
-            A Cloudflare deployból hiányzik a Supabase projekt URL-je vagy publishable key-je.
+            {tr("A Cloudflare deployból hiányzik a Supabase projekt URL-je vagy publishable key-je.")}
           </p>
           <p className="notice error">
-            Add hozzá a VITE_SUPABASE_URL és VITE_SUPABASE_PUBLISHABLE_KEY környezeti változókat,
-            majd indíts új deployt.
+            {tr("Add hozzá a VITE_SUPABASE_URL és VITE_SUPABASE_PUBLISHABLE_KEY környezeti változókat, majd indíts új deployt.")}
           </p>
         </section>
       </main>
@@ -2102,8 +2104,8 @@ export default function App() {
     return (
       <main className="shell">
         <section className="card">
-          <p className="eyebrow">AI családi asszisztens</p>
-          <p>Belépés ellenőrzése…</p>
+          <p className="eyebrow">{tr("AI családi asszisztens")}</p>
+          <p>{tr("Belépés ellenőrzése…")}</p>
         </section>
       </main>
     )
@@ -2118,6 +2120,12 @@ export default function App() {
       : 'Jövő kedden 10-kor kontroll.'
 
     if (showHelp) {
+      if (appLocale === 'da-DK') {
+        return <DanishHelp onBack={() => {
+          setShowHelp(false)
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        }} />
+      }
       return (
         <main className="shell">
           <section className="card help-page">
@@ -2129,14 +2137,14 @@ export default function App() {
                 window.scrollTo({ top: 0, behavior: 'smooth' })
               }}
             >
-              ← Vissza
+              {tr("← Vissza")}
             </button>
 
             <header className="app-header help-header">
-              <p className="eyebrow">AI családi asszisztens</p>
+              <p className="eyebrow">{tr("AI családi asszisztens")}</p>
               <h1>Súgó</h1>
               <p className="lead">
-                Írd vagy mondd természetesen, mit szeretnél. Nem kell parancsokat megtanulnod.
+                {tr("Írd vagy mondd természetesen, mit szeretnél. Nem kell parancsokat megtanulnod.")}
               </p>
             </header>
 
@@ -2281,15 +2289,15 @@ export default function App() {
       <main className="shell">
         <section className="card">
           <header className="app-header">
-            <h1>{familyName ?? 'Kezdjük a beállítást'}</h1>
+            <h1>{familyName ?? tr("Kezdjük a beállítást")}</h1>
             <p className="lead">
               {familyLoading
-                ? 'Család betöltése…'
+                ? tr("Család betöltése…")
                 : familyName
                   ? activeUserMember
                     ? `${greeting}, ${activeUserMember.display_name}!`
                     : `${greeting}!`
-                  : 'Két adat kell az induláshoz.'}
+                  : tr("Két adat kell az induláshoz.")}
             </p>
           </header>
 
@@ -2297,41 +2305,43 @@ export default function App() {
 
           {emailJustConfirmed && !familyLoading && !familyName && !familyError && (
             <p className="notice success">
-              E-mail-cím megerősítve.
+              {tr("E-mail-cím megerősítve.")}
             </p>
           )}
 
           {!familyLoading && !familyName && !familyError && pendingOwnerInvitation && (
-            <section className="setup-block" aria-label="Csatlakozás a családhoz">
-              <h2>Csatlakozás a családhoz</h2>
+            <section className="setup-block" aria-label={tr("Csatlakozás a családhoz")}>
+              <h2>{tr("Csatlakozás a családhoz")}</h2>
               <p className="capture-help">
                 {invitationFamilyName
-                  ? `Meghívást kaptál ehhez a családhoz: ${invitationFamilyName}.`
-                  : 'Meghívást kaptál egy családhoz.'}
-                Add meg, hogyan szólítsunk.
+                  ? (appLocale === 'da-DK'
+                    ? `Du er inviteret til familien ${invitationFamilyName}.`
+                    : `Meghívást kaptál ehhez a családhoz: ${invitationFamilyName}.`)
+                  : tr("Meghívást kaptál egy családhoz.")}{' '}
+                {tr("Add meg, hogyan szólítsunk.")}
               </p>
 
               <form className="setup-form" onSubmit={handleAcceptOwnerInvitation}>
                 <label>
-                  Hogyan szólítsunk?
+                  {tr("Hogyan szólítsunk?")}
                   <input
                     type="text"
                     value={invitationDisplayName}
                     onChange={(event) => setInvitationDisplayName(event.target.value)}
-                    placeholder="Például: Anna"
+                    placeholder={tr("Például: Anna")}
                     required
                   />
                 </label>
 
                 <label>
-                  Jelszó
+                  {tr("Jelszó")}
                   <input
                     type="password"
                     autoComplete="new-password"
                     value={invitationPassword}
                     onChange={(event) => setInvitationPassword(event.target.value)}
                     minLength={6}
-                    placeholder="Legalább 6 karakter"
+                    placeholder={tr("Legalább 6 karakter")}
                     required
                   />
                 </label>
@@ -2345,7 +2355,7 @@ export default function App() {
                     || invitationPassword.length < 6
                   }
                 >
-                  {invitationBusy ? 'Csatlakozás…' : 'Csatlakozás a családhoz'}
+                  {invitationBusy ? tr("Csatlakozás…") : tr("Csatlakozás a családhoz")}
                 </button>
               </form>
 
@@ -2354,56 +2364,56 @@ export default function App() {
           )}
 
           {!familyLoading && !familyName && !familyError && !pendingOwnerInvitation && (
-            <section className="setup-block" aria-label="Család létrehozása">
-              <h2>Család létrehozása</h2>
+            <section className="setup-block" aria-label={tr("Család létrehozása")}>
+              <h2>{tr("Család létrehozása")}</h2>
               <p className="capture-help">
-                Add meg a család nevét és azt, hogyan szólítsunk. A többit később is beállíthatod.
+                {tr("Add meg a család nevét és azt, hogyan szólítsunk. A többit később is beállíthatod.")}
               </p>
 
               <form className="setup-form" onSubmit={handleFamilySetup}>
                 <label>
-                  Család neve
+                  {tr("Család neve")}
                   <input
                     type="text"
                     value={setupFamilyName}
                     onChange={(event) => setSetupFamilyName(event.target.value)}
-                    placeholder="Például: Kovács család"
+                    placeholder={tr("Például: Kovács család")}
                     required
                   />
                 </label>
 
                 <label>
-                  Hogyan szólítsunk?
+                  {tr("Hogyan szólítsunk?")}
                   <input
                     type="text"
                     value={setupDisplayName}
                     onChange={(event) => setSetupDisplayName(event.target.value)}
-                    placeholder="Például: Anna"
+                    placeholder={tr("Például: Anna")}
                     required
                   />
                 </label>
 
                 <details>
-                  <summary>További beállítások (opcionális)</summary>
+                  <summary>{tr("További beállítások (opcionális)")}</summary>
 
                   <label>
-                    További családtagok
+                    {tr("További családtagok")}
                     <textarea
                       value={setupManagedMembers}
                       onChange={(event) => setSetupManagedMembers(event.target.value)}
-                      placeholder="Például: Mamus, Bence"
+                      placeholder={tr("Például: Mamus, Bence")}
                       rows={2}
                     />
-                    <small>Vesszővel vagy új sorral válaszd el a neveket.</small>
+                    <small>{tr("Vesszővel vagy új sorral válaszd el a neveket.")}</small>
                   </label>
 
                   <label>
-                    Másik családi felhasználó e-mailje
+                    {tr("Másik családi felhasználó e-mailje")}
                     <input
                       type="email"
                       value={setupSecondOwnerEmail}
                       onChange={(event) => setSetupSecondOwnerEmail(event.target.value)}
-                      placeholder="Opcionális"
+                      placeholder={tr("Opcionális")}
                     />
                   </label>
                 </details>
@@ -2413,7 +2423,7 @@ export default function App() {
                   type="submit"
                   disabled={setupBusy || !setupFamilyName.trim() || !setupDisplayName.trim()}
                 >
-                  {setupBusy ? 'Létrehozás…' : 'Család létrehozása'}
+                  {setupBusy ? tr("Létrehozás…") : tr("Család létrehozása")}
                 </button>
               </form>
 
@@ -2424,19 +2434,19 @@ export default function App() {
 
           {familyName && pushContextLoading && (
             <section className="push-context-card" aria-live="polite">
-              <strong>Értesítés betöltése…</strong>
+              <strong>{tr("Értesítés betöltése…")}</strong>
             </section>
           )}
 
           {familyName && pushContext && (
-            <section className="push-context-card" aria-label="Megnyitott értesítés">
+            <section className="push-context-card" aria-label={tr("Megnyitott értesítés")}>
               <div className="push-context-header">
                 <strong>{pushContext.title}</strong>
                 <button
                   className="push-context-close"
                   type="button"
                   onClick={() => setPushContext(null)}
-                  aria-label="Értesítés bezárása"
+                  aria-label={tr("Értesítés bezárása")}
                 >
                   ×
                 </button>
@@ -2465,7 +2475,7 @@ export default function App() {
 
                       return (
                         <div className="briefing-row" key={`briefing-${index}`}>
-                          <span className={`briefing-label ${labelClass}`}>{match[1]}</span>
+                          <span className={`briefing-label ${labelClass}`}>{tr(match[1])}</span>
                           <span>{match[2]}</span>
                         </div>
                       )
@@ -2484,18 +2494,21 @@ export default function App() {
                   )}
                   disabled={createBusy}
                 >
-                  Emlékeztető módosítása
+                  {tr("Emlékeztető módosítása")}
                 </button>
               )}
             </section>
           )}
 
           {familyName && (
-            <section className="capture-block capture-primary" aria-label="Kommunikáció">
+            <section className="capture-block capture-primary" aria-label={tr("Kommunikáció")}>
               <h2>{t('captureHeading')}</h2>
               <p className="capture-help">
                 {appLocale === 'da-DK' ? t('captureDescription') : <>Írd be vagy diktáld természetesen. Például: „{exampleText}” vagy „Mik a nyitott ügyeink?”</>}
               </p>
+              {appLocale === 'da-DK' && (
+                <p className="capture-help">{t('previewNote')}</p>
+              )}
 
               <form className="capture-form" onSubmit={handleMessage}>
                 <div className="capture-input-shell">
@@ -2514,7 +2527,7 @@ export default function App() {
                       setQueryResults([])
                       setVoiceError(null)
                     }}
-                    placeholder={dateEditTarget ? 'Az ügy új dátuma/időpontja…' : reminderEditTarget ? 'Az új emlékeztetés időpontja…' : 'Mondd vagy írd le, mit intézzünk…'}
+                    placeholder={dateEditTarget ? tr("Az ügy új dátuma/időpontja…") : reminderEditTarget ? tr("Az új emlékeztetés időpontja…") : tr("Mondd vagy írd le, mit intézzünk…")}
                     rows={4}
                     disabled={createBusy || voiceListening || voiceTranscribing}
                   />
@@ -2526,17 +2539,17 @@ export default function App() {
                     disabled={createBusy || voiceTranscribing}
                     aria-label={
                       voiceTranscribing
-                        ? 'Hang átírása'
+                        ? tr("Hang átírása")
                         : voiceListening
-                          ? 'Felvétel leállítása'
-                          : 'Diktálás indítása'
+                          ? tr("Felvétel leállítása")
+                          : tr("Diktálás indítása")
                     }
                     title={
                       voiceTranscribing
-                        ? 'Átírás…'
+                        ? tr("Átírás…")
                         : voiceListening
-                          ? 'Felvétel leállítása'
-                          : 'Diktálás'
+                          ? tr("Felvétel leállítása")
+                          : tr("Diktálás")
                     }
                   >
                     {voiceTranscribing ? (
@@ -2565,10 +2578,10 @@ export default function App() {
                 <div className="capture-actions">
                   <small>
                     {voiceTranscribing
-                      ? 'Átírom a felvételt…'
+                      ? tr("Átírom a felvételt…")
                       : voiceListening
-                        ? 'Felvétel folyamatban. Ha kész vagy, koppints újra a mikrofonra.'
-                        : 'Koppints a mikrofonra, mondd el, majd koppints újra a leállításhoz.'}
+                        ? tr("Felvétel folyamatban. Ha kész vagy, koppints újra a mikrofonra.")
+                        : tr("Koppints a mikrofonra, mondd el, majd koppints újra a leállításhoz.")}
                   </small>
                   <button
                     className="primary-button send-button"
@@ -2580,7 +2593,7 @@ export default function App() {
                       || !createMessage.trim()
                     }
                   >
-                    {createBusy ? (appLocale === 'da-DK' ? 'Behandler…' : 'Feldolgozás…') : t('send')}
+                    {createBusy ? (appLocale === 'da-DK' ? 'Behandler…' : tr("Feldolgozás…")) : t('send')}
                   </button>
                 </div>
 
@@ -2589,7 +2602,7 @@ export default function App() {
 
               {assistantAnswer && (
                 <div className="assistant-answer">
-                  <strong>Válasz:</strong>
+                  <strong>{tr("Válasz:")}</strong>
                   <p>{assistantAnswer}</p>
                 </div>
               )}
@@ -2597,9 +2610,9 @@ export default function App() {
               {completeCandidates.length > 0 && (
                 <>
                   <p className="candidate-helper">
-                    Több egyező nyitott ügyet találtam. Koppints arra, amelyiket készre jelöljem.
+                    {tr("Több egyező nyitott ügyet találtam. Koppints arra, amelyiket készre jelöljem.")}
                   </p>
-                  <div className="complete-candidates" aria-label="Lezárható találatok">
+                  <div className="complete-candidates" aria-label={tr("Lezárható találatok")}>
                   {completeCandidates.map((candidate) => (
                     <button
                       className="complete-candidate-button"
@@ -2616,7 +2629,7 @@ export default function App() {
               )}
 
               {queryResults.length > 0 && (
-                <div className="query-results" aria-label="Találatok">
+                <div className="query-results" aria-label={tr("Találatok")}>
                   {queryResults.map((item) => {
                     const ownerPrefix = item.is_other_owner && item.responsible_display_name
                       ? `${item.responsible_display_name}:`
@@ -2638,14 +2651,14 @@ export default function App() {
                       >
                         <div className="query-label">
                           {item.is_overdue && (
-                            <span className="overdue-badge">LEJÁRT</span>
+                            <span className="overdue-badge">{tr("LEJÁRT")}</span>
                           )}
                           {ownerPrefix && (
                             <strong className="query-owner-name">{item.responsible_display_name}:</strong>
                           )}{' '}
                           {labelWithoutOwner}
                           {item.status === 'open' && item.reminder_missing && (
-                            <strong> – Nincs emlékeztető</strong>
+                            <strong> – {tr("Nincs emlékeztető")}</strong>
                           )}
                         </div>
                         {item.status === 'open' && (
@@ -2656,7 +2669,7 @@ export default function App() {
                               onClick={() => startDateEdit(item.id, item.title)}
                               disabled={createBusy}
                             >
-                              Dátum/idő módosítása
+                              {tr("Dátum/idő módosítása")}
                             </button>
                             <button
                               className="query-action-button"
@@ -2664,7 +2677,7 @@ export default function App() {
                               onClick={() => startReminderEdit(item.id, item.title)}
                               disabled={createBusy}
                             >
-                              {item.reminder_missing ? 'Emlékeztető beállítása' : 'Emlékeztető módosítása'}
+                              {item.reminder_missing ? tr("Emlékeztető beállítása") : tr("Emlékeztető módosítása")}
                             </button>
                           </div>
                         )}
@@ -2676,7 +2689,7 @@ export default function App() {
 
               {deleteDraft && (
                 <div className="confirmation-card delete-confirmation">
-                  <strong>Törlés megerősítése:</strong>
+                  <strong>{tr("Törlés megerősítése:")}</strong>
                   <p>{deleteDraft.confirmation_text}</p>
                   <div className="confirmation-actions">
                     <button
@@ -2685,7 +2698,7 @@ export default function App() {
                       onClick={handleConfirmDelete}
                       disabled={createBusy}
                     >
-                      Igen, töröld
+                      {tr("Igen, töröld")}
                     </button>
                     <button
                       className="secondary-button"
@@ -2693,7 +2706,7 @@ export default function App() {
                       onClick={handleCancelCreate}
                       disabled={createBusy}
                     >
-                      Mégse
+                      {tr("Mégse")}
                     </button>
                   </div>
                 </div>
@@ -2701,7 +2714,7 @@ export default function App() {
 
               {reminderUpdateDraft && (
                 <div className="confirmation-card">
-                  <strong>Emlékeztető módosításának megerősítése:</strong>
+                  <strong>{tr("Emlékeztető módosításának megerősítése:")}</strong>
                   <p>{reminderUpdateDraft.confirmation_text}</p>
                   <div className="confirmation-actions">
                     <button
@@ -2710,7 +2723,7 @@ export default function App() {
                       onClick={handleConfirmReminderUpdate}
                       disabled={createBusy}
                     >
-                      Igen, módosítsd
+                      {tr("Igen, módosítsd")}
                     </button>
                     <button
                       className="secondary-button"
@@ -2718,7 +2731,7 @@ export default function App() {
                       onClick={handleCancelCreate}
                       disabled={createBusy}
                     >
-                      Mégse
+                      {tr("Mégse")}
                     </button>
                   </div>
                 </div>
@@ -2726,7 +2739,7 @@ export default function App() {
 
               {updateDraft && (
                 <div className="confirmation-card">
-                  <strong>Megerősítés:</strong>
+                  <strong>{tr("Megerősítés:")}</strong>
                   <p>{updateDraft.confirmation_text}</p>
                   <div className="confirmation-actions">
                     <button
@@ -2735,7 +2748,7 @@ export default function App() {
                       onClick={handleConfirmUpdate}
                       disabled={createBusy}
                     >
-                      Igen, módosítsd
+                      {tr("Igen, módosítsd")}
                     </button>
                     <button
                       className="secondary-button"
@@ -2743,7 +2756,7 @@ export default function App() {
                       onClick={handleCancelCreate}
                       disabled={createBusy}
                     >
-                      Mégse
+                      {tr("Mégse")}
                     </button>
                   </div>
                 </div>
@@ -2751,11 +2764,13 @@ export default function App() {
 
               {reminderFollowUp && (
                 <div className="confirmation-card">
-                  <strong>Mi legyen az emlékeztetővel?</strong>
+                  <strong>{tr("Mi legyen az emlékeztetővel?")}</strong>
                   <p>
                     {reminderFollowUp.reminder_at
-                      ? `A feladat időpontja megváltozott, de az emlékeztető maradt: ${new Date(reminderFollowUp.reminder_at).toLocaleString('hu-HU', { dateStyle: 'long', timeStyle: 'short' })}. Megtartod, módosítod vagy kikapcsolod?`
-                      : 'A feladat időpontja megváltozott. Ehhez az ügyhöz nincs beállított emlékeztető. Szeretnél beállítani egyet?'}
+                      ? (appLocale === 'da-DK'
+                        ? `Opgavens tidspunkt er ændret, men påmindelsen er stadig sat til ${new Date(reminderFollowUp.reminder_at).toLocaleString('da-DK', { dateStyle: 'long', timeStyle: 'short' })}. Vil du beholde, ændre eller slå den fra?`
+                        : `A feladat időpontja megváltozott, de az emlékeztető maradt: ${new Date(reminderFollowUp.reminder_at).toLocaleString('hu-HU', { dateStyle: 'long', timeStyle: 'short' })}. Megtartod, módosítod vagy kikapcsolod?`)
+                      : tr("A feladat időpontja megváltozott. Ehhez az ügyhöz nincs beállított emlékeztető. Szeretnél beállítani egyet?")}
                   </p>
                   <div className="confirmation-actions">
                     <button
@@ -2764,7 +2779,7 @@ export default function App() {
                       onClick={() => setReminderFollowUp(null)}
                       disabled={createBusy}
                     >
-                      {reminderFollowUp.reminder_at ? 'Maradjon az eredeti' : 'Maradjon emlékeztető nélkül'}
+                      {reminderFollowUp.reminder_at ? tr("Maradjon az eredeti") : tr("Maradjon emlékeztető nélkül")}
                     </button>
                     <button
                       className="primary-button"
@@ -2772,7 +2787,7 @@ export default function App() {
                       onClick={() => startReminderEdit(reminderFollowUp.id, reminderFollowUp.title)}
                       disabled={createBusy}
                     >
-                      {reminderFollowUp.reminder_at ? 'Emlékeztető módosítása' : 'Emlékeztető beállítása'}
+                      {reminderFollowUp.reminder_at ? tr("Emlékeztető módosítása") : tr("Emlékeztető beállítása")}
                     </button>
                     {reminderFollowUp.reminder_at && (
                       <button
@@ -2781,7 +2796,7 @@ export default function App() {
                         onClick={() => void handleDisableReminderFromFollowUp()}
                         disabled={createBusy}
                       >
-                        Emlékeztető kikapcsolása
+                        {tr("Emlékeztető kikapcsolása")}
                       </button>
                     )}
                   </div>
@@ -2790,7 +2805,7 @@ export default function App() {
 
               {completeDraft && (
                 <div className="confirmation-card">
-                  <strong>Megerősítés:</strong>
+                  <strong>{tr("Megerősítés:")}</strong>
                   <p>{completeDraft.confirmation_text}</p>
                   <div className="confirmation-actions">
                     <button
@@ -2799,7 +2814,7 @@ export default function App() {
                       onClick={handleConfirmComplete}
                       disabled={createBusy}
                     >
-                      Igen, jelöld késznek
+                      {tr("Igen, jelöld késznek")}
                     </button>
                     <button
                       className="secondary-button"
@@ -2807,7 +2822,7 @@ export default function App() {
                       onClick={handleCancelCreate}
                       disabled={createBusy}
                     >
-                      Mégse
+                      {tr("Mégse")}
                     </button>
                   </div>
                 </div>
@@ -2815,12 +2830,11 @@ export default function App() {
 
               {createDraft && (
                 <div className="confirmation-card">
-                  <strong>Ezt értettem:</strong>
+                  <strong>{tr("Ezt értettem:")}</strong>
                   <p>{createDraft.confirmation_text}</p>
                   {createDraft.due_date && !createDraft.first_reminder_at && (
                     <p className="confirmation-hint">
-                      Az ügy többi adata megmarad. Mondd vagy írd be csak az emlékeztetést,
-                      például: „aznap 18-kor” vagy „előző nap 18-kor”, majd nyomd meg a Küldést.
+                      {tr("Az ügy többi adata megmarad. Mondd vagy írd be csak az emlékeztetést, például: „aznap 18-kor” vagy „előző nap 18-kor”, majd nyomd meg a Küldést.")}
                     </p>
                   )}
                   <div className="confirmation-actions">
@@ -2831,8 +2845,8 @@ export default function App() {
                       disabled={createBusy}
                     >
                       {createDraft.due_date && !createDraft.first_reminder_at
-                        ? 'Rögzítés emlékeztető nélkül'
-                        : 'Igen, rögzítsd'}
+                        ? tr("Rögzítés emlékeztető nélkül")
+                        : tr("Igen, rögzítsd")}
                     </button>
                     <button
                       className="secondary-button"
@@ -2840,7 +2854,7 @@ export default function App() {
                       onClick={handleCancelCreate}
                       disabled={createBusy}
                     >
-                      Mégse
+                      {tr("Mégse")}
                     </button>
                   </div>
                 </div>
@@ -2859,7 +2873,7 @@ export default function App() {
                   <li key={`${member.family_id}-${member.display_name}`}>
                     <span>{member.display_name}</span>
                     <small>
-                      {member.member_kind === 'active' ? 'Családi felhasználó' : 'Kezelt családtag'}
+                      {member.member_kind === 'active' ? tr("Családi felhasználó") : tr("Kezelt családtag")}
                     </small>
                   </li>
                 ))}
@@ -2867,12 +2881,12 @@ export default function App() {
 
               <form className="setup-form" onSubmit={handleAddFamilyMember}>
                 <label>
-                  Új családtag
+                  {tr("Új családtag")}
                   <input
                     type="text"
                     value={newFamilyMemberName}
                     onChange={(event) => setNewFamilyMemberName(event.target.value)}
-                    placeholder="Például: Bence"
+                    placeholder={tr("Például: Bence")}
                   />
                 </label>
                 <button
@@ -2880,19 +2894,19 @@ export default function App() {
                   type="submit"
                   disabled={familyActionBusy || !newFamilyMemberName.trim()}
                 >
-                  Kezelt családtag hozzáadása
+                  {tr("Kezelt családtag hozzáadása")}
                 </button>
               </form>
 
               {familyMembers.filter((member) => member.member_kind === 'active').length < 2 && (
                 <form className="setup-form" onSubmit={handleInviteSecondOwner}>
                   <label>
-                    Másik családi felhasználó meghívása
+                    {tr("Másik családi felhasználó meghívása")}
                     <input
                       type="email"
                       value={secondOwnerInviteEmail}
                       onChange={(event) => setSecondOwnerInviteEmail(event.target.value)}
-                      placeholder="E-mail-cím"
+                      placeholder={tr("E-mail-cím")}
                     />
                   </label>
                   <button
@@ -2900,7 +2914,7 @@ export default function App() {
                     type="submit"
                     disabled={familyActionBusy || !secondOwnerInviteEmail.trim()}
                   >
-                    Meghívó küldése
+                    {tr("Meghívó küldése")}
                   </button>
                 </form>
               )}
@@ -3019,20 +3033,20 @@ export default function App() {
           {familyName && !isStandalone && (
             <details className="secondary-details">
               <summary>{t('install')}</summary>
-              <section className="push-settings" aria-label="Telepítés a telefonra">
+              <section className="push-settings" aria-label={tr("Telepítés a telefonra")}>
                 <div>
-                  <strong>AI családi asszisztens a kezdőképernyőn</strong>
+                  <strong>{tr("AI családi asszisztens a kezdőképernyőn")}</strong>
                   {installPrompt ? (
                     <small>
-                      Telepítsd az alkalmazást, hogy a telefonodon önálló appként tudd megnyitni.
+                      {tr("Telepítsd az alkalmazást, hogy a telefonodon önálló appként tudd megnyitni.")}
                     </small>
                   ) : isIos ? (
                     <small>
-                      iPhone-on vagy iPaden Safari alatt: Megosztás → Hozzáadás a Főképernyőhöz.
+                      {tr("iPhone-on vagy iPaden Safari alatt: Megosztás → Hozzáadás a Főképernyőhöz.")}
                     </small>
                   ) : (
                     <small>
-                      A böngésző menüjében válaszd a Telepítés vagy a Hozzáadás a kezdőképernyőhöz lehetőséget.
+                      {tr("A böngésző menüjében válaszd a Telepítés vagy a Hozzáadás a kezdőképernyőhöz lehetőséget.")}
                     </small>
                   )}
                 </div>
@@ -3043,7 +3057,7 @@ export default function App() {
                     type="button"
                     onClick={handleInstallApp}
                   >
-                    Telepítés
+                    {tr("Telepítés")}
                   </button>
                 )}
               </section>
@@ -3056,24 +3070,24 @@ export default function App() {
             <dl className="account">
               <div>
                 <dt>{t('signedIn')}</dt>
-                <dd>{session.user.email ?? 'Ismeretlen e-mail'}</dd>
+                <dd>{session.user.email ?? tr("Ismeretlen e-mail")}</dd>
               </div>
             </dl>
 
             {familyName && (
-              <section className="push-settings" aria-label="Értesítések">
+              <section className="push-settings" aria-label={tr("Értesítések")}>
                 <div>
                   <strong>{t('notifications')}</strong>
-                  {pushStatus === 'loading' && <small>Ellenőrzés…</small>}
+                  {pushStatus === 'loading' && <small>{tr("Ellenőrzés…")}</small>}
                   {pushStatus === 'enabled' && <small className="push-enabled">{t('enabled')}</small>}
-                  {pushStatus === 'blocked' && <small>Az értesítések le vannak tiltva a böngésző/PWA beállításaiban.</small>}
-                  {pushStatus === 'unsupported' && <small>Ez a böngésző vagy eszköz nem támogatja a webes push értesítéseket.</small>}
-                  {pushStatus === 'error' && <small>{pushError ?? 'A push szolgáltatás nem érhető el.'}</small>}
+                  {pushStatus === 'blocked' && <small>{tr("Az értesítések le vannak tiltva a böngésző/PWA beállításaiban.")}</small>}
+                  {pushStatus === 'unsupported' && <small>{tr("Ez a böngésző vagy eszköz nem támogatja a webes push értesítéseket.")}</small>}
+                  {pushStatus === 'error' && <small>{pushError ?? tr("A push szolgáltatás nem érhető el.")}</small>}
                   {pushStatus === 'ready' && (
                     <small>
                       {typeof Notification !== 'undefined' && Notification.permission === 'granted'
-                        ? 'Az értesítések engedélyezettek, de ezen az eszközön még nem működik a pushküldés.'
-                        : 'Kapcsold be, hogy ezen az eszközön megérkezzenek a családi értesítések.'}
+                        ? tr("Az értesítések engedélyezettek, de ezen az eszközön még nem működik a pushküldés.")
+                        : tr("Kapcsold be, hogy ezen az eszközön megérkezzenek a családi értesítések.")}
                     </small>
                   )}
                 </div>
@@ -3085,9 +3099,9 @@ export default function App() {
                     onClick={handleEnablePush}
                     disabled={pushBusy}
                   >
-                    {pushBusy ? 'Ellenőrzés…' : typeof Notification !== 'undefined' && Notification.permission === 'granted'
-                      ? 'Értesítések újrapróbálása'
-                      : 'Értesítések bekapcsolása'}
+                    {pushBusy ? tr("Ellenőrzés…") : typeof Notification !== 'undefined' && Notification.permission === 'granted'
+                      ? tr("Értesítések újrapróbálása")
+                      : tr("Értesítések bekapcsolása")}
                   </button>
                 )}
               </section>
@@ -3122,19 +3136,19 @@ export default function App() {
     return (
       <main className="shell">
         <section className="card">
-          <p className="eyebrow">AI családi asszisztens</p>
-          <h1>Nézd meg az e-mailed</h1>
+          <p className="eyebrow">{tr("AI családi asszisztens")}</p>
+          <h1>{tr("Nézd meg az e-mailed")}</h1>
           <p className="lead">
-            Megerősítő e-mailt küldtünk ide: <strong>{confirmationEmail}</strong>
+            {appLocale === 'da-DK' ? 'Vi har sendt en bekræftelsesmail til:' : 'Megerősítő e-mailt küldtünk ide:'}{' '}
+            <strong>{confirmationEmail}</strong>
           </p>
 
           <p className="notice success">
-            Nyisd meg a levelet, és koppints az „E-mail-cím megerősítése” gombra.
+            {tr("Nyisd meg a levelet, és koppints az „E-mail-cím megerősítése” gombra.")}
           </p>
 
           <p className="capture-help">
-            Ha pár percen belül nem látod a levelet, nézd meg a Spam vagy Levélszemét mappát is.
-            Ha több megerősítő levelet kaptál, mindig a legfrissebb levélben lévő linket használd.
+            {tr("Ha pár percen belül nem látod a levelet, nézd meg a Spam vagy Levélszemét mappát is. Ha több megerősítő levelet kaptál, mindig a legfrissebb levélben lévő linket használd.")}
           </p>
 
           {resendMessage && <p className="notice success">{resendMessage}</p>}
@@ -3148,10 +3162,12 @@ export default function App() {
               disabled={resendBusy || resendCooldown > 0}
             >
               {resendBusy
-                ? 'Küldés…'
+                ? tr("Küldés…")
                 : resendCooldown > 0
-                  ? `Újraküldés ${resendCooldown} mp múlva`
-                  : 'Megerősítő e-mail újraküldése'}
+                  ? (appLocale === 'da-DK'
+                    ? `Send igen om ${resendCooldown} sek.`
+                    : `Újraküldés ${resendCooldown} mp múlva`)
+                  : tr("Megerősítő e-mail újraküldése")}
             </button>
 
             <button
@@ -3163,7 +3179,7 @@ export default function App() {
                 setMode('sign-in')
               }}
             >
-              Vissza a belépéshez
+              {tr("Vissza a belépéshez")}
             </button>
           </div>
         </section>
@@ -3174,17 +3190,17 @@ export default function App() {
   return (
     <main className="shell">
       <section className="card">
-        <p className="eyebrow">AI családi asszisztens</p>
-        <h1>AI családi asszisztens</h1>
+        <p className="eyebrow">{tr("AI családi asszisztens")}</p>
+        <h1>{tr("AI családi asszisztens")}</h1>
         <p className="lead">
           {mode === 'sign-in'
-            ? 'Jelentkezz be az AI családi asszisztensbe.'
-            : 'Hozd létre az első felhasználói fiókot.'}
+            ? tr("Jelentkezz be az AI családi asszisztensbe.")
+            : tr("Hozd létre az első felhasználói fiókot.")}
         </p>
 
         {authRedirectError && <p className="notice error">{authRedirectError}</p>}
 
-        <div className="auth-tabs" aria-label="Belépési mód">
+        <div className="auth-tabs" aria-label={tr("Belépési mód")}>
           <button
             className={mode === 'sign-in' ? 'tab active' : 'tab'}
             type="button"
@@ -3194,7 +3210,7 @@ export default function App() {
               setErrorMessage(null)
             }}
           >
-            Belépés
+            {tr("Belépés")}
           </button>
           <button
             className={mode === 'sign-up' ? 'tab active' : 'tab'}
@@ -3205,7 +3221,7 @@ export default function App() {
               setErrorMessage(null)
             }}
           >
-            Regisztráció
+            {tr("Regisztráció")}
           </button>
         </div>
 
@@ -3222,7 +3238,7 @@ export default function App() {
           </label>
 
           <label>
-            Jelszó
+            {tr("Jelszó")}
             <input
               type="password"
               autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'}
@@ -3238,10 +3254,10 @@ export default function App() {
 
           <button className="primary-button" type="submit" disabled={submitting}>
             {submitting
-              ? 'Folyamatban…'
+              ? tr("Folyamatban…")
               : mode === 'sign-in'
-                ? 'Belépés'
-                : 'Fiók létrehozása'}
+                ? tr("Belépés")
+                : tr("Fiók létrehozása")}
           </button>
         </form>
       </section>
