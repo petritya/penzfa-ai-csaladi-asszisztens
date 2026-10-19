@@ -1696,7 +1696,7 @@ export default function App() {
     }
 
     if (data?.status === 'deleted') {
-      setCreateSuccess(`Törölve: ${data.item?.title ?? 'ügy'}`)
+      setCreateSuccess(`${appLocale === 'da-DK' ? 'Slettet' : 'Törölve'}: ${data.item?.title ?? (appLocale === 'da-DK' ? 'opgave' : 'ügy')}`)
       setCreateMessage('')
       setDeleteDraft(null)
       return
@@ -1766,7 +1766,7 @@ export default function App() {
     }
 
     if (data?.status === 'reminder_updated') {
-      setCreateSuccess(`Emlékeztető módosítva: ${data.item?.title ?? reminderEditTarget?.title ?? 'ügy'}`)
+      setCreateSuccess(`${appLocale === 'da-DK' ? 'Påmindelse ændret' : 'Emlékeztető módosítva'}: ${data.item?.title ?? reminderEditTarget?.title ?? (appLocale === 'da-DK' ? 'opgave' : 'ügy')}`)
       setReminderUpdateDraft(null)
       setReminderEditTarget(null)
       setAssistantAnswer(null)
@@ -1825,7 +1825,7 @@ export default function App() {
     }
 
     if (data?.status === 'updated') {
-      setCreateSuccess(`Módosítva: ${data.item?.title ?? 'ügy'}`)
+      setCreateSuccess(`${appLocale === 'da-DK' ? 'Ændret' : 'Módosítva'}: ${data.item?.title ?? (appLocale === 'da-DK' ? 'opgave' : 'ügy')}`)
       setCreateMessage('')
       setUpdateDraft(null)
       setDateEditTarget(null)
@@ -1894,7 +1894,7 @@ export default function App() {
     }
 
     if (data?.status === 'completed') {
-      setCreateSuccess(`Készre jelölve: ${data.item?.title ?? candidate.title}`)
+      setCreateSuccess(`${appLocale === 'da-DK' ? 'Markeret som udført' : 'Készre jelölve'}: ${data.item?.title ?? candidate.title}`)
       setCompleteCandidates([])
       setAssistantAnswer(data.partner_notification_warning ?? null)
       return
@@ -1926,7 +1926,7 @@ export default function App() {
     }
 
     if (data?.status === 'completed') {
-      setCreateSuccess(`Készre jelölve: ${data.item?.title ?? 'ügy'}`)
+      setCreateSuccess(`${appLocale === 'da-DK' ? 'Markeret som udført' : 'Készre jelölve'}: ${data.item?.title ?? (appLocale === 'da-DK' ? 'opgave' : 'ügy')}`)
       setCreateMessage('')
       setCompleteDraft(null)
       setCompleteCandidates([])
@@ -1966,7 +1966,7 @@ export default function App() {
     }
 
     if (data?.status === 'created') {
-      setCreateSuccess(`Rögzítve: ${data.item?.title ?? draft.title}`)
+      setCreateSuccess(`${appLocale === 'da-DK' ? 'Gemt' : 'Rögzítve'}: ${data.item?.title ?? draft.title}`)
       setCreateMessage('')
       setCreateDraft(null)
 
@@ -2548,9 +2548,7 @@ export default function App() {
               <p className="capture-help">
                 {appLocale === 'da-DK' ? t('captureDescription') : <>Írd be vagy diktáld természetesen. Például: „{exampleText}” vagy „Mik a nyitott ügyeink?”</>}
               </p>
-              {appLocale === 'da-DK' && (
-                <p className="capture-help">{t('previewNote')}</p>
-              )}
+
 
               <form className="capture-form" onSubmit={handleMessage}>
                 <div className="capture-input-shell">
@@ -3010,7 +3008,7 @@ export default function App() {
                     )}
                     {localeMessage && <small className="locale-success">{localeMessage}</small>}
                     {localeError && <small className="locale-error">{localeError}</small>}
-                    {appLocale === 'da-DK' && <small>{t('previewNote')}</small>}
+
                   </div>
                   <label className="settings-time appearance-setting">
                     <span>{t('appearance')}</span>
