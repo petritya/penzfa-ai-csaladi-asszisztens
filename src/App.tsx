@@ -2093,8 +2093,7 @@ export default function App() {
             {tr("A Cloudflare deployból hiányzik a Supabase projekt URL-je vagy publishable key-je.")}
           </p>
           <p className="notice error">
-            Add hozzá a VITE_SUPABASE_URL és VITE_SUPABASE_PUBLISHABLE_KEY környezeti változókat,
-            majd indíts új deployt.
+            {tr("Add hozzá a VITE_SUPABASE_URL és VITE_SUPABASE_PUBLISHABLE_KEY környezeti változókat, majd indíts új deployt.")}
           </p>
         </section>
       </main>
@@ -2315,9 +2314,11 @@ export default function App() {
               <h2>{tr("Csatlakozás a családhoz")}</h2>
               <p className="capture-help">
                 {invitationFamilyName
-                  ? `Meghívást kaptál ehhez a családhoz: ${invitationFamilyName}.`
-                  : tr("Meghívást kaptál egy családhoz.")}
-                Add meg, hogyan szólítsunk.
+                  ? (appLocale === 'da-DK'
+                    ? `Du er inviteret til familien ${invitationFamilyName}.`
+                    : `Meghívást kaptál ehhez a családhoz: ${invitationFamilyName}.`)
+                  : tr("Meghívást kaptál egy családhoz.")}{' '}
+                {tr("Add meg, hogyan szólítsunk.")}
               </p>
 
               <form className="setup-form" onSubmit={handleAcceptOwnerInvitation}>
@@ -2474,7 +2475,7 @@ export default function App() {
 
                       return (
                         <div className="briefing-row" key={`briefing-${index}`}>
-                          <span className={`briefing-label ${labelClass}`}>{match[1]}</span>
+                          <span className={`briefing-label ${labelClass}`}>{tr(match[1])}</span>
                           <span>{match[2]}</span>
                         </div>
                       )
@@ -2654,7 +2655,7 @@ export default function App() {
                           )}{' '}
                           {labelWithoutOwner}
                           {item.status === 'open' && item.reminder_missing && (
-                            <strong> – Nincs emlékeztető</strong>
+                            <strong> – {tr("Nincs emlékeztető")}</strong>
                           )}
                         </div>
                         {item.status === 'open' && (
@@ -2763,7 +2764,9 @@ export default function App() {
                   <strong>{tr("Mi legyen az emlékeztetővel?")}</strong>
                   <p>
                     {reminderFollowUp.reminder_at
-                      ? `A feladat időpontja megváltozott, de az emlékeztető maradt: ${new Date(reminderFollowUp.reminder_at).toLocaleString('hu-HU', { dateStyle: 'long', timeStyle: 'short' })}. Megtartod, módosítod vagy kikapcsolod?`
+                      ? (appLocale === 'da-DK'
+                        ? `Opgavens tidspunkt er ændret, men påmindelsen er stadig sat til ${new Date(reminderFollowUp.reminder_at).toLocaleString('da-DK', { dateStyle: 'long', timeStyle: 'short' })}. Vil du beholde, ændre eller slå den fra?`
+                        : `A feladat időpontja megváltozott, de az emlékeztető maradt: ${new Date(reminderFollowUp.reminder_at).toLocaleString('hu-HU', { dateStyle: 'long', timeStyle: 'short' })}. Megtartod, módosítod vagy kikapcsolod?`)
                       : tr("A feladat időpontja megváltozott. Ehhez az ügyhöz nincs beállított emlékeztető. Szeretnél beállítani egyet?")}
                   </p>
                   <div className="confirmation-actions">
@@ -2828,8 +2831,7 @@ export default function App() {
                   <p>{createDraft.confirmation_text}</p>
                   {createDraft.due_date && !createDraft.first_reminder_at && (
                     <p className="confirmation-hint">
-                      Az ügy többi adata megmarad. Mondd vagy írd be csak az emlékeztetést,
-                      például: „aznap 18-kor” vagy „előző nap 18-kor”, majd nyomd meg a Küldést.
+                      {tr("Az ügy többi adata megmarad. Mondd vagy írd be csak az emlékeztetést, például: „aznap 18-kor” vagy „előző nap 18-kor”, majd nyomd meg a Küldést.")}
                     </p>
                   )}
                   <div className="confirmation-actions">
@@ -2868,7 +2870,7 @@ export default function App() {
                   <li key={`${member.family_id}-${member.display_name}`}>
                     <span>{member.display_name}</span>
                     <small>
-                      {member.member_kind === 'active' ? 'Családi felhasználó' : 'Kezelt családtag'}
+                      {member.member_kind === 'active' ? tr("Családi felhasználó") : tr("Kezelt családtag")}
                     </small>
                   </li>
                 ))}
@@ -3134,7 +3136,8 @@ export default function App() {
           <p className="eyebrow">{tr("AI családi asszisztens")}</p>
           <h1>{tr("Nézd meg az e-mailed")}</h1>
           <p className="lead">
-            Megerősítő e-mailt küldtünk ide: <strong>{confirmationEmail}</strong>
+            {appLocale === 'da-DK' ? 'Vi har sendt en bekræftelsesmail til:' : 'Megerősítő e-mailt küldtünk ide:'}{' '}
+            <strong>{confirmationEmail}</strong>
           </p>
 
           <p className="notice success">
@@ -3142,8 +3145,7 @@ export default function App() {
           </p>
 
           <p className="capture-help">
-            Ha pár percen belül nem látod a levelet, nézd meg a Spam vagy Levélszemét mappát is.
-            Ha több megerősítő levelet kaptál, mindig a legfrissebb levélben lévő linket használd.
+            {tr("Ha pár percen belül nem látod a levelet, nézd meg a Spam vagy Levélszemét mappát is. Ha több megerősítő levelet kaptál, mindig a legfrissebb levélben lévő linket használd.")}
           </p>
 
           {resendMessage && <p className="notice success">{resendMessage}</p>}
@@ -3159,7 +3161,9 @@ export default function App() {
               {resendBusy
                 ? tr("Küldés…")
                 : resendCooldown > 0
-                  ? `Újraküldés ${resendCooldown} mp múlva`
+                  ? (appLocale === 'da-DK'
+                    ? `Send igen om ${resendCooldown} sek.`
+                    : `Újraküldés ${resendCooldown} mp múlva`)
                   : tr("Megerősítő e-mail újraküldése")}
             </button>
 
