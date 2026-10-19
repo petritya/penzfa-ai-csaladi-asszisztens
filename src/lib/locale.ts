@@ -81,7 +81,7 @@ const messages = {
     greetingDay: 'Goddag',
     greetingEvening: 'Godaften',
     noDeviceTimezone: 'Kunne ikke registreres',
-    previewNote: 'Oversættelse af øvrige tekster og AI-svar kommer i et senere trin.',
+    previewNote: 'Dansk forståelse af opgaver og AI-svar er endnu ikke klar. Brug foreløbig ungarsk til beskeder.',
   },
 } as const
 
