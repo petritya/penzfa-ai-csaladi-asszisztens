@@ -1366,6 +1366,7 @@ export default function App() {
 
       if (data?.status === 'needs_confirmation' && data?.draft) {
         setReminderUpdateDraft(data.draft as UpdateDraft)
+        setAssistantAnswer(null)
         setCreateError(null)
         return
       }
@@ -1723,7 +1724,9 @@ export default function App() {
     setCreateSuccess(null)
     setQueryResults([])
     setAssistantAnswer(
-      `Emlékeztető módosítása: ${title}. Írd vagy mondd be az új időpontot, például: „előtte fél órával”, „aznap 18-kor”, vagy „nem kérek emlékeztetőt”.`,
+      appLocale === 'da-DK'
+        ? `Rediger påmindelsen for ${title}. Skriv eller indtal det nye tidspunkt, for eksempel "en halv time før", "samme dag kl. 18" eller "ingen påmindelse".`
+        : `Emlékeztető módosítása: ${title}. Írd vagy mondd be az új időpontot, például: „előtte fél órával”, „aznap 18-kor”, vagy „nem kérek emlékeztetőt”.`,
     )
   }
 
