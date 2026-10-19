@@ -37,10 +37,10 @@ export default function DanishHelp({ onBack }: Props) {
             <p>Fortæl, hvad der skal gøres, hvem det drejer sig om, og hvornår.
               Du bliver bedt om at bekræfte, før en opgave gemmes.</p>
             <div className="help-examples">
-              <strong>Eksempler på ungarske beskeder</strong>
+              <strong>Eksempler på danske beskeder</strong>
               <ul>
-                <li>„Holnap 10-kor hívjam fel a könyvelőt.”</li>
-                <li>„Bence kontrollja jövő kedden 10-kor.”</li>
+                <li>„Jeg skal ringe til revisoren i morgen kl. 10.”</li>
+                <li>„Bence skal til kontrol næste tirsdag kl. 10.”</li>
               </ul>
             </div>
           </details>
@@ -49,8 +49,8 @@ export default function DanishHelp({ onBack }: Props) {
             <p>En påmindelse kan indstilles, når opgaven oprettes, eller senere.
               Hvis den anden familiebruger er ansvarlig, får vedkommende sin egen påmindelse.</p>
             <div className="help-examples">
-              <strong>Eksempel på ungarsk besked</strong>
-              <ul><li>„Szólj egy órával előtte.”</li></ul>
+              <strong>Eksempel på dansk besked</strong>
+              <ul><li>„Mind mig om det en time før.”</li></ul>
             </div>
           </details>
           <details className="help-section">
@@ -58,8 +58,8 @@ export default function DanishHelp({ onBack }: Props) {
             <p>Du kan søge efter åbne og afsluttede opgaver og filtrere efter
               familiemedlem, ansvarlig person eller tidspunkt.</p>
             <div className="help-examples">
-              <strong>Eksempel på ungarsk besked</strong>
-              <ul><li>„Mik a nyitott feladataim?”</li></ul>
+              <strong>Eksempel på dansk besked</strong>
+              <ul><li>„Hvilke åbne opgaver har jeg?”</li></ul>
             </div>
           </details>
           <details className="help-section">
