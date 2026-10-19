@@ -1652,6 +1652,7 @@ async function findSemanticQueryCandidateIds(
         'Te egy magyar nyelvű keresési pontosító réteg vagy.',
         'A felhasználó kifejezéséhez válaszd ki azokat a meglévő ügyeket, amelyek jelentésük alapján életszerűen megfelelhetnek.',
         'Csak a megadott azonosítókból válassz. Ne találj ki új ügyet.',
+        'A dán és magyar kifejezések között is kereshetsz szemantikai egyezést: pl. tandlæge = fogorvos. Ha kétértelmű, adj vissza több jelöltet, ne találj ki azonosítót.',
         'Általános kategória és konkrét szolgáltatónév is lehet kapcsolatban, például a "telefon számla" lehet Telekom vagy Vodafone számla.',
         'Legfeljebb 5 azonosítót adj vissza. Ha nincs érdemi szemantikai kapcsolat, adj vissza üres listát.',
       ].join('\n'),
@@ -3737,6 +3738,17 @@ Deno.serve(async (req) => {
         return targetTokens.some((token) => itemTitle.includes(token))
       })
 
+      if (!matches.length && requestLocale === 'da-DK') {
+        const eligible = (openItems ?? []).filter((item) =>
+          (!subjectId || item.subject_member_id === subjectId)
+          && (!responsibleUserId || item.responsible_user_id === responsibleUserId)
+          && (!targetDate || item.due_date === targetDate)
+        )
+        const candidateIds = await findSemanticQueryCandidateIds(message, eligible)
+        const ids = new Set(candidateIds)
+        matches = eligible.filter((item) => ids.has(item.id))
+      }
+
       const memberNameById = new Map((members ?? []).map((member) => [member.id, member.display_name]))
       const responsibleNameByUserId = new Map(
         (members ?? [])
@@ -4193,6 +4205,17 @@ Deno.serve(async (req) => {
         }
       }
 
+      if (!matches.length && requestLocale === 'da-DK') {
+        const eligible = (openItems ?? []).filter((item) =>
+          (!subjectId || item.subject_member_id === subjectId)
+          && (!responsibleUserId || item.responsible_user_id === responsibleUserId)
+          && (!targetDate || item.due_date === targetDate)
+        )
+        const candidateIds = await findSemanticQueryCandidateIds(message, eligible)
+        const ids = new Set(candidateIds)
+        matches = eligible.filter((item) => ids.has(item.id))
+      }
+
       const memberNameById = new Map((members ?? []).map((member) => [member.id, member.display_name]))
       const responsibleNameByUserId = new Map(
         (members ?? [])
@@ -4520,6 +4543,12 @@ Deno.serve(async (req) => {
         : strongestMessageMatches.length
           ? strongestMessageMatches
           : fuzzyMatches
+
+      if (!matches.length && requestLocale === 'da-DK') {
+        const candidateIds = await findSemanticQueryCandidateIds(message, scopedItems)
+        const ids = new Set(candidateIds)
+        matches = scopedItems.filter((item) => ids.has(item.id))
+      }
 
       const today = localDateInTimezone(timeZone)
       const hasPreciseMatch = Boolean(
