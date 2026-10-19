@@ -1110,6 +1110,47 @@ export default function App() {
     setFamilyRefreshKey((value) => value + 1)
   }
 
+  // Csak felhasználónak megjelenítendő szöveget fordítunk dánra.
+  async function invokeLocalizedCore(options: { body: Record<string, unknown> }) {
+    if (!supabase) throw new Error('Nincs aktív kapcsolat.')
+    const result = await supabase.functions.invoke('core', options)
+    if (appLocale !== 'da-DK' || result.error || !result.data) return result
+    const data = result.data as Record<string, any>
+    const strings: string[] = []
+    const setters: Array<(value: string) => void> = []
+    const add = (obj: Record<string, any> | null | undefined, field: string) => {
+      if (obj && typeof obj[field] === 'string' && obj[field].trim()) {
+        strings.push(obj[field])
+        setters.push((value) => { obj[field] = value })
+      }
+    }
+    for (const field of ['answer','summary','question','message','error','prompt',
+      'assignment_notification_warning','partner_notification_warning']) add(data, field)
+    add(data.draft, 'confirmation_text')
+    if (Array.isArray(data.candidates)) {
+      for (const candidate of data.candidates.slice(0, 25)) add(candidate, 'label')
+    }
+    if (Array.isArray(data.items)) {
+      for (const item of data.items.slice(0, 25)) add(item, 'label')
+    }
+
+    // Fordítási hiba esetén az eredeti szerverválasz megmarad.
+    for (let offset = 0; offset < strings.length; offset += 10) {
+      try {
+        const chunk = strings.slice(offset, offset + 10)
+        const translated = await supabase.functions.invoke('core', {
+          body: { action: 'localize_display_text', texts: chunk },
+        })
+        if (translated.error || !Array.isArray(translated.data?.translations)
+          || translated.data.translations.length !== chunk.length) continue
+        translated.data.translations.forEach((value: unknown, index: number) => {
+          if (typeof value === 'string' && value.trim()) setters[offset + index](value)
+        })
+      } catch { /* az eredeti szöveg marad */ }
+    }
+    return result
+  }
+
   async function transcribeVoiceRecording(audio: Blob, mimeType: string) {
     if (!supabase || !session) return
 
@@ -1120,6 +1161,7 @@ export default function App() {
       const extension = mimeType.includes('mp4') ? 'm4a' : mimeType.includes('ogg') ? 'ogg' : 'webm'
       const form = new FormData()
       form.append('file', new File([audio], `penzfa-voice.${extension}`, { type: mimeType }))
+      form.append('language', appLocale === 'da-DK' ? 'da' : 'hu')
       form.append(
         'member_names',
         familyMembers.map((member) => member.display_name).join(', '),
@@ -1263,7 +1305,7 @@ export default function App() {
       setCreateSuccess(null)
       setVoiceError(null)
 
-      const { data: parsed, error: parseError } = await supabase.functions.invoke('core', {
+      const { data: parsed, error: parseError } = await invokeLocalizedCore({
         body: {
           action: 'interpret_selected_item_change',
           target_item_id: dateEditTarget.id,
@@ -1277,7 +1319,7 @@ export default function App() {
         return
       }
 
-      const { data, error } = await supabase.functions.invoke('core', {
+      const { data, error } = await invokeLocalizedCore({
         body: {
           action: 'prepare_update_target',
           target_item_id: dateEditTarget.id,
@@ -1303,7 +1345,7 @@ export default function App() {
       setCreateSuccess(null)
       setVoiceError(null)
 
-      const { data, error } = await supabase.functions.invoke('core', {
+      const { data, error } = await invokeLocalizedCore({
         body: {
           action: 'prepare_reminder_update',
           target_item_id: reminderEditTarget.id,
@@ -1340,7 +1382,7 @@ export default function App() {
       setCreateSuccess(null)
       setVoiceError(null)
 
-      const { data, error } = await supabase.functions.invoke('core', {
+      const { data, error } = await invokeLocalizedCore({
         body: {
           action: 'add_create_reminder',
           draft: createDraft,
@@ -1393,7 +1435,7 @@ export default function App() {
     setQueryResults([])
     setVoiceError(null)
 
-    const { data: intentData, error: intentError } = await supabase.functions.invoke('core', {
+    const { data: intentData, error: intentError } = await invokeLocalizedCore({
       body: {
         action: 'interpret_intent',
         message,
@@ -1416,7 +1458,7 @@ export default function App() {
     }
 
     if (intentData?.intent === 'query') {
-      const { data, error } = await supabase.functions.invoke('core', {
+      const { data, error } = await invokeLocalizedCore({
         body: {
           action: 'query_items',
           message,
@@ -1447,7 +1489,7 @@ export default function App() {
     }
 
     if (intentData?.intent === 'complete') {
-      const { data, error } = await supabase.functions.invoke('core', {
+      const { data, error } = await invokeLocalizedCore({
         body: {
           action: 'interpret_complete',
           message,
@@ -1497,7 +1539,7 @@ export default function App() {
     }
 
     if (intentData?.intent === 'update') {
-      const { data, error } = await supabase.functions.invoke('core', {
+      const { data, error } = await invokeLocalizedCore({
         body: {
           action: 'interpret_update',
           message,
@@ -1546,7 +1588,7 @@ export default function App() {
     }
 
     if (intentData?.intent === 'delete') {
-      const { data, error } = await supabase.functions.invoke('core', {
+      const { data, error } = await invokeLocalizedCore({
         body: {
           action: 'interpret_delete',
           message,
@@ -1595,7 +1637,7 @@ export default function App() {
       return
     }
 
-    const { data, error } = await supabase.functions.invoke('core', {
+    const { data, error } = await invokeLocalizedCore({
       body: {
         action: 'interpret_create',
         message,
@@ -1639,7 +1681,7 @@ export default function App() {
     setCreateSuccess(null)
     setAssistantAnswer(null)
 
-    const { data, error } = await supabase.functions.invoke('core', {
+    const { data, error } = await invokeLocalizedCore({
       body: {
         action: 'confirm_delete',
         pending_action_id: deleteDraft.pending_action_id,
@@ -1709,7 +1751,7 @@ export default function App() {
     setCreateError(null)
     setCreateSuccess(null)
 
-    const { data, error } = await supabase.functions.invoke('core', {
+    const { data, error } = await invokeLocalizedCore({
       body: {
         action: 'confirm_reminder_update',
         pending_action_id: reminderUpdateDraft.pending_action_id,
@@ -1740,7 +1782,7 @@ export default function App() {
     setCreateBusy(true)
     setCreateError(null)
     const target = reminderFollowUp
-    const { data, error } = await supabase.functions.invoke('core', {
+    const { data, error } = await invokeLocalizedCore({
       body: {
         action: 'prepare_reminder_update',
         target_item_id: target.id,
@@ -1768,7 +1810,7 @@ export default function App() {
     setCreateSuccess(null)
     setAssistantAnswer(null)
 
-    const { data, error } = await supabase.functions.invoke('core', {
+    const { data, error } = await invokeLocalizedCore({
       body: {
         action: 'confirm_update',
         pending_action_id: updateDraft.pending_action_id,
@@ -1810,7 +1852,7 @@ export default function App() {
     setCreateError(null)
     setCreateSuccess(null)
 
-    const { data: prepared, error: prepareError } = await supabase.functions.invoke('core', {
+    const { data: prepared, error: prepareError } = await invokeLocalizedCore({
       body: {
         action: 'prepare_complete_target',
         target_item_id: candidate.id,
@@ -1837,7 +1879,7 @@ export default function App() {
       return
     }
 
-    const { data, error } = await supabase.functions.invoke('core', {
+    const { data, error } = await invokeLocalizedCore({
       body: {
         action: 'confirm_complete',
         pending_action_id: prepared.draft.pending_action_id,
@@ -1869,7 +1911,7 @@ export default function App() {
     setCreateSuccess(null)
     setAssistantAnswer(null)
 
-    const { data, error } = await supabase.functions.invoke('core', {
+    const { data, error } = await invokeLocalizedCore({
       body: {
         action: 'confirm_complete',
         pending_action_id: completeDraft.pending_action_id,
@@ -1908,7 +1950,7 @@ export default function App() {
     setCreateError(null)
     setCreateSuccess(null)
 
-    const { data, error } = await supabase.functions.invoke('core', {
+    const { data, error } = await invokeLocalizedCore({
       body: {
         action: 'confirm_create',
         draft,
