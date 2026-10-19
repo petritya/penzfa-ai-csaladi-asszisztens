@@ -13,8 +13,8 @@ export default function DanishHelp({ onBack }: Props) {
           <p className="eyebrow">AI-familieassistent</p>
           <h1>Hjælp</h1>
           <p className="lead">Få overblik over familiens opgaver, aftaler og påmindelser.</p>
-          <p className="notice">Dansk tekstforståelse og AI-svar kommer i næste udviklingstrin.
-            Skriv eller indtal indtil videre dine opgaver på ungarsk.</p>
+          <p className="notice">Du kan nu skrive og indtale opgaver på dansk. Bekræft altid
+            oplysninger og tidspunkter, før du gemmer en opgave.</p>
         </header>
         <div className="help-sections">
           <details className="help-section" open>

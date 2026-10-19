@@ -68,6 +68,7 @@ Deno.serve(async (req) => {
     const form = await req.formData()
     const audio = form.get('file')
     const memberNames = String(form.get('member_names') ?? '').trim()
+    const language = form.get('language') === 'da' ? 'da' : 'hu'
 
     if (!(audio instanceof File) || audio.size === 0) {
       return json({ error: 'Hiányzó hangfelvétel.' }, 400)
@@ -80,23 +81,33 @@ Deno.serve(async (req) => {
     const openAiForm = new FormData()
     openAiForm.append('file', audio, audio.name || 'penzfa-voice.webm')
     openAiForm.append('model', 'gpt-4o-transcribe')
-    openAiForm.append('language', 'hu')
+    openAiForm.append('language', language)
     openAiForm.append(
       'prompt',
-      [
-        'Magyar nyelvű családi asszisztensnek diktált rövid teendők és kérdések.',
-        memberNames ? `A családtagok pontos nevei: ${memberNames}.` : '',
-        openItemTitles ? `Aktuális nyitott ügyek címei, kizárólag akusztikai kontextusnak: ${openItemTitles}.` : '',
-        'A családtagok nevét pontosan írd le.',
-        'A nyitott ügyek címei csak háttérszókincs: csak akkor használd őket, ha a hang alapján is hihetőek. Ne alakítsd át a beszédet azért, hogy valamelyik ügycímhez illeszkedjen.',
-        'Gyakori időszavak és dátumszavak: ma, holnap, tegnap, hétfő, kedd, szerda, csütörtök, péntek, szombat, vasárnap, jövő héten.',
-        'Gyakori időpontok: 8-kor, 9-kor, 10-kor, 16-kor, 18-kor. A kimondott számot pontosan írd le, ne következtess másik időpontra.',
-        'Az időpontokat lehetőleg számjegyes HH:MM formában írd át. Példák: "tíz harminc" vagy "fél tizenegy" => 10:30; "tíz óra" => 10:00; "negyed tizenegy" => 10:15.',
-        'Relatív időtartamot ne alakíts abszolút időponttá: "fél órával előtte" maradjon "fél órával előtte".',
-        'Gyakori lezáró igék: felhívtam, elintéztem, befizettem, elküldtem, átvettem, lefoglaltam.',
-        'Különösen ügyelj a felhívtam igére: ha a hang és a nyitott ügyek kontextusa telefonhívásra utal, ne írd át elhívtam alakra.',
-        'A beszédet szó szerint írd át; ne javítsd át más jelentésű szóra és ne egészítsd ki találgatással.',
-      ].filter(Boolean).join(' '),
+      language === 'da'
+        ? [
+          'Dansk tale til en familieassistent: opgaver, aftaler, påmindelser og spørgsmål.',
+          memberNames ? `Familiemedlemmernes præcise navne: ${memberNames}.` : '',
+          openItemTitles ? `Eksisterende opgavetitler, kun som lydkontekst: ${openItemTitles}.` : '',
+          'Skriv navne nøjagtigt som udtalt. Udfyld ikke manglende oplysninger.',
+          'Eksempler på dato- og tidsord: i dag, i morgen, næste tirsdag, på fredag, klokken ti, halv elleve.',
+          'Transskriber dansk ordret. Bevar tal, tidspunkter, negationer og betydning. Oversæt ikke til ungarsk.',
+          'Eksisterende titler er kun hjælpeord og må ikke ændre betydningen af optagelsen.',
+        ].filter(Boolean).join(' ')
+        : [
+          'Magyar nyelvű családi asszisztensnek diktált rövid teendők és kérdések.',
+          memberNames ? `A családtagok pontos nevei: ${memberNames}.` : '',
+          openItemTitles ? `Aktuális nyitott ügyek címei, kizárólag akusztikai kontextusnak: ${openItemTitles}.` : '',
+          'A családtagok nevét pontosan írd le.',
+          'A nyitott ügyek címei csak háttérszókincs: csak akkor használd őket, ha a hang alapján is hihetőek. Ne alakítsd át a beszédet azért, hogy valamelyik ügycímhez illeszkedjen.',
+          'Gyakori időszavak és dátumszavak: ma, holnap, tegnap, hétfő, kedd, szerda, csütörtök, péntek, szombat, vasárnap, jövő héten.',
+          'Gyakori időpontok: 8-kor, 9-kor, 10-kor, 16-kor, 18-kor. A kimondott számot pontosan írd le, ne következtess másik időpontra.',
+          'Az időpontokat lehetőleg számjegyes HH:MM formában írd át. Példák: "tíz harminc" vagy "fél tizenegy" => 10:30; "tíz óra" => 10:00; "negyed tizenegy" => 10:15.',
+          'Relatív időtartamot ne alakíts abszolút időponttá: "fél órával előtte" maradjon "fél órával előtte".',
+          'Gyakori lezáró igék: felhívtam, elintéztem, befizettem, elküldtem, átvettem, lefoglaltam.',
+          'Különösen ügyelj a felhívtam igére: ha a hang és a nyitott ügyek kontextusa telefonhívásra utal, ne írd át elhívtam alakra.',
+          'A beszédet szó szerint írd át; ne javítsd át más jelentésű szóra és ne egészítsd ki találgatással.',
+        ].filter(Boolean).join(' '),
     )
 
     const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
