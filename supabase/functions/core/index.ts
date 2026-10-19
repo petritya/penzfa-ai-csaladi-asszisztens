@@ -1745,7 +1745,8 @@ Deno.serve(async (req) => {
       .select('ui_locale')
       .eq('user_id', user.id)
       .maybeSingle()
-    const requestLocale: UserLocale = languageSettings?.ui_locale === 'da-DK' ? 'da-DK' : 'hu-HU'
+    const requestLocale: UserLocale = supportedUiLocale(body?.ui_locale)
+      ?? (languageSettings?.ui_locale === 'da-DK' ? 'da-DK' : 'hu-HU')
 
     if (body?.action === 'setup_status') {
       if (activeMembership) {
