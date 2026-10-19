@@ -2559,7 +2559,12 @@ export default function App() {
                     value={createMessage}
                     onChange={(event) => {
                       setCreateMessage(event.target.value)
-                      setCreateDraft(null)
+                      // Az emlékeztető beírása nem törölheti a mentésre váró ügyet.
+                      // Máskor az új szöveg továbbra is új értelmezést indít.
+                      const addingReminderToDraft = Boolean(
+                        createDraft?.due_date && !createDraft.first_reminder_at,
+                      )
+                      if (!addingReminderToDraft) setCreateDraft(null)
                       setCompleteDraft(null)
                       setUpdateDraft(null)
                       setReminderUpdateDraft(null)
