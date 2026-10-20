@@ -861,13 +861,24 @@ export default function App() {
         return
       }
 
-      const locale: AppLocale = data.settings.ui_locale === 'da-DK' || data.settings.ui_locale === 'hu-HU'
-        ? data.settings.ui_locale : detectAppLocale()
+      const hasSavedLocale = data.settings.ui_locale === 'da-DK' || data.settings.ui_locale === 'hu-HU'
+      const locale: AppLocale = hasSavedLocale ? data.settings.ui_locale as AppLocale : detectAppLocale()
+      // Régebbi, automatikus nyelvű fióknál egyszer rögzítjük a készülék
+      // által jelzett nyelvet, hogy az ütemezett briefing is tudja a célnyelvet.
+      // A már kézzel mentett nyelvet soha nem írjuk felül.
+      if (!hasSavedLocale) {
+        const { error: localeSaveError } = await supabase!.functions.invoke('core', {
+          body: { action: 'update_locale_preferences', ui_locale: locale },
+        })
+        if (cancelled) return
+        if (localeSaveError) {
+          setSettingsError(uiText(locale, 'localeError'))
+        }
+      }
       setAppLocale(locale)
       setSettings({
         timezone: String(data.settings.timezone ?? 'Europe/Budapest'),
-        ui_locale: data.settings.ui_locale === 'da-DK' || data.settings.ui_locale === 'hu-HU'
-          ? data.settings.ui_locale as AppLocale : null,
+        ui_locale: locale,
         briefing_enabled: Boolean(data.settings.briefing_enabled),
         briefing_time: String(data.settings.briefing_time ?? '07:00').slice(0, 5),
         notify_partner_on_complete: Boolean(data.settings.notify_partner_on_complete),
