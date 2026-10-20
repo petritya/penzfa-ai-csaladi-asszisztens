@@ -129,6 +129,25 @@ export function rememberAppLocale(locale: AppLocale) {
   }
 }
 
+export function authErrorText(locale: AppLocale, message: string): string {
+  const normalized = message.trim().toLowerCase()
+
+  const known: Array<[RegExp, string, string]> = [
+    [/invalid login credentials|invalid email or password/, 'Hibás e-mail-cím vagy jelszó.', 'Forkert e-mailadresse eller adgangskode.'],
+    [/email not confirmed/, 'Az e-mail-cím még nincs megerősítve.', 'E-mailadressen er endnu ikke bekræftet.'],
+    [/user already registered|already been registered/, 'Ezzel az e-mail-címmel már regisztráltak.', 'Der findes allerede en konto med denne e-mailadresse.'],
+    [/password.*at least|password should be at least/, 'A jelszó legalább 6 karakter legyen.', 'Adgangskoden skal være mindst 6 tegn.'],
+    [/email rate limit exceeded|rate limit/, 'Túl sok e-mail-kérés történt. Próbáld meg később.', 'Der er sendt for mange e-mailforespørgsler. Prøv igen senere.'],
+    [/signup is disabled/, 'A regisztráció jelenleg nem érhető el.', 'Oprettelse af nye konti er ikke tilgængelig lige nu.'],
+  ]
+
+  for (const [pattern, hu, da] of known) {
+    if (pattern.test(normalized)) return locale === 'da-DK' ? da : hu
+  }
+
+  return message
+}
+
 export function detectDeviceTimezone(): string | null {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || null
