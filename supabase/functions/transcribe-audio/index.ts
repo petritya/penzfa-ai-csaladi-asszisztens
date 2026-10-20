@@ -71,11 +71,11 @@ Deno.serve(async (req) => {
     const language = form.get('language') === 'da' ? 'da' : 'hu'
 
     if (!(audio instanceof File) || audio.size === 0) {
-      return json({ error: 'Hiányzó hangfelvétel.' }, 400)
+      return json({ error: language === 'da' ? 'Lydoptagelsen mangler.' : 'Hiányzó hangfelvétel.' }, 400)
     }
 
     if (audio.size > 10 * 1024 * 1024) {
-      return json({ error: 'A hangfelvétel túl nagy.' }, 413)
+      return json({ error: language === 'da' ? 'Lydoptagelsen er for stor.' : 'A hangfelvétel túl nagy.' }, 413)
     }
 
     const openAiForm = new FormData()
@@ -120,11 +120,20 @@ Deno.serve(async (req) => {
 
     const data = await response.json().catch(() => ({}))
     if (!response.ok) {
-      return json({ error: data?.error?.message ?? 'A hang átírása nem sikerült.' }, 502)
+      return json({
+        error: data?.error?.message
+          ?? (language === 'da' ? 'Lydoptagelsen kunne ikke transskriberes.' : 'A hang átírása nem sikerült.'),
+      }, 502)
     }
 
     const text = String(data?.text ?? '').trim()
-    if (!text) return json({ error: 'Nem sikerült beszédet felismerni a felvételen.' }, 422)
+    if (!text) {
+      return json({
+        error: language === 'da'
+          ? 'Der kunne ikke genkendes tale i optagelsen.'
+          : 'Nem sikerült beszédet felismerni a felvételen.',
+      }, 422)
+    }
 
     return json({ status: 'ok', text })
   } catch (error) {
