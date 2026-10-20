@@ -1010,6 +1010,9 @@ export default function App() {
         },
       })
       if (error || data?.error) throw new Error(error?.message ?? data?.error ?? uiText(locale, 'localeError'))
+      await supabase.auth.updateUser({
+        data: { ui_locale: locale },
+      })
       setAppLocale(locale)
       setSettings((current) => ({
         ...current,
@@ -1125,6 +1128,7 @@ export default function App() {
         action: 'invite_second_owner',
         email,
         redirect_to: window.location.origin,
+        ui_locale: appLocale,
       },
     })
 
@@ -2104,6 +2108,9 @@ export default function App() {
             password,
             options: {
               emailRedirectTo: `${window.location.origin}/?email_confirmed=1`,
+              data: {
+                ui_locale: appLocale,
+              },
             },
           })
 
