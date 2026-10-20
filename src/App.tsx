@@ -1159,6 +1159,7 @@ export default function App() {
 
     const { error: passwordError } = await supabase.auth.updateUser({
       password: invitationPassword,
+      data: { ui_locale: appLocale },
     })
 
     if (passwordError) {
