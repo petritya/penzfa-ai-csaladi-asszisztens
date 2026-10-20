@@ -256,7 +256,7 @@ async function translateBriefingTitles(titles: string[], locale: Locale): Promis
         return new Map()
       }
       const numbers = (value: string) => (value.match(/\d+/g) ?? []).sort().join('|')
-      return new Map(titles.map((title, i) => [
+      return new Map<string, string>(titles.map((title, i): [string, string] => [
         title,
         numbers(translations[i]) === numbers(title) ? translations[i] : title,
       ]))
