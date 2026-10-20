@@ -1,0 +1,13 @@
+{{ if eq .Data.ui_locale "da-DK" }}
+<h2>Bekræft din e-mailadresse</h2>
+<p>Tak, fordi du opretter en konto i AI-familieassistenten.</p>
+<p>Tryk på knappen nedenfor for at bekræfte din e-mailadresse og fortsætte opsætningen.</p>
+<p><a href="{{ .ConfirmationURL }}" style="display:inline-block;padding:12px 18px;background:#0f172a;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;">Bekræft e-mailadresse</a></p>
+<p>Hvis du ikke har oprettet denne konto, kan du ignorere denne mail.</p>
+{{ else }}
+<h2>Erősítsd meg az e-mail-címed</h2>
+<p>Köszönjük, hogy regisztrálsz az AI családi asszisztensbe.</p>
+<p>Kattints az alábbi gombra az e-mail-címed megerősítéséhez és a beállítás folytatásához.</p>
+<p><a href="{{ .ConfirmationURL }}" style="display:inline-block;padding:12px 18px;background:#0f172a;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;">E-mail-cím megerősítése</a></p>
+<p>Ha nem te hoztad létre ezt a fiókot, hagyd figyelmen kívül ezt a levelet.</p>
+{{ end }}
