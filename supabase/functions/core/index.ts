@@ -1205,7 +1205,14 @@ async function translateDisplayTexts(texts: string[], locale: UserLocale): Promi
       || translations.some((value: unknown) => typeof value !== 'string')) {
     throw new Error('Érvénytelen dán fordítási válasz.')
   }
-  return translations
+  // A fordítás nem változtathatja meg a dátumok vagy időpontok számjegyeit.
+  // Ha az AI eltérő számokat adna vissza, csak annál az elemnél az eredetit mutatjuk.
+  const numbers = (value: string) => (value.match(/\d+/g) ?? []).sort().join('|')
+  return translations.map((translated: string, index: number) =>
+    numbers(translated) === numbers(texts[index]) && translated.trim()
+      ? translated
+      : texts[index]
+  )
 }
 
 // A böngészőből érkező locale és időzóna érvényesítése.
