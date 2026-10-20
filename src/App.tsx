@@ -2221,8 +2221,8 @@ export default function App() {
   if (session) {
     const activeUserMember = familyMembers.find((member) => member.user_id === session.user.id) ?? null
     const greeting = greetingForHour(new Date().getHours(), appLocale)
-  const currentPushCopy = localizedPush?.source === pushContext?.message
-    && localizedPush?.locale === appLocale ? localizedPush : null
+    const currentPushCopy = localizedPush?.source === pushContext?.message
+      && localizedPush?.locale === appLocale ? localizedPush : null
     const exampleManagedMember = familyMembers.find((member) => member.member_kind === 'managed') ?? null
     const exampleText = exampleManagedMember
       ? `${exampleManagedMember.display_name} kontrollja jövő kedden 10-kor.`
