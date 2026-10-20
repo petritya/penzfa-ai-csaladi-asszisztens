@@ -1,0 +1,13 @@
+{{ if eq .Data.ui_locale "da-DK" }}
+<h2>Du er inviteret til AI-familieassistenten</h2>
+<p>En familiebruger har inviteret dig til at deltage i familiens AI-familieassistent.</p>
+<p>Tryk på knappen nedenfor for at acceptere invitationen, vælge dit visningsnavn og oprette din adgangskode.</p>
+<p><a href="{{ .ConfirmationURL }}" style="display:inline-block;padding:12px 18px;background:#0f172a;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;">Deltag i familien</a></p>
+<p>Hvis du ikke forventede denne invitation, kan du ignorere denne mail.</p>
+{{ else }}
+<h2>Meghívást kaptál az AI családi asszisztensbe</h2>
+<p>Egy családi felhasználó meghívott, hogy csatlakozz a család AI családi asszisztenséhez.</p>
+<p>Kattints az alábbi gombra a meghívás elfogadásához, majd add meg a neved és hozz létre jelszót.</p>
+<p><a href="{{ .ConfirmationURL }}" style="display:inline-block;padding:12px 18px;background:#0f172a;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;">Csatlakozás a családhoz</a></p>
+<p>Ha nem számítottál erre a meghívásra, hagyd figyelmen kívül ezt a levelet.</p>
+{{ end }}
