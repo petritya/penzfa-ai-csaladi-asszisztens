@@ -276,6 +276,10 @@ export default function App() {
   useEffect(() => {
     rememberAppLocale(appLocale)
   }, [appLocale])
+
+  useEffect(() => {
+    document.documentElement.lang = appLocale === 'da-DK' ? 'da' : 'hu'
+  }, [appLocale])
   const [localeBusy, setLocaleBusy] = useState(false)
   const [localeMessage, setLocaleMessage] = useState<string | null>(null)
   const [localeError, setLocaleError] = useState<string | null>(null)
