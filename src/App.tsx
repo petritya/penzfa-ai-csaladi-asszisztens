@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { hasSupabaseConfig, supabase } from './lib/supabase'
-import { detectAppLocale, detectDeviceTimezone, rememberAppLocale, uiText } from './lib/locale'
+import { authErrorText, detectAppLocale, detectDeviceTimezone, rememberAppLocale, uiText } from './lib/locale'
 import type { AppLocale } from './lib/locale'
 import { translateUi } from './lib/ui-copy'
 import DanishHelp from './DanishHelp'
@@ -1159,7 +1159,7 @@ export default function App() {
 
     if (passwordError) {
       setInvitationBusy(false)
-      setInvitationError(passwordError.message)
+      setInvitationError(authErrorText(appLocale, passwordError.message))
       return
     }
 
@@ -2117,7 +2117,7 @@ export default function App() {
     setSubmitting(false)
 
     if (result.error) {
-      setErrorMessage(result.error.message)
+      setErrorMessage(authErrorText(appLocale, result.error.message))
       return
     }
 
@@ -2165,7 +2165,7 @@ export default function App() {
     setResendBusy(false)
 
     if (error) {
-      setErrorMessage(error.message)
+      setErrorMessage(authErrorText(appLocale, error.message))
       return
     }
 
