@@ -109,6 +109,9 @@ const daUi: Record<string, string> = {
   "Regisztráció": "Opret konto",
   "Fiók létrehozása": "Opret konto",
   "Folyamatban…": "Arbejder…",
+  "A megerősítő link lejárt vagy már nem érvényes. Ha több levelet kaptál, mindig a legfrissebb levél linkjét használd.": "Bekræftelseslinket er udløbet eller er ikke længere gyldigt. Hvis du har modtaget flere mails, så brug altid linket i den seneste mail.",
+  "Ezzel az e-mail-címmel már regisztráltak. Lépj be a fiókodba.": "Der findes allerede en konto med denne e-mailadresse. Log ind på din konto.",
+  "Új megerősítő e-mailt küldtünk. Ha több levelet kaptál, mindig a legfrissebb levél linkjét használd.": "Vi har sendt en ny bekræftelsesmail. Hvis du har modtaget flere mails, så brug altid linket i den seneste mail.",
   "Ma": "I dag",
   "Lejárt": "Overskredet",
   "Emlékeztető": "Påmindelse"
