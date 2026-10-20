@@ -134,6 +134,7 @@ async function sendAssignmentPush(
   subjectName: string | null,
   dueDate: string | null,
   dueTime: string | null,
+  locale: UserLocale = 'hu-HU',
 ) {
   const appId = Deno.env.get('ONESIGNAL_APP_ID')
   const restApiKey = Deno.env.get('ONESIGNAL_REST_API_KEY')
@@ -142,11 +143,20 @@ async function sendAssignmentPush(
     return { sent: false, error: 'A push szolgáltatás nincs beállítva.' }
   }
 
+  const da = locale === 'da-DK'
   const subjectPrefix = subjectName ? `${subjectName}: ` : ''
-  const dateText = dueDate ? formatHungarianDate(dueDate) : null
+  const dateText = dueDate ? new Intl.DateTimeFormat(da ? 'da-DK' : 'hu-HU', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    weekday: 'long',
+    timeZone: 'UTC',
+  }).format(new Date(`${dueDate}T00:00:00Z`)) : null
   const timeText = dueTime ? ` ${String(dueTime).slice(0, 5)}` : ''
   const when = dateText ? ` – ${dateText}${timeText}` : ''
-  const message = `${assignerName} új teendőt adott neked: ${subjectPrefix}${itemTitle}${when}.`
+  const message = da
+    ? `${assignerName} har givet dig en ny opgave: ${subjectPrefix}${itemTitle}${when}.`
+    : `${assignerName} új teendőt adott neked: ${subjectPrefix}${itemTitle}${when}.`
 
   const response = await fetch('https://api.onesignal.com/notifications', {
     method: 'POST',
@@ -158,7 +168,7 @@ async function sendAssignmentPush(
       app_id: appId,
       include_aliases: { external_id: [userId] },
       target_channel: 'push',
-      headings: { en: 'AI családi asszisztens – új teendő' },
+      headings: { en: locale === 'da-DK' ? 'AI-familieassistent – ny opgave' : 'AI családi asszisztens – új teendő' },
       contents: { en: message },
       url: `${Deno.env.get('APP_URL') ?? 'https://penzfa-ai-csaladi-asszisztens.petritya.workers.dev'}/?push=item&item_id=${encodeURIComponent(itemId)}`,
     }),
@@ -181,6 +191,7 @@ async function sendCompletionPush(
   itemId: string,
   itemTitle: string,
   subjectName: string | null,
+  locale: UserLocale = 'hu-HU',
 ) {
   const appId = Deno.env.get('ONESIGNAL_APP_ID')
   const restApiKey = Deno.env.get('ONESIGNAL_REST_API_KEY')
@@ -190,7 +201,9 @@ async function sendCompletionPush(
   }
 
   const subjectPrefix = subjectName ? `${subjectName}: ` : ''
-  const message = `${completerName} elintézte: ${subjectPrefix}${itemTitle}.`
+  const message = locale === 'da-DK'
+    ? `${completerName} har afsluttet: ${subjectPrefix}${itemTitle}.`
+    : `${completerName} elintézte: ${subjectPrefix}${itemTitle}.`
 
   const response = await fetch('https://api.onesignal.com/notifications', {
     method: 'POST',
@@ -202,7 +215,7 @@ async function sendCompletionPush(
       app_id: appId,
       include_aliases: { external_id: [userId] },
       target_channel: 'push',
-      headings: { en: 'AI családi asszisztens – teendő elintézve' },
+      headings: { en: locale === 'da-DK' ? 'AI-familieassistent – opgave afsluttet' : 'AI családi asszisztens – teendő elintézve' },
       contents: { en: message },
       url: `${Deno.env.get('APP_URL') ?? 'https://penzfa-ai-csaladi-asszisztens.petritya.workers.dev'}/?push=item&item_id=${encodeURIComponent(itemId)}`,
     }),
@@ -3597,6 +3610,14 @@ Deno.serve(async (req) => {
       let assignmentNotificationError: unknown = null
 
       if (responsibleUserId !== user.id) {
+        const { data: recipientSettings } = await db
+          .from('user_settings')
+          .select('ui_locale')
+          .eq('user_id', responsibleUserId)
+          .maybeSingle()
+        const recipientLocale: UserLocale =
+          recipientSettings?.ui_locale === 'da-DK' ? 'da-DK' : 'hu-HU'
+
         const delivery = await sendAssignmentPush(
           responsibleUserId,
           activeMembership.display_name,
@@ -3605,6 +3626,7 @@ Deno.serve(async (req) => {
           draft.subject_display_name,
           item.due_date,
           item.due_time,
+          recipientLocale,
         )
 
         assignmentNotificationSent = delivery.sent
@@ -4977,12 +4999,21 @@ Deno.serve(async (req) => {
       ])
 
       if (actorSettings?.notify_partner_on_complete && partner?.user_id) {
+        const { data: partnerSettings } = await db
+          .from('user_settings')
+          .select('ui_locale')
+          .eq('user_id', partner.user_id)
+          .maybeSingle()
+        const partnerLocale: UserLocale =
+          partnerSettings?.ui_locale === 'da-DK' ? 'da-DK' : 'hu-HU'
+
         const delivery = await sendCompletionPush(
           partner.user_id,
           activeMembership.display_name,
           updatedItem.id,
           updatedItem.title,
           subjectMember?.display_name ?? null,
+          partnerLocale,
         )
 
         partnerNotificationSent = delivery.sent
