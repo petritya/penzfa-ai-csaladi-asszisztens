@@ -14,10 +14,12 @@ function json(data: unknown, status = 200) {
   })
 }
 
-function formatDate(dateIso: string | null) {
+type Locale = 'hu-HU' | 'da-DK'
+
+function formatDate(dateIso: string | null, locale: Locale = 'hu-HU') {
   if (!dateIso) return null
   const [year, month, day] = dateIso.split('-').map(Number)
-  return new Intl.DateTimeFormat('hu-HU', {
+  return new Intl.DateTimeFormat(locale, {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
@@ -214,11 +216,15 @@ async function sendDueItemPushes(nowIso: string) {
   const userIds = [...new Set(items.map((item) => item.responsible_user_id as string))]
   const { data: userSettings, error: settingsError } = await db
     .from('user_settings')
-    .select('user_id, timezone')
+    .select('user_id, timezone, ui_locale')
     .in('user_id', userIds)
   if (settingsError) throw settingsError
 
   const timezones = new Map((userSettings ?? []).map((setting) => [setting.user_id, setting.timezone]))
+  const locales = new Map((userSettings ?? []).map((setting) => [
+    setting.user_id,
+    setting.ui_locale === 'da-DK' ? 'da-DK' as Locale : 'hu-HU' as Locale,
+  ]))
   const now = Date.parse(nowIso)
   let sent = 0
   let processed = 0
@@ -228,6 +234,7 @@ async function sendDueItemPushes(nowIso: string) {
     const key = duePushKey(item)
     if (!key) continue
     const zone = timezones.get(item.responsible_user_id) ?? 'Europe/Budapest'
+    const locale = locales.get(item.responsible_user_id) ?? 'hu-HU'
     const dueAt = Date.parse(
       localDateTimeToUtcIso(item.due_date, String(item.due_time).slice(0, 5), zone),
     )
@@ -247,7 +254,7 @@ async function sendDueItemPushes(nowIso: string) {
       : { data: null }
 
     const subjectPrefix = subject?.display_name ? `${subject.display_name}: ` : ''
-    const message = `${subjectPrefix}${item.title} – ${formatDate(item.due_date)} ${String(item.due_time).slice(0, 5)}.`
+    const message = `${subjectPrefix}${item.title} – ${formatDate(item.due_date, locale)} ${String(item.due_time).slice(0, 5)}.`
     const appUrl = Deno.env.get('APP_URL')
       ?? 'https://penzfa-ai-csaladi-asszisztens.petritya.workers.dev'
     const launchUrl = `${appUrl}/?push=item&item_id=${encodeURIComponent(item.id)}`
@@ -256,7 +263,7 @@ async function sendDueItemPushes(nowIso: string) {
     try {
       delivery = await sendOneSignalPush(
         item.responsible_user_id,
-        'Pénzfa – esedékes ügy',
+        locale === 'da-DK' ? 'AI-familieassistent – opgave nu' : 'AI családi asszisztens – esedékes teendő',
         message,
         launchUrl,
       )
@@ -409,12 +416,13 @@ Deno.serve(async (req) => {
           : Promise.resolve({ data: null }),
         db
           .from('user_settings')
-          .select('timezone, briefing_time, briefing_enabled')
+          .select('timezone, briefing_time, briefing_enabled, ui_locale')
           .eq('user_id', reminder.user_id)
           .maybeSingle(),
       ])
 
       const timeZone = settings?.timezone ?? 'Europe/Budapest'
+      const locale: Locale = settings?.ui_locale === 'da-DK' ? 'da-DK' : 'hu-HU'
       const briefingTime = String(settings?.briefing_time ?? '07:00:00').slice(0, 5)
       const reminderLocalTime = originalNextNotificationAt
         ? localTimeInTimezone(timeZone, new Date(originalNextNotificationAt))
@@ -476,7 +484,7 @@ Deno.serve(async (req) => {
       }
 
       const subjectPrefix = subject?.display_name ? `${subject.display_name}: ` : ''
-      const dateText = formatDate(item.due_date)
+      const dateText = formatDate(item.due_date, locale)
       const timeText = item.due_time ? ` ${String(item.due_time).slice(0, 5)}` : ''
       const message = dateText
         ? `${subjectPrefix}${item.title} – ${dateText}${timeText}.`
@@ -488,7 +496,7 @@ Deno.serve(async (req) => {
 
       const delivery = await sendOneSignalPush(
         reminder.user_id,
-        'Pénzfa emlékeztető',
+        locale === 'da-DK' ? 'AI-familieassistent – påmindelse' : 'AI családi asszisztens – emlékeztető',
         message,
         launchUrl,
       )
