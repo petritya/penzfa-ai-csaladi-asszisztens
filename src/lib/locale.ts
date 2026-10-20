@@ -1,5 +1,7 @@
 export type AppLocale = 'hu-HU' | 'da-DK'
 
+const APP_LOCALE_STORAGE_KEY = 'ai-family-assistant-locale'
+
 const messages = {
   'hu-HU': {
     language: 'Nyelv',
@@ -99,6 +101,15 @@ export function detectDeviceLanguage(): string {
 }
 
 export function detectAppLocale(): AppLocale {
+  if (typeof window !== 'undefined') {
+    try {
+      const saved = window.localStorage.getItem(APP_LOCALE_STORAGE_KEY)
+      if (saved === 'da-DK' || saved === 'hu-HU') return saved
+    } catch {
+      // A tároló tiltása nem akadályozhatja a nyelvfelismerést.
+    }
+  }
+
   if (typeof navigator === 'undefined') return 'hu-HU'
   const choices = navigator.languages?.length ? navigator.languages : [navigator.language]
   for (const language of choices) {
@@ -107,6 +118,15 @@ export function detectAppLocale(): AppLocale {
     if (code === 'hu') return 'hu-HU'
   }
   return 'hu-HU'
+}
+
+export function rememberAppLocale(locale: AppLocale) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(APP_LOCALE_STORAGE_KEY, locale)
+  } catch {
+    // A nyelv ettől még az aktuális munkamenetben használható.
+  }
 }
 
 export function detectDeviceTimezone(): string | null {
