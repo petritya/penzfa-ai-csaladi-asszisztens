@@ -314,6 +314,12 @@ export default function App() {
   const [voiceTranscribing, setVoiceTranscribing] = useState(false)
   const [voiceError, setVoiceError] = useState<string | null>(null)
   const [pushContext, setPushContext] = useState<PushContext | null>(null)
+  const [localizedPush, setLocalizedPush] = useState<{
+    source: string
+    locale: AppLocale
+    title: string
+    lines: string[]
+  } | null>(null)
   const [pushContextLoading, setPushContextLoading] = useState(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
@@ -636,6 +642,57 @@ export default function App() {
       cancelled = true
     }
   }, [session?.user.id, familyName])
+
+  // A már mentett briefing-szöveg a nyelvváltás után is az aktuális
+  // felhasználói nyelven jelenik meg. A forrás és minden ügyadat változatlan.
+  useEffect(() => {
+    if (!supabase || !session || !pushContext) {
+      setLocalizedPush(null)
+      return
+    }
+    let cancelled = false
+    setLocalizedPush(null)
+    const sourceLines = pushContext.message.split('\n').map((line) => line.trim()).filter(Boolean)
+    const prefixPattern = /^(Ma|Lejárt|Emlékeztető):\s*(.*)$/
+    const bodyTexts = pushContext.type === 'briefing'
+      ? sourceLines.map((line) => line.match(prefixPattern)?.[2] ?? line)
+      : [pushContext.message]
+    const inputs = [pushContext.title, ...bodyTexts]
+
+    async function localize() {
+      const translated: string[] = []
+      for (let offset = 0; offset < inputs.length; offset += 10) {
+        const { data, error } = await supabase!.functions.invoke('core', {
+          body: {
+            action: 'localize_display_text',
+            ui_locale: appLocale,
+            texts: inputs.slice(offset, offset + 10),
+          },
+        })
+        if (cancelled) return
+        if (error || !Array.isArray(data?.translations)
+          || data.translations.length !== Math.min(10, inputs.length - offset)) {
+          return
+        }
+        translated.push(...data.translations)
+      }
+      if (cancelled) return
+      const lines = pushContext!.type === 'briefing'
+        ? sourceLines.map((line, i) => {
+          const match = line.match(prefixPattern)
+          return match ? `${match[1]}: ${translated[i + 1]}` : translated[i + 1]
+        })
+        : [translated[1]]
+      setLocalizedPush({
+        source: pushContext!.message,
+        locale: appLocale,
+        title: translated[0],
+        lines,
+      })
+    }
+    void localize().catch(() => { /* Marad az eredeti szöveg. */ })
+    return () => { cancelled = true }
+  }, [session?.user.id, pushContext, appLocale])
 
   useEffect(() => {
     if (!supabase || !session || !familyName) {
@@ -1117,7 +1174,7 @@ export default function App() {
       ...options,
       body: { ...options.body, ui_locale: appLocale },
     })
-    if (appLocale !== 'da-DK' || result.error || !result.data) return result
+    if (result.error || !result.data) return result
     const data = result.data as Record<string, any>
     const strings: string[] = []
     const setters: Array<(value: string) => void> = []
@@ -1127,8 +1184,10 @@ export default function App() {
         setters.push((value) => { obj[field] = value })
       }
     }
-    for (const field of ['answer','summary','question','message','error','prompt',
-      'assignment_notification_warning','partner_notification_warning']) add(data, field)
+    if (appLocale === 'da-DK') {
+      for (const field of ['answer','summary','question','message','error','prompt',
+        'assignment_notification_warning','partner_notification_warning']) add(data, field)
+    }
     add(data.draft, 'confirmation_text')
     if (Array.isArray(data.candidates)) {
       for (const candidate of data.candidates.slice(0, 25)) add(candidate, 'label')
@@ -2162,6 +2221,8 @@ export default function App() {
   if (session) {
     const activeUserMember = familyMembers.find((member) => member.user_id === session.user.id) ?? null
     const greeting = greetingForHour(new Date().getHours(), appLocale)
+    const currentPushCopy = localizedPush?.source === pushContext?.message
+      && localizedPush?.locale === appLocale ? localizedPush : null
     const exampleManagedMember = familyMembers.find((member) => member.member_kind === 'managed') ?? null
     const exampleText = exampleManagedMember
       ? `${exampleManagedMember.display_name} kontrollja jövő kedden 10-kor.`
@@ -2489,7 +2550,7 @@ export default function App() {
           {familyName && pushContext && (
             <section className="push-context-card" aria-label={tr("Megnyitott értesítés")}>
               <div className="push-context-header">
-                <strong>{pushContext.title}</strong>
+                <strong>{currentPushCopy?.title ?? tr(pushContext.title)}</strong>
                 <button
                   className="push-context-close"
                   type="button"
@@ -2501,8 +2562,7 @@ export default function App() {
               </div>
               {pushContext.type === 'briefing' ? (
                 <div className="briefing-content">
-                  {pushContext.message
-                    .split('\n')
+                  {(currentPushCopy?.lines ?? pushContext.message.split('\n'))
                     .map((line) => line.trim())
                     .filter((line) => line.length > 0)
                     .map((line, index) => {
@@ -2530,7 +2590,7 @@ export default function App() {
                     })}
                 </div>
               ) : (
-                <p>{pushContext.message}</p>
+                <p>{currentPushCopy?.lines[0] ?? pushContext.message}</p>
               )}
               {pushContext.type === 'reminder' && pushContext.item_id && (
                 <button
