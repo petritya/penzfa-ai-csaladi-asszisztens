@@ -110,10 +110,12 @@ async function sendOwnerInvite(
   dbClient: any,
   email: string,
   redirectTo?: string | null,
+  uiLocale: UserLocale = 'hu-HU',
 ) {
-  const options = redirectTo
-    ? { redirectTo }
-    : undefined
+  const options = {
+    ...(redirectTo ? { redirectTo } : {}),
+    data: { ui_locale: uiLocale },
+  }
 
   const { data, error } = await dbClient.auth.admin.inviteUserByEmail(email, options)
 
@@ -2030,6 +2032,7 @@ Deno.serve(async (req) => {
             db,
             secondOwnerEmail,
             String(body?.redirect_to ?? '').trim() || null,
+            requestLocale,
           )
 
           const { error: linkError } = await db
@@ -2255,6 +2258,7 @@ Deno.serve(async (req) => {
           db,
           email,
           String(body?.redirect_to ?? '').trim() || null,
+          requestLocale,
         )
 
         const { error: linkError } = await db
