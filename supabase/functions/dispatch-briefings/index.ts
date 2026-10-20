@@ -414,7 +414,7 @@ Deno.serve(async (req) => {
 
       const delivery = await sendOneSignalPush(
         settings.user_id,
-        userLocale === 'da-DK' ? 'Pénzfa – morgenoverblik' : 'Pénzfa – reggeli briefing',
+        userLocale === 'da-DK' ? 'AI-familieassistent – morgenoverblik' : 'AI családi asszisztens – reggeli briefing',
         pushMessage,
         launchUrl,
       )
