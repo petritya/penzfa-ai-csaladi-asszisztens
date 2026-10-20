@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { hasSupabaseConfig, supabase } from './lib/supabase'
-import { detectAppLocale, detectDeviceTimezone, uiText } from './lib/locale'
+import { detectAppLocale, detectDeviceTimezone, rememberAppLocale, uiText } from './lib/locale'
 import type { AppLocale } from './lib/locale'
 import { translateUi } from './lib/ui-copy'
 import DanishHelp from './DanishHelp'
@@ -272,6 +272,10 @@ export default function App() {
 
   const [appLocale, setAppLocale] = useState<AppLocale>(detectAppLocale)
   const [deviceTimezone] = useState(detectDeviceTimezone)
+
+  useEffect(() => {
+    rememberAppLocale(appLocale)
+  }, [appLocale])
   const [localeBusy, setLocaleBusy] = useState(false)
   const [localeMessage, setLocaleMessage] = useState<string | null>(null)
   const [localeError, setLocaleError] = useState<string | null>(null)
@@ -2118,7 +2122,7 @@ export default function App() {
         setConfirmationEmail(null)
         setResendMessage(null)
         setErrorMessage(
-          'Ezzel az e-mail-címmel már regisztráltak. Lépj be a fiókodba.',
+          tr('Ezzel az e-mail-címmel már regisztráltak. Lépj be a fiókodba.'),
         )
         return
       }
@@ -2160,7 +2164,7 @@ export default function App() {
 
     setResendCooldown(60)
     setResendMessage(
-      'Új megerősítő e-mailt küldtünk. Ha több levelet kaptál, mindig a legfrissebb levél linkjét használd.',
+      tr('Új megerősítő e-mailt küldtünk. Ha több levelet kaptál, mindig a legfrissebb levél linkjét használd.'),
     )
   }
 
@@ -3320,7 +3324,7 @@ export default function App() {
             : tr("Hozd létre az első felhasználói fiókot.")}
         </p>
 
-        {authRedirectError && <p className="notice error">{authRedirectError}</p>}
+        {authRedirectError && <p className="notice error">{tr(authRedirectError)}</p>}
 
         <div className="auth-tabs" aria-label={tr("Belépési mód")}>
           <button
