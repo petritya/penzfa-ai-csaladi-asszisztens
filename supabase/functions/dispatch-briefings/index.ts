@@ -255,7 +255,11 @@ async function translateBriefingTitles(titles: string[], locale: Locale): Promis
         || !translations.every((title: unknown) => typeof title === 'string' && title.trim())) {
         return new Map()
       }
-      return new Map(titles.map((title, i) => [title, translations[i]]))
+      const numbers = (value: string) => (value.match(/\d+/g) ?? []).sort().join('|')
+      return new Map(titles.map((title, i) => [
+        title,
+        numbers(translations[i]) === numbers(title) ? translations[i] : title,
+      ]))
     } finally {
       clearTimeout(timeout)
     }
