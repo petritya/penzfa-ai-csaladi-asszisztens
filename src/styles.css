@@ -539,6 +539,22 @@ h2 {
   opacity: 0.65;
 }
 
+/* A lezárás önálló, jól felismerhető művelet a szerkesztés alatt. */
+.query-action-button.query-complete-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 16px;
+  background: #15803d;
+  color: #ffffff;
+}
+
+.query-action-button.query-complete-button:hover:not(:disabled) {
+  background: #166534;
+}
+
 .push-context-action {
   margin-top: 12px;
   padding: 9px 12px;
@@ -1074,6 +1090,15 @@ h2 {
 :root[data-theme='dark'] .query-action-button {
   background: #1e293b;
   color: #cbd5e1;
+}
+
+:root[data-theme='dark'] .query-action-button.query-complete-button {
+  background: #15803d;
+  color: #ffffff;
+}
+
+:root[data-theme='dark'] .query-action-button.query-complete-button:hover:not(:disabled) {
+  background: #166534;
 }
 
 :root[data-theme='dark'] .complete-candidate-button {
