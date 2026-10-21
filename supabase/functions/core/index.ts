@@ -1561,6 +1561,32 @@ async function interpretDeleteWithOpenAI(
   return JSON.parse(outputText) as DeleteInterpretation
 }
 
+// Egyszerű, egyértelmű feladatlistáknál az AI helyett a Core értelmez.
+function quickListInterpretation(message: string): QueryInterpretation | null {
+  const text = normalize(message).replace(/[?!.,:]+/g, ' ').replace(/\s+/g, ' ').trim()
+  const huOverdue = /^(?:(?:milyen|melyik|mik|mutasd|sorold)\s+)?(?:a\s+)?lejart\s+(feladataim|ugyeim|teendoim|feladataink|ugyeink|teendoink|feladatok|ugyek|teendok)(?:\s+vannak)?$/.exec(text)
+  const huWeek = /^(?:(?:milyen|melyik|mik|mutasd|sorold)\s+)?(?:a\s+)?(feladataim|ugyeim|teendoim|feladataink|ugyeink|teendoink|feladatok|ugyek|teendok)\s+(?:vannak\s+)?(?:a|ezen a)\s+heten$/.exec(text)
+  const daOverdueMine = /^(?:hvilke|vis)\s+(?:forfaldne|overskredne)\s+(?:opgaver|sager)\s+har\s+jeg$/.test(text)
+  const daOverdueFamily = /^(?:hvilke|vis)\s+(?:forfaldne|overskredne)\s+(?:opgaver|sager)(?:\s+har\s+vi)?$/.test(text)
+  const daWeekMine = /^(?:hvilke|vis)\s+(?:opgaver|sager)\s+har\s+jeg\s+(?:i\s+)?denne\s+uge$/.test(text)
+  const daWeekFamily = /^(?:hvilke|vis)\s+(?:opgaver|sager)\s+har\s+vi\s+(?:i\s+)?denne\s+uge$/.test(text)
+  if (!huOverdue && !huWeek && !daOverdueMine && !daOverdueFamily && !daWeekMine && !daWeekFamily) return null
+
+  const mine = /^(?:feladataim|ugyeim|teendoim)$/.test(huOverdue?.[1] ?? huWeek?.[1] ?? '')
+    || daOverdueMine || daWeekMine
+  return {
+    intent: 'query',
+    status: 'open',
+    responsibility: mine ? 'mine' : 'family',
+    subject_name: null,
+    responsible_name: null,
+    keywords: null,
+    date_scope: huWeek || daWeekMine || daWeekFamily ? 'this_week' : 'none',
+    date_phrase: null,
+    reminder_filter: 'any',
+  }
+}
+
 async function interpretQueryWithOpenAI(
   message: string,
   activeMemberNames: string[],
@@ -2120,6 +2146,8 @@ Deno.serve(async (req) => {
     if (body?.action === 'interpret_intent') {
       const message = String(body?.message ?? '').trim()
       if (!message) return json({ error: 'Az üzenet nem lehet üres.' }, 400)
+
+      if (quickListInterpretation(message)) return json({ status: 'ok', intent: 'query' })
 
       const interpretation = await interpretIntentWithOpenAI(message, requestLocale)
 
