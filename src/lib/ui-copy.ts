@@ -64,6 +64,7 @@ const daUi: Record<string, string> = {
   "Dátum/idő módosítása": "Rediger dato/tidspunkt",
   "Emlékeztető beállítása": "Indstil påmindelse",
   "Emlékeztető módosítása": "Rediger påmindelse",
+  "Késznek jelölöm": "Markér som udført",
   "Törlés megerősítése:": "Bekræft sletning:",
   "Igen, töröld": "Ja, slet",
   "Mégse": "Annuller",
