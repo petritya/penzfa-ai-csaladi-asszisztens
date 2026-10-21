@@ -2508,7 +2508,7 @@ Deno.serve(async (req) => {
       if (membersError) throw membersError
 
       const memberList = members ?? []
-      const interpretation = await interpretQueryWithOpenAI(
+      const interpretation = quickListInterpretation(message) ?? await interpretQueryWithOpenAI(
         message,
         memberList
           .filter((member) => member.member_kind === 'active')
@@ -2567,6 +2567,11 @@ Deno.serve(async (req) => {
         responsibleUserId = responsible.user_id
       }
 
+      // A lejárt ügy határideje a felhasználó napja előtt van, és még nyitott.
+      const localToday = localDateInTimezone(timeZone)
+      const overdueOnly = interpretation.status === 'open'
+        && /\b(?:lejart|lejartak|forfaldne|forfalden|overskredne)\b/.test(normalize(message))
+
       let itemsQuery = db
         .from('items')
         .select('id, title, notes, item_type, due_date, due_time, status, subject_member_id, responsible_user_id, completed_at, created_at')
@@ -2588,6 +2593,16 @@ Deno.serve(async (req) => {
 
       if (responsibleUserId) {
         itemsQuery = itemsQuery.eq('responsible_user_id', responsibleUserId)
+      } else if (interpretation.responsibility === 'mine') {
+        itemsQuery = itemsQuery.eq('responsible_user_id', user.id)
+      }
+
+      // A nyitott ügyeknél már a PostgreSQL végzi a dátumszűrést.
+      if (interpretation.status === 'open') {
+        if (overdueOnly) itemsQuery = itemsQuery.lt('due_date', localToday)
+        if (dateRange) {
+          itemsQuery = itemsQuery.gte('due_date', dateRange.start).lte('due_date', dateRange.end)
+        }
       }
 
       const { data: rawItems, error: itemsError } = await itemsQuery
@@ -2708,7 +2723,6 @@ Deno.serve(async (req) => {
         ? responsibleNameByUserId.get(responsibleUserId) ?? null
         : null
       const visible = asksForLatestDone ? filtered.slice(0, 1) : filtered.slice(0, 20)
-      const localToday = localDateInTimezone(timeZone)
 
       if (!visible.length) {
         return json({
