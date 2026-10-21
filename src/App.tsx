@@ -2820,11 +2820,12 @@ export default function App() {
                             </button>
                             {item.is_overdue && (
                               <button
-                                className="query-action-button"
+                                className="query-action-button query-complete-button"
                                 type="button"
                                 onClick={() => void handleCompleteCandidate(item)}
                                 disabled={createBusy}
                               >
+                                <span aria-hidden="true">✓</span>
                                 {tr("Késznek jelölöm")}
                               </button>
                             )}
