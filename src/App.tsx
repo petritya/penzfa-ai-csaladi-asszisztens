@@ -1934,7 +1934,7 @@ export default function App() {
     setCreateError(data?.error ?? 'Az ügyet most nem sikerült módosítani.')
   }
 
-  async function handleCompleteCandidate(candidate: CompleteCandidate) {
+  async function handleCompleteCandidate(candidate: Pick<CompleteCandidate, 'id' | 'title'>) {
     if (!supabase) return
 
     setCreateBusy(true)
@@ -1985,6 +1985,7 @@ export default function App() {
     if (data?.status === 'completed') {
       setCreateSuccess(`${appLocale === 'da-DK' ? 'Markeret som udført' : 'Készre jelölve'}: ${data.item?.title ?? candidate.title}`)
       setCompleteCandidates([])
+      setQueryResults((current) => current.filter((item) => item.id !== candidate.id))
       setAssistantAnswer(data.partner_notification_warning ?? null)
       return
     }
@@ -2817,6 +2818,16 @@ export default function App() {
                             >
                               {item.reminder_missing ? tr("Emlékeztető beállítása") : tr("Emlékeztető módosítása")}
                             </button>
+                            {item.is_overdue && (
+                              <button
+                                className="query-action-button"
+                                type="button"
+                                onClick={() => void handleCompleteCandidate(item)}
+                                disabled={createBusy}
+                              >
+                                {tr("Késznek jelölöm")}
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>
