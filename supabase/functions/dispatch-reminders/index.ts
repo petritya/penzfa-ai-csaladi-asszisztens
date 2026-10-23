@@ -256,7 +256,7 @@ async function sendDueItemPushes(nowIso: string) {
     const subjectPrefix = subject?.display_name ? `${subject.display_name}: ` : ''
     const message = `${subjectPrefix}${item.title} – ${formatDate(item.due_date, locale)} ${String(item.due_time).slice(0, 5)}.`
     const appUrl = Deno.env.get('APP_URL')
-      ?? 'https://penzfa-ai-csaladi-asszisztens.petritya.workers.dev'
+      ?? 'https://csalad.andraspetrity.eu'
     const launchUrl = `${appUrl}/?push=item&item_id=${encodeURIComponent(item.id)}`
 
     let delivery: Awaited<ReturnType<typeof sendOneSignalPush>>
@@ -491,7 +491,7 @@ Deno.serve(async (req) => {
         : `${subjectPrefix}${item.title}.`
 
       const appUrl = Deno.env.get('APP_URL')
-        ?? 'https://penzfa-ai-csaladi-asszisztens.petritya.workers.dev'
+        ?? 'https://csalad.andraspetrity.eu'
       const launchUrl = `${appUrl}/?push=reminder&item_id=${encodeURIComponent(item.id)}`
 
       const delivery = await sendOneSignalPush(
