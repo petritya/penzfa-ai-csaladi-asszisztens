@@ -409,7 +409,7 @@ Deno.serve(async (req) => {
       if (runError) throw runError
 
       const appUrl = Deno.env.get('APP_URL')
-        ?? 'https://penzfa-ai-csaladi-asszisztens.petritya.workers.dev'
+        ?? 'https://csalad.andraspetrity.eu'
       const launchUrl = `${appUrl}/?push=briefing&date=${encodeURIComponent(local.date)}`
 
       const delivery = await sendOneSignalPush(
