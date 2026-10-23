@@ -170,7 +170,7 @@ async function sendAssignmentPush(
       target_channel: 'push',
       headings: { en: locale === 'da-DK' ? 'AI-familieassistent – ny opgave' : 'AI családi asszisztens – új teendő' },
       contents: { en: message },
-      url: `${Deno.env.get('APP_URL') ?? 'https://penzfa-ai-csaladi-asszisztens.petritya.workers.dev'}/?push=item&item_id=${encodeURIComponent(itemId)}`,
+      url: `${Deno.env.get('APP_URL') ?? 'https://csalad.andraspetrity.eu'}/?push=item&item_id=${encodeURIComponent(itemId)}`,
     }),
   })
 
@@ -217,7 +217,7 @@ async function sendCompletionPush(
       target_channel: 'push',
       headings: { en: locale === 'da-DK' ? 'AI-familieassistent – opgave afsluttet' : 'AI családi asszisztens – teendő elintézve' },
       contents: { en: message },
-      url: `${Deno.env.get('APP_URL') ?? 'https://penzfa-ai-csaladi-asszisztens.petritya.workers.dev'}/?push=item&item_id=${encodeURIComponent(itemId)}`,
+      url: `${Deno.env.get('APP_URL') ?? 'https://csalad.andraspetrity.eu'}/?push=item&item_id=${encodeURIComponent(itemId)}`,
     }),
   })
 
