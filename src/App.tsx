@@ -1398,7 +1398,7 @@ export default function App() {
       setVoiceListening(false)
       setVoiceError(
         error instanceof DOMException && error.name === 'NotAllowedError'
-          ? 'A mikrofon nincs engedélyezve. Engedélyezd a Pénzfának a mikrofon használatát.'
+          ? 'A mikrofon nincs engedélyezve. Engedélyezd az AI családi asszisztensnek a mikrofon használatát.'
           : 'A mikrofont most nem sikerült elindítani.',
       )
     }
