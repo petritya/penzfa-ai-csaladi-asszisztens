@@ -78,6 +78,13 @@ Deno.serve(async (req) => {
       return json({ error: language === 'da' ? 'Lydoptagelsen er for stor.' : 'A hangfelvétel túl nagy.' }, 413)
     }
 
+    console.log(JSON.stringify({
+      event: 'transcribe_request',
+      audio_size: audio.size,
+      audio_type: audio.type || 'unknown',
+      language,
+    }))
+
     const openAiForm = new FormData()
     openAiForm.append('file', audio, audio.name || 'penzfa-voice.webm')
     openAiForm.append('model', 'gpt-4o-transcribe')
@@ -120,6 +127,13 @@ Deno.serve(async (req) => {
 
     const data = await response.json().catch(() => ({}))
     if (!response.ok) {
+      console.error(JSON.stringify({
+        event: 'transcribe_upstream_error',
+        upstream_status: response.status,
+        upstream_code: data?.error?.code ?? null,
+        audio_size: audio.size,
+        audio_type: audio.type || 'unknown',
+      }))
       return json({
         error: data?.error?.message
           ?? (language === 'da' ? 'Lydoptagelsen kunne ikke transskriberes.' : 'A hang átírása nem sikerült.'),
@@ -128,12 +142,23 @@ Deno.serve(async (req) => {
 
     const text = String(data?.text ?? '').trim()
     if (!text) {
+      console.warn(JSON.stringify({
+        event: 'transcribe_empty',
+        audio_size: audio.size,
+        audio_type: audio.type || 'unknown',
+      }))
       return json({
         error: language === 'da'
           ? 'Der kunne ikke genkendes tale i optagelsen.'
           : 'Nem sikerült beszédet felismerni a felvételen.',
       }, 422)
     }
+
+    console.log(JSON.stringify({
+      event: 'transcribe_success',
+      audio_size: audio.size,
+      audio_type: audio.type || 'unknown',
+    }))
 
     return json({ status: 'ok', text })
   } catch (error) {
