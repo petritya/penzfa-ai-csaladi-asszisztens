@@ -1253,12 +1253,37 @@ export default function App() {
         familyMembers.map((member) => member.display_name).join(', '),
       )
 
-      const { data, error } = await supabase.functions.invoke('transcribe-audio', {
+      const invokeTranscription = () => supabase.functions.invoke('transcribe-audio', {
         body: form,
       })
 
+      let { data, error } = await invokeTranscription()
+
+      if (error) {
+        const response = (error as { context?: unknown }).context
+        const status = response instanceof Response ? response.status : null
+
+        if (status === 401) {
+          await supabase.auth.refreshSession()
+          ;({ data, error } = await invokeTranscription())
+        } else if (status === 429 || (status !== null && status >= 500)) {
+          await new Promise((resolve) => window.setTimeout(resolve, 400))
+          ;({ data, error } = await invokeTranscription())
+        }
+      }
+
       if (error || !data?.text) {
-        setVoiceError(error?.message ?? data?.error ?? 'A hang átírása nem sikerült.')
+        let detail = data?.error
+        const response = (error as { context?: unknown } | null)?.context
+        if (!detail && response instanceof Response) {
+          try {
+            const payload = await response.clone().json()
+            detail = payload?.error
+          } catch {
+            // A Supabase kliens általános hibaüzenetét használjuk.
+          }
+        }
+        setVoiceError(detail ?? error?.message ?? 'A hang átírása nem sikerült.')
         return
       }
 
@@ -1362,7 +1387,9 @@ export default function App() {
         }
       }
 
-      recorder.start()
+      // Rövid szeletekben gyűjtjük a hangot. Android/PWA alatt ez
+      // stabilabb az első felvételnél, mint egyetlen záró Blob-ra hagyatkozni.
+      recorder.start(250)
       setVoiceListening(true)
     } catch (error) {
       mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
