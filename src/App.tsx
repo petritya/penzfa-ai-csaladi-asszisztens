@@ -1241,6 +1241,8 @@ export default function App() {
 
   async function transcribeVoiceRecording(audio: Blob, mimeType: string) {
     if (!supabase || !session) return
+    // A callbackban is biztosan nem-null Supabase kliensre hivatkozunk.
+    const activeSupabase = supabase
 
     setVoiceTranscribing(true)
     setVoiceError(null)
@@ -1257,7 +1259,7 @@ export default function App() {
         familyMembers.map((member) => member.display_name).join(', '),
       )
 
-      const invokeTranscription = () => supabase.functions.invoke('transcribe-audio', {
+      const invokeTranscription = () => activeSupabase.functions.invoke('transcribe-audio', {
         body: form,
       })
 
@@ -1268,7 +1270,7 @@ export default function App() {
         const status = response instanceof Response ? response.status : null
 
         if (status === 401) {
-          await supabase.auth.refreshSession()
+          await activeSupabase.auth.refreshSession()
           ;({ data, error } = await invokeTranscription())
         } else if (status === 429 || (status !== null && status >= 500)) {
           await new Promise((resolve) => window.setTimeout(resolve, 400))
