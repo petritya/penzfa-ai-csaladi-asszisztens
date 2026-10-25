@@ -4521,14 +4521,40 @@ Deno.serve(async (req) => {
       ])
       if (membersError) throw membersError
 
-      const interpretation = await interpretCompleteWithOpenAI(
-        message,
-        (members ?? []).map((member) => member.display_name),
-        (members ?? [])
-          .filter((member) => member.member_kind === 'active' && member.user_id)
-          .map((member) => member.display_name),
-        requestLocale,
-      )
+      // A cím szerinti, egyértelmű egyezést adatbázisból azonosítjuk, AI nélkül.
+      // Több azonos cím vagy bármilyen bizonytalanság esetén marad az AI-értelmezés.
+      const { data: openItems, error: itemsError } = await db
+        .from('items')
+        .select('id, title, item_type, due_date, due_time, subject_member_id, responsible_user_id')
+        .eq('family_id', familyId)
+        .eq('status', 'open')
+        .order('due_date', { ascending: true, nullsFirst: false })
+      if (itemsError) throw itemsError
+
+      const normalizedMessage = normalize(message)
+      const explicitDateOrNegation = /\\b(?:tegnap|tegnapelott|holnap|ma|hetfo|kedd|szerda|csutortok|pentek|szombat|vasarnap|nem|ne|ikke)\\b/.test(normalizedMessage)
+        || /\\b20\\d{2}[-.]\\d{1,2}/.test(normalizedMessage)
+      const namedItems = (openItems ?? []).filter((item) => {
+        const title = normalize(item.title).trim()
+        return title.length >= 8 && normalizedMessage.includes(title)
+      })
+      const exactNamedItem = !explicitDateOrNegation && namedItems.length === 1 ? namedItems[0] : null
+      const interpretation: CompleteInterpretation = exactNamedItem
+        ? {
+            intent: 'complete',
+            target_title: exactNamedItem.title,
+            subject_name: null,
+            responsible_name: null,
+            target_date_phrase: null,
+          }
+        : await interpretCompleteWithOpenAI(
+            message,
+            (members ?? []).map((member) => member.display_name),
+            (members ?? [])
+              .filter((member) => member.member_kind === 'active' && member.user_id)
+              .map((member) => member.display_name),
+            requestLocale,
+          )
 
       const timeZone = settings?.timezone ?? 'Europe/Budapest'
       const targetDate = interpretation.target_date_phrase
@@ -4584,14 +4610,6 @@ Deno.serve(async (req) => {
         responsibleUserId = ownerTaskReference.user_id
         if (subjectId === ownerTaskReference.id) subjectId = null
       }
-
-      const { data: openItems, error: itemsError } = await db
-        .from('items')
-        .select('id, title, due_date, due_time, subject_member_id, responsible_user_id')
-        .eq('family_id', familyId)
-        .eq('status', 'open')
-        .order('due_date', { ascending: true, nullsFirst: false })
-      if (itemsError) throw itemsError
 
       const targetTitle = normalize(interpretation.target_title)
       const targetTokens = targetTitle.split(/\s+/).filter((token) => token.length >= 3)
