@@ -4532,8 +4532,8 @@ Deno.serve(async (req) => {
       if (itemsError) throw itemsError
 
       const normalizedMessage = normalize(message)
-      const explicitDateOrNegation = /\\b(?:tegnap|tegnapelott|holnap|ma|hetfo|kedd|szerda|csutortok|pentek|szombat|vasarnap|nem|ne|ikke)\\b/.test(normalizedMessage)
-        || /\\b20\\d{2}[-.]\\d{1,2}/.test(normalizedMessage)
+      const explicitDateOrNegation = /\b(?:tegnap|tegnapelott|holnap|ma|hetfo|kedd|szerda|csutortok|pentek|szombat|vasarnap|nem|ne|ikke)\b/.test(normalizedMessage)
+        || /\b20\d{2}[-.]\d{1,2}/.test(normalizedMessage)
       const namedItems = (openItems ?? []).filter((item) => {
         const title = normalize(item.title).trim()
         return title.length >= 8 && normalizedMessage.includes(title)
