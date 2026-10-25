@@ -1566,6 +1566,8 @@ async function interpretDeleteWithOpenAI(
 function quickCompleteIntent(message: string) {
   if (isClearlyQueryMessage(message)) return false
   const text = normalize(message).replace(/[^a-z0-9æøå]+/g, ' ')
+  // Tagadó és jövőbeli mondatból nem állapítunk meg lezárást heurisztikusan.
+  if (/\b(?:nem|ne|nincs|ikke|holnap|majd|lesz|skal|bliver)\b/.test(text)) return false
   return /\b(?:megtortent|megvolt|elinteztem|elinteztuk|elkeszult|elkeszitettem|befejeztem|megcsinaltam|megcsinaltuk|befizettem|kifizettem|atvettem|felhivtam|elkuldtem|lezarhatod|lezarhatja|kesz|elintezve|elkeszultem|afsluttet|udfort|klaret|færdig|betalt)\b/.test(text)
 }
 
@@ -4532,7 +4534,7 @@ Deno.serve(async (req) => {
       if (itemsError) throw itemsError
 
       const normalizedMessage = normalize(message)
-      const explicitDateOrNegation = /\b(?:tegnap|tegnapelott|holnap|ma|hetfo|kedd|szerda|csutortok|pentek|szombat|vasarnap|nem|ne|ikke)\b/.test(normalizedMessage)
+      const explicitDateOrNegation = /\b(?:tegnap(?:i|elott)?|holnap(?:i)?|ma(?:i)?|hetfo|kedd|szerda|csutortok|pentek|szombat|vasarnap|nem|ne|nincs|ikke)\b/.test(normalizedMessage)
         || /\b20\d{2}[-.]\d{1,2}/.test(normalizedMessage)
       const namedItems = (openItems ?? []).filter((item) => {
         const title = normalize(item.title).trim()
