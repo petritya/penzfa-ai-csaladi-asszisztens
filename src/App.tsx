@@ -1200,6 +1200,8 @@ export default function App() {
     })
     if (result.error || !result.data) return result
     const data = result.data as Record<string, any>
+    // A magyar felület már magyar választ kap a Core-tól: nincs mit AI-val fordítani.
+    if (appLocale !== 'da-DK') return result
     const strings: string[] = []
     const setters: Array<(value: string) => void> = []
     const add = (obj: Record<string, any> | null | undefined, field: string) => {
@@ -1246,7 +1248,9 @@ export default function App() {
     try {
       const extension = mimeType.includes('mp4') ? 'm4a' : mimeType.includes('ogg') ? 'ogg' : 'webm'
       const form = new FormData()
-      form.append('file', new File([audio], `penzfa-voice.${extension}`, { type: mimeType }))
+      // A codecs paramétert a WebM fájlnál a transzkripciós API nem mindig fogadja el.
+      const uploadType = mimeType.split(';')[0].trim() || 'audio/webm'
+      form.append('file', new File([audio], `penzfa-voice.${extension}`, { type: uploadType }))
       form.append('language', appLocale === 'da-DK' ? 'da' : 'hu')
       form.append(
         'member_names',
