@@ -1561,6 +1561,14 @@ async function interpretDeleteWithOpenAI(
   return JSON.parse(outputText) as DeleteInterpretation
 }
 
+// Az egyértelmű lezáró mondatokhoz nincs szükség külön AI-szándékfelismerésre.
+// Ez sosem zár le önmagában ügyet: csak a már létező biztonságos folyamatot választja.
+function quickCompleteIntent(message: string) {
+  if (isClearlyQueryMessage(message)) return false
+  const text = normalize(message).replace(/[^a-z0-9æøå]+/g, ' ')
+  return /\b(?:megtortent|megvolt|elinteztem|elinteztuk|elkeszult|elkeszitettem|befejeztem|megcsinaltam|megcsinaltuk|befizettem|kifizettem|atvettem|felhivtam|elkuldtem|lezarhatod|lezarhatja|kesz|elintezve|elkeszultem|afsluttet|udfort|klaret|færdig|betalt)\b/.test(text)
+}
+
 // Egyszerű, egyértelmű feladatlistáknál az AI helyett a Core értelmez.
 function quickListInterpretation(message: string): QueryInterpretation | null {
   const text = normalize(message).replace(/[?!.,:]+/g, ' ').replace(/\s+/g, ' ').trim()
@@ -2148,6 +2156,7 @@ Deno.serve(async (req) => {
       if (!message) return json({ error: 'Az üzenet nem lehet üres.' }, 400)
 
       if (quickListInterpretation(message)) return json({ status: 'ok', intent: 'query' })
+      if (quickCompleteIntent(message)) return json({ status: 'ok', intent: 'complete' })
 
       const interpretation = await interpretIntentWithOpenAI(message, requestLocale)
 
