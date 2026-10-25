@@ -86,7 +86,11 @@ Deno.serve(async (req) => {
     }))
 
     const openAiForm = new FormData()
-    openAiForm.append('file', audio, audio.name || 'penzfa-voice.webm')
+    // A MediaRecorder MIME-ja lehet audio/webm;codecs=opus. A fájlnév és az
+    // egyszerű MIME-típus egyezzen meg a feltöltött audio tényleges formátumával.
+    const cleanAudioType = audio.type.split(';')[0].trim() || 'audio/webm'
+    const audioFile = new File([audio], audio.name || 'penzfa-voice.webm', { type: cleanAudioType })
+    openAiForm.append('file', audioFile, audioFile.name)
     openAiForm.append('model', 'gpt-4o-transcribe')
     openAiForm.append('language', language)
     openAiForm.append(
@@ -131,13 +135,21 @@ Deno.serve(async (req) => {
         event: 'transcribe_upstream_error',
         upstream_status: response.status,
         upstream_code: data?.error?.code ?? null,
+        upstream_param: data?.error?.param ?? null,
+        upstream_request_id: response.headers.get('x-request-id'),
         audio_size: audio.size,
-        audio_type: audio.type || 'unknown',
+        audio_type: cleanAudioType,
       }))
+      // A hibás/értelmezhetetlen hangot nem segít azonnal ugyanazzal az
+      // adattal újraküldeni. A szerverhibáknál marad a kliens újrapróbálása.
+      const invalidAudio = response.status === 400
       return json({
-        error: data?.error?.message
-          ?? (language === 'da' ? 'Lydoptagelsen kunne ikke transskriberes.' : 'A hang átírása nem sikerült.'),
-      }, 502)
+        error: invalidAudio
+          ? (language === 'da'
+            ? 'Lydoptagelsen kunne ikke behandles. Prøv at optage igen.'
+            : 'A hangfelvételt nem sikerült feldolgozni. Kérlek, diktáld be újra.')
+          : (language === 'da' ? 'Lydgenkendelsen er midlertidigt utilgængelig.' : 'A hangfelismerés átmenetileg nem érhető el.'),
+      }, invalidAudio ? 422 : 502)
     }
 
     const text = String(data?.text ?? '').trim()
