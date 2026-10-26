@@ -677,6 +677,8 @@ export default function App() {
     const client = supabase
     const userId = session?.user.id
     if (!client || !userId || !familyName || !settings.briefing_enabled) return
+    // A háttérbetöltő async függvényben is biztosan nem-null kliens kell.
+    const activeClient = client
 
     let cancelled = false
     let loading = false
@@ -692,7 +694,7 @@ export default function App() {
       if (window.localStorage.getItem(dismissedKey) === '1') return
 
       loading = true
-      const { data, error } = await client.functions.invoke('core', {
+      const { data, error } = await activeClient.functions.invoke('core', {
         body: { action: 'push_context', type: 'briefing', briefing_date: date },
       })
       loading = false
