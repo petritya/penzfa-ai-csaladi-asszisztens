@@ -94,6 +94,7 @@ type PushContext = {
   message: string
   item_id: string | null
   item_title: string | null
+  briefing_date?: string | null
 }
 
 type QueryResultItem = {
@@ -190,6 +191,23 @@ async function waitForPushSubscription(oneSignal: OneSignalClient) {
   }
 
   return false
+}
+
+function currentDateAndTimeInZone(timeZone: string) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date())
+  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? ''
+  return {
+    date: `${value('year')}-${value('month')}-${value('day')}`,
+    time: `${value('hour')}:${value('minute')}`,
+  }
 }
 
 function greetingForHour(hour: number, locale: AppLocale) {
@@ -635,6 +653,7 @@ export default function App() {
           message: String(data.message),
           item_id: data.item_id ? String(data.item_id) : null,
           item_title: data.item_title ? String(data.item_title) : null,
+          briefing_date: data.briefing_date ? String(data.briefing_date) : null,
         })
       }
 
@@ -650,6 +669,60 @@ export default function App() {
       cancelled = true
     }
   }, [session?.user.id, familyName])
+
+  // A briefing DB-ben mentve van, ezért push-kimaradáskor is megjelenik,
+  // amikor a felhasználó megnyitja vagy előtérbe hozza az alkalmazást.
+  // Ez nem újabb push küldése, és nem állítja, hogy a push kézbesült.
+  useEffect(() => {
+    const client = supabase
+    const userId = session?.user.id
+    if (!client || !userId || !familyName || !settings.briefing_enabled) return
+
+    let cancelled = false
+    let loading = false
+    let shownDate: string | null = null
+
+    async function loadTodayBriefing() {
+      if (cancelled || loading || document.visibilityState !== 'visible') return
+      if (new URLSearchParams(window.location.search).has('push')) return
+
+      const { date, time } = currentDateAndTimeInZone(settings.timezone || 'Europe/Budapest')
+      if (time < settings.briefing_time.slice(0, 5) || shownDate === date) return
+      const dismissedKey = `penzfa-briefing-dismissed:${userId}:${date}`
+      if (window.localStorage.getItem(dismissedKey) === '1') return
+
+      loading = true
+      const { data, error } = await client.functions.invoke('core', {
+        body: { action: 'push_context', type: 'briefing', briefing_date: date },
+      })
+      loading = false
+      if (cancelled || error || data?.status !== 'ok' || !data?.message) return
+      shownDate = date
+
+      setPushContext((current) => {
+        if (current || window.localStorage.getItem(dismissedKey) === '1') return current
+        return {
+          type: 'briefing',
+          title: String(data.title ?? 'Reggeli briefing'),
+          message: String(data.message),
+          item_id: null,
+          item_title: null,
+          briefing_date: date,
+        }
+      })
+    }
+
+    const onResume = () => { void loadTodayBriefing() }
+    void loadTodayBriefing()
+    document.addEventListener('visibilitychange', onResume)
+    const interval = window.setInterval(onResume, 60_000)
+
+    return () => {
+      cancelled = true
+      document.removeEventListener('visibilitychange', onResume)
+      window.clearInterval(interval)
+    }
+  }, [session?.user.id, familyName, settings.briefing_enabled, settings.briefing_time, settings.timezone])
 
   // A már mentett briefing-szöveg a nyelvváltás után is az aktuális
   // felhasználói nyelven jelenik meg. A forrás és minden ügyadat változatlan.
@@ -2615,7 +2688,17 @@ export default function App() {
                 <button
                   className="push-context-close"
                   type="button"
-                  onClick={() => setPushContext(null)}
+                  onClick={() => {
+                    if (pushContext.type === 'briefing' && session) {
+                      const date = pushContext.briefing_date
+                        ?? currentDateAndTimeInZone(settings.timezone || 'Europe/Budapest').date
+                      window.localStorage.setItem(
+                        `penzfa-briefing-dismissed:${session.user.id}:${date}`,
+                        '1',
+                      )
+                    }
+                    setPushContext(null)
+                  }}
                   aria-label={tr("Értesítés bezárása")}
                 >
                   ×
