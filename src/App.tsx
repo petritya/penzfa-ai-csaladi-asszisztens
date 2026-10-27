@@ -2395,16 +2395,54 @@ export default function App() {
 
             <div className="help-sections">
               <details className="help-section" open>
-                <summary>Az 5 alapművelet</summary>
-                <p>Írhatsz vagy diktálhatsz. A Pénzfában ezeket a műveleteket végezheted el:</p>
-                <ol>
-                  <li><strong>Rögzítés:</strong> új feladat vagy esemény felvétele.</li>
-                  <li><strong>Keresés:</strong> saját és családi ügyek lekérdezése.</li>
-                  <li><strong>Módosítás:</strong> időpont vagy emlékeztető megváltoztatása.</li>
-                  <li><strong>Készre jelölés:</strong> az elintézett ügy lezárása.</li>
-                  <li><strong>Törlés:</strong> téves vagy már nem aktuális ügy eltávolítása.</li>
-                </ol>
-                <p>Rögzítés, módosítás és lezárás előtt ellenőrizd a kiválasztott ügyet. A törlést külön meg kell erősítened.</p>
+                <summary>Mi az AI családi asszisztens?</summary>
+                <p>
+                  Az AI családi asszisztens abban segít, hogy ne kelljen fejben tartanod
+                  a család mindennapi teendőit, időpontjait és határidőit.
+                  Természetes nyelven elmondhatod vagy leírhatod, mit kell elintézni.
+                </p>
+                <p>
+                  A rendszer értelmezi a kérésedet, strukturáltan eltárolja a fontos adatokat,
+                  emlékeztethet rá, reggeli összefoglalót készíthet, és később vissza is keresheted.
+                </p>
+                <div className="help-examples">
+                  <strong>Alapfogalmak</strong>
+                  <ul>
+                    <li>
+                      <strong>Családi felhasználó:</strong> saját fiókkal rendelkezik, be tud lépni,
+                      használhatja az alkalmazást, feladatokat kezelhet és értesítéseket kaphat.
+                    </li>
+                    <li>
+                      <strong>Kezelt családtag:</strong> nincs saját belépése, de a hozzá kapcsolódó
+                      feladatokat és eseményeket a családi felhasználók kezelhetik.
+                    </li>
+                    <li>
+                      Egy családhoz jelenleg legfeljebb két családi felhasználó tartozhat,
+                      kezelt családtagból pedig több is felvehető.
+                    </li>
+                  </ul>
+                </div>
+                              <p>
+                  A Családtagok résznél név szerint felvehetsz kezelt családtagokat.
+                  Egy másik családi felhasználót e-mailben meghívhatsz,
+                  így ketten használhatjátok ugyanazt a családot.
+                </p>
+              </details>
+
+              <details className="help-section">
+                <summary>Értesítések, reggeli briefing és telepítés</summary>
+                <p>
+                  Az értesítéseket eszközönként kell engedélyezni a Fiók és értesítések részben.
+                  A reggeli briefing időpontja a Beállítások alatt módosítható.
+                </p>
+                <p>
+                  Ha még böngészőből használod az alkalmazást, a Telepítés a telefonra résznél
+                  kiteheted a kezdőképernyőre.
+                </p>
+                              <p>
+                  Ha a másik családi felhasználónak adsz feladatot, értesítést kap róla,
+                  ha az értesítéseket a saját eszközén engedélyezte.
+                </p>
               </details>
 
               <details className="help-section" open>
@@ -2435,34 +2473,17 @@ export default function App() {
                 </p>
               </details>
 
-              <details className="help-section">
-                <summary>Mi az AI családi asszisztens?</summary>
-                <p>
-                  Az AI családi asszisztens abban segít, hogy ne kelljen fejben tartanod
-                  a család mindennapi teendőit, időpontjait és határidőit.
-                  Természetes nyelven elmondhatod vagy leírhatod, mit kell elintézni.
-                </p>
-                <p>
-                  A rendszer értelmezi a kérésedet, strukturáltan eltárolja a fontos adatokat,
-                  emlékeztethet rá, reggeli összefoglalót készíthet, és később vissza is keresheted.
-                </p>
-                <div className="help-examples">
-                  <strong>Alapfogalmak</strong>
-                  <ul>
-                    <li>
-                      <strong>Családi felhasználó:</strong> saját fiókkal rendelkezik, be tud lépni,
-                      használhatja az alkalmazást, feladatokat kezelhet és értesítéseket kaphat.
-                    </li>
-                    <li>
-                      <strong>Kezelt családtag:</strong> nincs saját belépése, de a hozzá kapcsolódó
-                      feladatokat és eseményeket a családi felhasználók kezelhetik.
-                    </li>
-                    <li>
-                      Egy családhoz jelenleg legfeljebb két családi felhasználó tartozhat,
-                      kezelt családtagból pedig több is felvehető.
-                    </li>
-                  </ul>
-                </div>
+              <details className="help-section" open>
+                <summary>Az 5 alapművelet</summary>
+                <p>Írhatsz vagy diktálhatsz. A Pénzfában ezeket a műveleteket végezheted el:</p>
+                <ol>
+                  <li><strong>Rögzítés:</strong> új feladat vagy esemény felvétele.</li>
+                  <li><strong>Keresés:</strong> saját és családi ügyek lekérdezése.</li>
+                  <li><strong>Módosítás:</strong> időpont vagy emlékeztető megváltoztatása.</li>
+                  <li><strong>Készre jelölés:</strong> az elintézett ügy lezárása.</li>
+                  <li><strong>Törlés:</strong> téves vagy már nem aktuális ügy eltávolítása.</li>
+                </ol>
+                <p>Rögzítés, módosítás és lezárás előtt ellenőrizd a kiválasztott ügyet. A törlést külön meg kell erősítened.</p>
               </details>
 
               <details className="help-section">
@@ -2560,29 +2581,6 @@ export default function App() {
                     <li>„Töröld a pénteki fodrászt.”</li>
                   </ul>
                 </div>
-              </details>
-
-              <details className="help-section">
-                <summary>Családi felhasználók és kezelt családtagok</summary>
-                <p>
-                  A Családtagok résznél név szerint felvehetsz kezelt családtagokat.
-                  Egy másik családi felhasználót e-mailben meghívhatsz, így ketten használhatjátok ugyanazt a családot.
-                </p>
-                <p>
-                  Ha a másik családi felhasználónak adsz feladatot, értesítést kap róla, ha nála az értesítések engedélyezve vannak.
-                </p>
-              </details>
-
-              <details className="help-section">
-                <summary>Értesítések, reggeli briefing és telepítés</summary>
-                <p>
-                  Az értesítéseket eszközönként kell engedélyezni a Fiók és értesítések részben.
-                  A reggeli briefing időpontja a Beállítások alatt módosítható.
-                </p>
-                <p>
-                  Ha még böngészőből használod az alkalmazást, a Telepítés a telefonra résznél
-                  kiteheted a kezdőképernyőre.
-                </p>
               </details>
             </div>
           </section>
