@@ -18,6 +18,36 @@ export default function DanishHelp({ onBack }: Props) {
         </header>
         <div className="help-sections">
           <details className="help-section" open>
+            <summary>De 5 vigtigste funktioner</summary>
+            <p>Du kan skrive eller indtale dine beskeder:</p>
+            <ol>
+              <li><strong>Opret:</strong> Tilføj en opgave eller aftale.</li>
+              <li><strong>Søg:</strong> Find dine og familiens opgaver.</li>
+              <li><strong>Rediger:</strong> Ændr tidspunkt eller påmindelse.</li>
+              <li><strong>Markér som udført:</strong> Afslut en opgave, der er klaret.</li>
+              <li><strong>Slet:</strong> Fjern en forkert eller uaktuel opgave.</li>
+            </ol>
+            <p>Kontrollér oplysningerne, før du bekræfter ændringer. Sletning kræver bekræftelse.</p>
+          </details>
+          <details className="help-section" open>
+            <summary>Tal kort og tydeligt</summary>
+            <p>Ved nye opgaver er det en hjælp at nævne <strong>hvem</strong> (hvis det ikke er dig),
+              <strong> hvad der skal gøres</strong>, <strong>hvornår</strong>, og eventuelt
+              <strong> en påmindelse</strong>. Brug gerne et udsagnsord.</p>
+            <div className="help-examples">
+              <strong>Korte eksempler</strong>
+              <ul>
+                <li>„Jeg skal i banken i morgen kl. 12. Mind mig om det 2 timer før.”</li>
+                <li>„Mor skal ringe til håndværkeren på fredag. Mind hende om det dagen før.”</li>
+                <li>„Bence skal til kontrol på tirsdag kl. 10.”</li>
+              </ul>
+            </div>
+            <p>Du behøver ikke sige dit eget navn ved dine egne opgaver.
+              „I morgen kl. 12 banken” kan være uklart; sig hellere, hvad du vil gøre.
+              Du kan stadig tale i hele, naturlige sætninger.</p>
+            <p>Korte beskeder kan mindske misforståelser, men de garanterer ikke hurtigere svar.</p>
+          </details>
+          <details className="help-section">
             <summary>Hvad er AI-familieassistenten?</summary>
             <p>Appen samler familiens opgaver, aftaler og frister. Du kan oprette opgaver,
               få påmindelser, modtage et morgenoverblik og finde tidligere opgaver.</p>
@@ -33,7 +63,7 @@ export default function DanishHelp({ onBack }: Props) {
             </div>
           </details>
           <details className="help-section">
-            <summary>Opret en opgave eller aftale</summary>
+            <summary>1. Opret en opgave eller aftale</summary>
             <p>Fortæl, hvad der skal gøres, hvem det drejer sig om, og hvornår.
               Du bliver bedt om at bekræfte, før en opgave gemmes.</p>
             <div className="help-examples">
@@ -54,23 +84,42 @@ export default function DanishHelp({ onBack }: Props) {
             </div>
           </details>
           <details className="help-section">
-            <summary>Søg og find opgaver</summary>
+            <summary>2. Søg og find opgaver</summary>
             <p>Du kan søge efter åbne og afsluttede opgaver og filtrere efter
               familiemedlem, ansvarlig person eller tidspunkt.</p>
             <div className="help-examples">
               <strong>Eksempel på dansk besked</strong>
-              <ul><li>„Hvilke åbne opgaver har jeg?”</li></ul>
+              <ul>
+                <li>„Hvilke åbne opgaver har jeg?”</li>
+                <li>„Hvilke forfaldne opgaver har jeg?”</li>
+                <li>„Hvilke opgaver har jeg i denne uge?”</li>
+              </ul>
             </div>
           </details>
           <details className="help-section">
-            <summary>Rediger opgaver</summary>
+            <summary>3. Rediger opgaver</summary>
             <p>Du kan ændre en opgaves dato, tidspunkt og påmindelse.
               Hvis der er flere relevante opgaver, vælger du først den rigtige.</p>
           </details>
           <details className="help-section">
-            <summary>Afslut eller slet en opgave</summary>
-            <p>Appen finder den ønskede opgave og beder om bekræftelse ved
-              sletning eller usikre ændringer.</p>
+            <summary>4. Markér som udført</summary>
+            <p>Når en opgave er klaret, kan du markere den som udført.
+              Hvis flere opgaver passer, skal du først vælge den rigtige.
+              Bekræft afslutningen, før den gemmes.</p>
+            <div className="help-examples">
+              <strong>Eksempel</strong>
+              <ul><li>„Jeg har ringet til revisoren.”</li></ul>
+            </div>
+          </details>
+          <details className="help-section">
+            <summary>5. Slet en opgave</summary>
+            <p>Slet en forkert eller uaktuel opgave. Hvis opgaven allerede
+              er klaret, bør du i stedet markere den som udført, så du kan finde den senere.
+              Du skal altid bekræfte sletning.</p>
+            <div className="help-examples">
+              <strong>Eksempel</strong>
+              <ul><li>„Slet frisørtiden på fredag.”</li></ul>
+            </div>
           </details>
           <details className="help-section">
             <summary>Familiebrugere og familiemedlemmer</summary>
