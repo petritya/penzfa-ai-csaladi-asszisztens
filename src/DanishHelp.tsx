@@ -112,8 +112,20 @@ export default function DanishHelp({ onBack }: Props) {
 
           <details className="help-section">
             <summary>3. Rediger opgaver</summary>
-            <p>Du kan ændre en opgaves dato, tidspunkt og påmindelse.
-              Hvis der er flere relevante opgaver, vælger du først den rigtige.</p>
+            <p>Du kan nemmest ændre en opgaves dato, tidspunkt eller påmindelse direkte fra søgeresultaterne.
+              På den måde vælger du den rigtige opgave først.</p>
+            <ol>
+              <li>Søg efter opgaven, for eksempel: „Hvilke åbne opgaver har jeg?”</li>
+              <li>Find den opgave, du vil ændre, i søgeresultaterne.</li>
+              <li>Vælg <strong>„Rediger dato/tidspunkt”</strong> eller
+                <strong> „Rediger påmindelse”</strong> under opgaven.
+                Hvis opgaven ikke har en påmindelse, vælg <strong>„Indstil påmindelse”</strong>.</li>
+              <li>Skriv eller indtal kun det nye tidspunkt, for eksempel
+                „på fredag kl. 10” eller „2 timer før”, og tryk på <strong>Send</strong>.</li>
+              <li>Kontrollér ændringen, og bekræft med <strong>„Ja, rediger”</strong>.</li>
+            </ol>
+            <p>Du kan også bruge en hel sætning, for eksempel:
+              „Flyt tandlægen til fredag”. Hvis flere opgaver passer, kan appen bede dig præcisere.</p>
           </details>
 
           <details className="help-section">
