@@ -2395,6 +2395,47 @@ export default function App() {
 
             <div className="help-sections">
               <details className="help-section" open>
+                <summary>Az 5 alapművelet</summary>
+                <p>Írhatsz vagy diktálhatsz. A Pénzfában ezeket a műveleteket végezheted el:</p>
+                <ol>
+                  <li><strong>Rögzítés:</strong> új feladat vagy esemény felvétele.</li>
+                  <li><strong>Keresés:</strong> saját és családi ügyek lekérdezése.</li>
+                  <li><strong>Módosítás:</strong> időpont vagy emlékeztető megváltoztatása.</li>
+                  <li><strong>Készre jelölés:</strong> az elintézett ügy lezárása.</li>
+                  <li><strong>Törlés:</strong> téves vagy már nem aktuális ügy eltávolítása.</li>
+                </ol>
+                <p>Rögzítés, módosítás és lezárás előtt ellenőrizd a kiválasztott ügyet. A törlést külön meg kell erősítened.</p>
+              </details>
+
+              <details className="help-section" open>
+                <summary>Hogyan diktálj röviden és egyértelműen?</summary>
+                <p>
+                  Egyszerű, rövid mondatokat használj. Új feladatnál lehetőleg mondd el:
+                  <strong> ki</strong> intézi (ha nem te), <strong>mit csinál</strong>,
+                  <strong> mikor</strong>, és <strong>mikor kérsz emlékeztetőt</strong>.
+                  A cselekvést igével is nevezd meg.
+                </p>
+                <div className="help-examples">
+                  <strong>Jól használható rövid minták</strong>
+                  <ul>
+                    <li>„Holnap 12-kor bankba megyek, szólj 2 órával előtte.”</li>
+                    <li>„Anya pénteken felhívja a szerelőt, emlékeztesd előző nap.”</li>
+                    <li>„Bence kedden 10-kor kontrollra megy.”</li>
+                  </ul>
+                </div>
+                <p>
+                  Ha a saját feladatodról beszélsz, nem kell mindig kimondanod a neved.
+                  A „holnap 12 óra bank” túl bizonytalan lehet; inkább mondd:
+                  „holnap 12-kor bankba megyek”.
+                  Hosszabb, természetes mondatot is használhatsz.
+                </p>
+                <p>
+                  A rövid megfogalmazás segíthet elkerülni a félreértéseket,
+                  de önmagában nem garantál gyorsabb feldolgozást.
+                </p>
+              </details>
+
+              <details className="help-section">
                 <summary>Mi az AI családi asszisztens?</summary>
                 <p>
                   Az AI családi asszisztens abban segít, hogy ne kelljen fejben tartanod
@@ -2425,7 +2466,7 @@ export default function App() {
               </details>
 
               <details className="help-section">
-                <summary>Feladat vagy esemény rögzítése</summary>
+                <summary>1. Rögzítés – feladat vagy esemény</summary>
                 <p>
                   Mondd el, mi a teendő, kire vonatkozik és mikorra kell.
                   A rendszer rögzítés előtt visszakérdez és megerősítést kér.
@@ -2457,7 +2498,7 @@ export default function App() {
               </details>
 
               <details className="help-section">
-                <summary>Keresés és lekérdezés</summary>
+                <summary>2. Keresés és lekérdezés</summary>
                 <p>
                   Kérdezhetsz a saját vagy a család nyitott és korábbi feladatairól.
                   Családtag, felelős és időszak szerint is szűrhetsz.
@@ -2466,6 +2507,8 @@ export default function App() {
                   <strong>Példák</strong>
                   <ul>
                     <li>„Mik a nyitott feladataim?”</li>
+                    <li>„Milyen lejárt feladataim vannak?”</li>
+                    <li>„Milyen feladataim vannak a héten?”</li>
                     <li>„Milyen feladataim vannak Bencével ezen a héten?”</li>
                     <li>„Melyik feladathoz nincs emlékeztető?”</li>
                   </ul>
@@ -2473,7 +2516,7 @@ export default function App() {
               </details>
 
               <details className="help-section">
-                <summary>Módosítás</summary>
+                <summary>3. Módosítás</summary>
                 <p>
                   Meglévő feladat dátuma, időpontja és emlékeztetője módosítható.
                   Ha több találat van, előbb válaszd ki a megfelelő feladatot.
@@ -2488,15 +2531,32 @@ export default function App() {
               </details>
 
               <details className="help-section">
-                <summary>Készre jelölés és törlés</summary>
+                <summary>4. Készre jelölés</summary>
                 <p>
-                  Készre jelölésnél és törlésnél a rendszer azonosítja a feladatot,
-                  és bizonytalan vagy végleges művelet előtt megerősítést kér.
+                  Ha egy ügy megtörtént vagy elkészült, jelöld késznek.
+                  A rendszer azonosítja a nyitott ügyet; ha több lehetséges találat van,
+                  kiválaszthatod a megfelelőt. A lezárást jóvá kell hagynod.
                 </p>
                 <div className="help-examples">
                   <strong>Példák</strong>
                   <ul>
-                    <li>„A könyvelőt elintéztem.”</li>
+                    <li>„A könyvelőt felhívtam.”</li>
+                    <li>„A banki ügyet elintéztem.”</li>
+                  </ul>
+                </div>
+              </details>
+
+              <details className="help-section">
+                <summary>5. Törlés</summary>
+                <p>
+                  Tévesen rögzített vagy már nem aktuális ügyet törölhetsz.
+                  A törlés nem ugyanaz, mint a készre jelölés: az elintézett ügyet inkább
+                  jelöld késznek, hogy később visszakereshető maradjon.
+                  Törlés előtt azonosítás és megerősítés szükséges.
+                </p>
+                <div className="help-examples">
+                  <strong>Példa</strong>
+                  <ul>
                     <li>„Töröld a pénteki fodrászt.”</li>
                   </ul>
                 </div>
