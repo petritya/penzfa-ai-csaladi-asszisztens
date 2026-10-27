@@ -2539,16 +2539,27 @@ export default function App() {
               <details className="help-section">
                 <summary>3. Módosítás</summary>
                 <p>
-                  Meglévő feladat dátuma, időpontja és emlékeztetője módosítható.
-                  Ha több találat van, előbb válaszd ki a megfelelő feladatot.
+                  A meglévő ügy dátumát, időpontját vagy emlékeztetőjét a találatoknál
+                  tudod a legegyszerűbben módosítani. Így biztosan a megfelelő ügyet választod ki.
                 </p>
-                <div className="help-examples">
-                  <strong>Példák</strong>
-                  <ul>
-                    <li>„A fogorvost tedd át péntekre.”</li>
-                    <li>„Ennek az emlékeztetőjét tedd holnap 8-ra.”</li>
-                  </ul>
-                </div>
+                <ol>
+                  <li>Keress rá az ügyre, például: „Mik a nyitott feladataim?” vagy „Mikor megyek fogorvoshoz?”</li>
+                  <li>A találatok között keresd meg a módosítandó ügyet.</li>
+                  <li>
+                    Kattints az ügy alatt a <strong>„Dátum/idő módosítása”</strong> vagy az
+                    <strong> „Emlékeztető módosítása”</strong> gombra. Ha még nincs emlékeztető,
+                    az <strong>„Emlékeztető beállítása”</strong> gomb jelenik meg.
+                  </li>
+                  <li>
+                    Ezután már csak az új időpontot mondd vagy írd be, például:
+                    „pénteken 10-kor” vagy „2 órával előtte”, majd nyomd meg a <strong>Küldés</strong> gombot.
+                  </li>
+                  <li>Ellenőrizd a felajánlott módosítást, és hagyd jóvá az <strong>„Igen, módosítsd”</strong> gombbal.</li>
+                </ol>
+                <p>
+                  Természetes mondattal is kérhetsz módosítást, például:
+                  „A fogorvost tedd át péntekre.” Ha több ügy is megfelel, a rendszer pontosítást kérhet.
+                </p>
               </details>
 
               <details className="help-section">
