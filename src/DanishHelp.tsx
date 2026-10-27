@@ -17,17 +17,30 @@ export default function DanishHelp({ onBack }: Props) {
         </header>
         <div className="help-sections">
           <details className="help-section" open>
-            <summary>De 5 vigtigste funktioner</summary>
-            <p>Du kan skrive eller indtale dine beskeder:</p>
-            <ol>
-              <li><strong>Opret:</strong> Tilføj en opgave eller aftale.</li>
-              <li><strong>Søg:</strong> Find dine og familiens opgaver.</li>
-              <li><strong>Rediger:</strong> Ændr tidspunkt eller påmindelse.</li>
-              <li><strong>Markér som udført:</strong> Afslut en opgave, der er klaret.</li>
-              <li><strong>Slet:</strong> Fjern en forkert eller uaktuel opgave.</li>
-            </ol>
-            <p>Kontrollér oplysningerne, før du bekræfter ændringer. Sletning kræver bekræftelse.</p>
+            <summary>Hvad er AI-familieassistenten?</summary>
+            <p>Appen samler familiens opgaver, aftaler og frister. Du kan oprette opgaver,
+              få påmindelser, modtage et morgenoverblik og finde tidligere opgaver.</p>
+            <div className="help-examples">
+              <strong>Begreber</strong>
+              <ul>
+                <li><strong>Familiebruger:</strong> Har sin egen konto, kan administrere opgaver
+                  og modtage notifikationer.</li>
+                <li><strong>Familiemedlem uden egen konto:</strong> Har ingen selvstændig adgang.
+                  Familiebrugerne administrerer vedkommendes opgaver.</li>
+                <li>En familie kan have op til to familiebrugere og flere familiemedlemmer uden egen konto.</li>
+              </ul>
+            </div>
+                      <p>Under Familiemedlemmer kan du tilføje personer uden egen konto.
+              Du kan invitere en anden familiebruger via e-mail.</p>
           </details>
+
+          <details className="help-section">
+            <summary>Notifikationer, morgenoverblik og installation</summary>
+            <p>Notifikationer aktiveres på hver enhed under Konto og notifikationer.
+              Tidspunktet for morgenoverblikket ændres under Indstillinger.</p>
+            <p>Under Installer på telefonen kan du føje appen til startskærmen.</p>
+          </details>
+
           <details className="help-section" open>
             <summary>Tal kort og tydeligt</summary>
             <p>Ved nye opgaver er det en hjælp at nævne <strong>hvem</strong> (hvis det ikke er dig),
@@ -46,21 +59,20 @@ export default function DanishHelp({ onBack }: Props) {
               Du kan stadig tale i hele, naturlige sætninger.</p>
             <p>Korte beskeder kan mindske misforståelser, men de garanterer ikke hurtigere svar.</p>
           </details>
-          <details className="help-section">
-            <summary>Hvad er AI-familieassistenten?</summary>
-            <p>Appen samler familiens opgaver, aftaler og frister. Du kan oprette opgaver,
-              få påmindelser, modtage et morgenoverblik og finde tidligere opgaver.</p>
-            <div className="help-examples">
-              <strong>Begreber</strong>
-              <ul>
-                <li><strong>Familiebruger:</strong> Har sin egen konto, kan administrere opgaver
-                  og modtage notifikationer.</li>
-                <li><strong>Familiemedlem uden egen konto:</strong> Har ingen selvstændig adgang.
-                  Familiebrugerne administrerer vedkommendes opgaver.</li>
-                <li>En familie kan have op til to familiebrugere og flere familiemedlemmer uden egen konto.</li>
-              </ul>
-            </div>
+
+          <details className="help-section" open>
+            <summary>De 5 vigtigste funktioner</summary>
+            <p>Du kan skrive eller indtale dine beskeder:</p>
+            <ol>
+              <li><strong>Opret:</strong> Tilføj en opgave eller aftale.</li>
+              <li><strong>Søg:</strong> Find dine og familiens opgaver.</li>
+              <li><strong>Rediger:</strong> Ændr tidspunkt eller påmindelse.</li>
+              <li><strong>Markér som udført:</strong> Afslut en opgave, der er klaret.</li>
+              <li><strong>Slet:</strong> Fjern en forkert eller uaktuel opgave.</li>
+            </ol>
+            <p>Kontrollér oplysningerne, før du bekræfter ændringer. Sletning kræver bekræftelse.</p>
           </details>
+
           <details className="help-section">
             <summary>1. Opret en opgave eller aftale</summary>
             <p>Fortæl, hvad der skal gøres, hvem det drejer sig om, og hvornår.
@@ -73,6 +85,7 @@ export default function DanishHelp({ onBack }: Props) {
               </ul>
             </div>
           </details>
+
           <details className="help-section">
             <summary>Påmindelser</summary>
             <p>En påmindelse kan indstilles, når opgaven oprettes, eller senere.
@@ -82,6 +95,7 @@ export default function DanishHelp({ onBack }: Props) {
               <ul><li>„Mind mig om det en time før.”</li></ul>
             </div>
           </details>
+
           <details className="help-section">
             <summary>2. Søg og find opgaver</summary>
             <p>Du kan søge efter åbne og afsluttede opgaver og filtrere efter
@@ -95,11 +109,13 @@ export default function DanishHelp({ onBack }: Props) {
               </ul>
             </div>
           </details>
+
           <details className="help-section">
             <summary>3. Rediger opgaver</summary>
             <p>Du kan ændre en opgaves dato, tidspunkt og påmindelse.
               Hvis der er flere relevante opgaver, vælger du først den rigtige.</p>
           </details>
+
           <details className="help-section">
             <summary>4. Markér som udført</summary>
             <p>Når en opgave er klaret, kan du markere den som udført.
@@ -110,6 +126,7 @@ export default function DanishHelp({ onBack }: Props) {
               <ul><li>„Jeg har ringet til revisoren.”</li></ul>
             </div>
           </details>
+
           <details className="help-section">
             <summary>5. Slet en opgave</summary>
             <p>Slet en forkert eller uaktuel opgave. Hvis opgaven allerede
@@ -119,17 +136,6 @@ export default function DanishHelp({ onBack }: Props) {
               <strong>Eksempel</strong>
               <ul><li>„Slet frisørtiden på fredag.”</li></ul>
             </div>
-          </details>
-          <details className="help-section">
-            <summary>Familiebrugere og familiemedlemmer</summary>
-            <p>Under Familiemedlemmer kan du tilføje personer uden egen konto.
-              Du kan invitere en anden familiebruger via e-mail.</p>
-          </details>
-          <details className="help-section">
-            <summary>Notifikationer, morgenoverblik og installation</summary>
-            <p>Notifikationer aktiveres på hver enhed under Konto og notifikationer.
-              Tidspunktet for morgenoverblikket ændres under Indstillinger.</p>
-            <p>Under Installer på telefonen kan du føje appen til startskærmen.</p>
           </details>
         </div>
       </section>
