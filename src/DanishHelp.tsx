@@ -1,7 +1,6 @@
 type Props = { onBack: () => void }
 
-// A dán súgó kizárólag a már elérhető MVP funkciókat mutatja be.
-// A dán AI-bevitel külön fejlesztési lépés, ezért itt ezt jelezzük.
+// A dán Súgó az aktuálisan elérhető MVP-műveleteket mutatja be.
 export default function DanishHelp({ onBack }: Props) {
   return (
     <main className="shell">
