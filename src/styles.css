@@ -521,6 +521,33 @@ h2 {
   line-height: 1.45;
 }
 
+/* Az ügyhöz tartozó megjegyzés információ, nem kattintható művelet. */
+.query-note {
+  margin: 12px 0 16px;
+  padding: 3px 0 3px 12px;
+  border-left: 3px solid #0f766e;
+  background: transparent;
+  color: #475569;
+  text-align: left;
+}
+
+.query-note-label {
+  display: block;
+  margin-bottom: 4px;
+  color: #0f766e;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.query-note-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
 .query-action-button {
   margin-top: 9px;
   border: 0;
@@ -1085,6 +1112,15 @@ h2 {
 :root[data-theme='dark'] .query-item,
 :root[data-theme='dark'] .complete-candidate-button {
   background: #111827;
+}
+
+:root[data-theme='dark'] .query-note {
+  border-left-color: #5eead4;
+  color: #cbd5e1;
+}
+
+:root[data-theme='dark'] .query-note-label {
+  color: #5eead4;
 }
 
 :root[data-theme='dark'] .query-action-button {
