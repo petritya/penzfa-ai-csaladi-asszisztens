@@ -52,7 +52,7 @@ export default function DanishHelp({ onBack }: Props) {
           </details>
 
           <details className="help-section">
-            <summary>Påmindelser og morgenoverblik</summary>
+            <summary>Påmindelser, morgenoverblik og kalender</summary>
             <p>
               Du kan tilføje en påmindelse ved oprettelse eller senere:
               „Mind mig om det en time før.”
@@ -60,6 +60,12 @@ export default function DanishHelp({ onBack }: Props) {
             <p>
               Slå morgenoverblikket til, og vælg tidspunkt under Indstillinger.
               Aktivér notifikationer særskilt på hver enhed under Konto og notifikationer.
+            </p>
+            <p>
+              Forbind Google Kalender under Indstillinger. Opgaver med dato, men uden
+              tidspunkt kan sendes manuelt fra søgeresultaterne. En tidligere sendt
+              opgave kan kun sendes igen efter bekræftelse, og kun hvis den ikke
+              længere findes i Google Kalender. Automatisk overførsel er endnu ikke aktiv.
             </p>
           </details>
 
