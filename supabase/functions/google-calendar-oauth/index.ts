@@ -1,0 +1,229 @@
+import { createClient } from 'npm:@supabase/supabase-js@2.117.2'
+
+// A Google callback nyilvános GET végpont. A POST műveletek saját JWT-ellenőrzést végeznek.
+// A felhasználói tokenek soha nem kerülnek a klienshez vagy a naplóba.
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Cache-Control': 'no-store',
+}
+const scope = 'https://www.googleapis.com/auth/calendar.events'
+const callbackPath = '/functions/v1/google-calendar-oauth'
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' },
+  })
+}
+
+function html(message: string, status = 200): Response {
+  const safe = message.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+  return new Response(
+    '<!doctype html><html lang="hu"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
+    '<title>Pénzfa – Google Naptár</title><body style="font-family:system-ui;max-width:34rem;margin:5rem auto;padding:1rem">' +
+    '<h1>Pénzfa – Google Naptár</h1><p>' + safe + '</p><p>Térj vissza a Pénzfa alkalmazáshoz.</p></body></html>',
+    { status, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'" } },
+  )
+}
+
+function randomUrlSafe(bytes = 32): string {
+  const data = crypto.getRandomValues(new Uint8Array(bytes))
+  return btoa(String.fromCharCode(...data)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '')
+}
+
+async function sha256UrlSafe(value: string): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)))
+  return btoa(String.fromCharCode(...digest)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '')
+}
+
+async function secretKey(clientSecret: string): Promise<CryptoKey> {
+  // MVP: a titkos Google OAuth klienskulcsból, alkalmazásspecifikus kontextusban
+  // származtatunk AES kulcsot. Kulcscsere esetén új Google-engedélyezés szükséges.
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(clientSecret), 'HKDF', false, ['deriveKey'])
+  return crypto.subtle.deriveKey({
+    name: 'HKDF', hash: 'SHA-256',
+    salt: new TextEncoder().encode('penzfa-google-calendar-oauth-2026'),
+    info: new TextEncoder().encode('refresh-token-encryption-v1'),
+  }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
+}
+
+async function encryptRefreshToken(token: string, clientSecret: string): Promise<string> {
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const key = await secretKey(clientSecret)
+  const encrypted = new Uint8Array(await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv }, key, new TextEncoder().encode(token),
+  ))
+  return btoa(String.fromCharCode(...iv, ...encrypted))
+}
+
+async function decryptRefreshToken(value: string, clientSecret: string): Promise<string> {
+  const all = Uint8Array.from(atob(value), (character) => character.charCodeAt(0))
+  const key = await secretKey(clientSecret)
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: all.slice(0, 12) }, key, all.slice(12))
+  return new TextDecoder().decode(plain)
+}
+
+function safeOrigin(raw: string | null): string | null {
+  if (!raw) return null
+  try {
+    const url = new URL(raw)
+    if (url.protocol !== 'https:' || url.username || url.password || url.pathname !== '/' || url.search || url.hash) return null
+    return url.origin
+  } catch { return null }
+}
+
+function redirectToApp(origin: string, state: 'connected' | 'error'): Response {
+  const url = new URL(origin)
+  url.searchParams.set('google_calendar', state)
+  return new Response(null, {
+    status: 303,
+    headers: { Location: url.toString(), 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' },
+  })
+}
+
+Deno.serve(async (request: Request) => {
+  if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  const clientId = Deno.env.get('GOOGLE_CALENDAR_CLIENT_ID')
+  const clientSecret = Deno.env.get('GOOGLE_CALENDAR_CLIENT_SECRET')
+  if (!supabaseUrl || !anonKey || !serviceKey) return json({ error: 'Hiányzó szerverkonfiguráció.' }, 500)
+
+  const db = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
+  const redirectUri = supabaseUrl.replace(/\/$/, '') + callbackPath
+
+  try {
+    if (request.method === 'GET') {
+      const params = new URL(request.url).searchParams
+      const state = params.get('state') ?? ''
+      if (state.length < 32 || state.length > 200) return html('Hiányzó vagy érvénytelen engedélykérés.', 400)
+
+      // Atomikus egyszer használatos state-felhasználás: előbb törlés, csak azután tokenváltás.
+      const stateHash = await sha256UrlSafe(state)
+      const { data: pending, error: consumeError } = await db.from('google_calendar_oauth_states')
+        .delete().eq('state_hash', stateHash)
+        .select('user_id, code_verifier, return_origin, expires_at').maybeSingle()
+      if (consumeError || !pending || new Date(pending.expires_at).getTime() <= Date.now()) {
+        return html('Az engedélykérés lejárt vagy már fel lett használva. Indítsd újra a Pénzfából.', 400)
+      }
+
+      const googleError = params.get('error')
+      const code = params.get('code')
+      if (googleError || !code) return redirectToApp(pending.return_origin, 'error')
+      if (!clientId || !clientSecret) return html('A Google Naptár szerveroldali azonosítói hiányoznak.', 500)
+
+      const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          code,
+          code_verifier: pending.code_verifier,
+          grant_type: 'authorization_code',
+          redirect_uri: redirectUri,
+        }),
+      })
+      if (!tokenResponse.ok) return redirectToApp(pending.return_origin, 'error')
+      const tokens = await tokenResponse.json() as { refresh_token?: string; scope?: string }
+      if (!tokens.scope?.split(' ').includes(scope)) return redirectToApp(pending.return_origin, 'error')
+
+      let refreshToken = tokens.refresh_token
+      if (!refreshToken) {
+        // A Google nem minden újraengedélyezéskor ad frissítési tokent.
+        const { data: existing } = await db.from('google_calendar_connections')
+          .select('refresh_token_encrypted').eq('user_id', pending.user_id).maybeSingle()
+        if (existing?.refresh_token_encrypted) {
+          refreshToken = await decryptRefreshToken(existing.refresh_token_encrypted, clientSecret)
+        }
+      }
+      if (!refreshToken) return redirectToApp(pending.return_origin, 'error')
+
+      const encrypted = await encryptRefreshToken(refreshToken, clientSecret)
+      const { error: saveError } = await db.from('google_calendar_connections').upsert({
+        user_id: pending.user_id,
+        refresh_token_encrypted: encrypted,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' })
+      if (saveError) return redirectToApp(pending.return_origin, 'error')
+      return redirectToApp(pending.return_origin, 'connected')
+    }
+
+    if (request.method !== 'POST') return json({ error: 'Nem támogatott kérés.' }, 405)
+    const authorization = request.headers.get('Authorization')
+    if (!authorization?.startsWith('Bearer ')) return json({ error: 'Bejelentkezés szükséges.' }, 401)
+
+    const authClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authorization } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    })
+    const { data: authData, error: authError } = await authClient.auth.getUser()
+    if (authError || !authData.user) return json({ error: 'Érvénytelen felhasználói munkamenet.' }, 401)
+    const userId = authData.user.id
+
+    const body = await request.json().catch(() => ({})) as { action?: string; confirmed?: boolean }
+    if (body.action === 'status') {
+      const { data, error } = await db.from('google_calendar_connections')
+        .select('connected_at').eq('user_id', userId).maybeSingle()
+      if (error) throw error
+      return json({ connected: Boolean(data), connected_at: data?.connected_at ?? null })
+    }
+
+    if (body.action === 'start') {
+      if (!clientId || !clientSecret) return json({ error: 'A Google OAuth kulcsok nincsenek beállítva a szerveren.' }, 503)
+      const origin = safeOrigin(request.headers.get('Origin'))
+      if (!origin) return json({ error: 'Az alkalmazás eredeti webcíme nem ellenőrizhető.' }, 400)
+      const nonce = randomUrlSafe()
+      const verifier = randomUrlSafe(48)
+      const hash = await sha256UrlSafe(nonce)
+      const challenge = await sha256UrlSafe(verifier)
+      await db.from('google_calendar_oauth_states').delete().lt('expires_at', new Date().toISOString())
+      const { error: stateError } = await db.from('google_calendar_oauth_states').insert({
+        state_hash: hash,
+        user_id: userId,
+        code_verifier: verifier,
+        return_origin: origin,
+        expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+      })
+      if (stateError) throw stateError
+      const googleUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth')
+      googleUrl.searchParams.set('client_id', clientId)
+      googleUrl.searchParams.set('redirect_uri', redirectUri)
+      googleUrl.searchParams.set('response_type', 'code')
+      googleUrl.searchParams.set('scope', scope)
+      googleUrl.searchParams.set('access_type', 'offline')
+      googleUrl.searchParams.set('prompt', 'consent')
+      googleUrl.searchParams.set('state', nonce)
+      googleUrl.searchParams.set('code_challenge', challenge)
+      googleUrl.searchParams.set('code_challenge_method', 'S256')
+      return json({ authorization_url: googleUrl.toString() })
+    }
+
+    if (body.action === 'disconnect') {
+      if (body.confirmed !== true) return json({ error: 'A kapcsolat bontását külön meg kell erősíteni.' }, 400)
+      const { data: existing } = await db.from('google_calendar_connections')
+        .select('refresh_token_encrypted').eq('user_id', userId).maybeSingle()
+      if (existing?.refresh_token_encrypted && clientSecret) {
+        try {
+          const token = await decryptRefreshToken(existing.refresh_token_encrypted, clientSecret)
+          await fetch('https://oauth2.googleapis.com/revoke', {
+            method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ token }),
+          })
+        } catch { /* Ha a token lejárt, a helyi kapcsolatot akkor is bontjuk. */ }
+      }
+      const { error } = await db.from('google_calendar_connections').delete().eq('user_id', userId)
+      if (error) throw error
+      return json({ connected: false })
+    }
+
+    return json({ error: 'Ismeretlen művelet.' }, 400)
+  } catch {
+    // Nem írunk naplóba tokent vagy OAuth-kódot.
+    return json({ error: 'A Google Naptár kapcsolat feldolgozása nem sikerült.' }, 500)
+  }
+})
