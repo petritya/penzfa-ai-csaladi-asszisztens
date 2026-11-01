@@ -223,6 +223,24 @@ Deno.serve(async (request: Request) => {
         return json({ error: 'Ebben az első tesztben csak nyitott, dátumos, időpont nélküli ügy küldhető át egész napos eseményként.' }, 400)
       }
 
+      // Elsődlegesen a Pénzfa tartós küldési naplója dönt.
+      // A Google-ből való későbbi törlés SOHA nem oldja fel ezt a korlátot.
+      const { data: exportLog, error: exportLogError } = await db.from('google_calendar_exports')
+        .select('status').eq('user_id', userId).eq('item_id', item.id).maybeSingle()
+      if (exportLogError) throw exportLogError
+      if (exportLog?.status === 'sent') {
+        return json({
+          status: 'already_exists',
+          message: 'Ezt az ügyet már korábban elküldtük a Google Naptárba. Nem küldjük újra, akkor sem, ha onnan törölted.',
+        })
+      }
+      if (exportLog?.status === 'sending') {
+        return json({
+          status: 'delivery_uncertain',
+          message: 'Ennél az ügynél már megkezdődött egy küldés, amelynek eredménye nem biztos. Az ismételt küldést megakadályoztuk.',
+        })
+      }
+
       const { data: connection, error: connectionError } = await db.from('google_calendar_connections')
         .select('refresh_token_encrypted').eq('user_id', userId).maybeSingle()
       if (connectionError || !connection) {
@@ -265,6 +283,22 @@ Deno.serve(async (request: Request) => {
       if (!refreshed.access_token) return json({ error: 'A Google Naptár hozzáférése nem frissíthető.' }, 502)
 
       const eventId = await deterministicCalendarId(userId, item.id)
+      // Atomi foglalás a hálózati küldés ELŐTT: párhuzamos kérésekből is csak egy indulhat.
+      // Megszakadt/kétes válasznál a 'sending' sor megmarad, így nem küldjük újra vakon.
+      const { error: reserveError } = await db.from('google_calendar_exports').insert({
+        user_id: userId,
+        item_id: item.id,
+        event_id: eventId,
+        status: 'sending',
+      })
+      if (reserveError) {
+        if (reserveError.code === '23505') {
+          // Két egyidejű kattintásból a másodikat a primer kulcs megállította.
+          return json({ status: 'already_exists', message: 'Az ügy kiküldése már megtörtént vagy folyamatban van. Nem küldjük ki még egyszer.' })
+        }
+        throw reserveError
+      }
+
       const url = 'https://www.googleapis.com/calendar/v3/calendars/primary/events'
       const eventBody = {
         id: eventId,
@@ -285,20 +319,36 @@ Deno.serve(async (request: Request) => {
         },
         body: JSON.stringify(eventBody),
       })
-      if (inserted.status === 409) {
-        // Ismételt kattintás, hálózati újrapróbálkozás vagy korábbi siker esetén:
-        // nincs új esemény és nem írjuk felül a Google Naptárban szerkesztett adatokat.
-        return json({ status: 'already_exists', message: 'Ez az ügy már szerepel ebben a Google Naptárban.' })
-      }
-      if (!inserted.ok) {
+      if (!inserted.ok && inserted.status !== 409) {
+        // Biztosan elutasított klienshibáknál a küldés nem történt meg,
+        // így a felhasználó később megpróbálhatja újra. Szerverhiba vagy
+        // elveszett válasz esetén a foglalást NEM oldjuk fel.
+        if ([400, 401, 403, 404, 429].includes(inserted.status)) {
+          await db.from('google_calendar_exports')
+            .delete().eq('user_id', userId).eq('item_id', item.id).eq('status', 'sending')
+        }
         return json({ error: 'A Google Naptár nem fogadta el az eseményt. Ellenőrizd a naptárjogosultságot.' }, 502)
       }
-      const created = await inserted.json() as { id?: string; htmlLink?: string }
-      if (created.id !== eventId) return json({ error: 'Az esemény létrejött, de a válasz ellenőrzése nem sikerült.' }, 502)
+
+      let created: { id?: string; htmlLink?: string } | null = null
+      if (inserted.status !== 409) {
+        created = await inserted.json() as { id?: string; htmlLink?: string }
+        if (created.id !== eventId) {
+          return json({ error: 'A Google Naptár válasza bizonytalan, ezért nem próbálkozunk automatikusan újra.' }, 502)
+        }
+      }
+      const { error: markError } = await db.from('google_calendar_exports')
+        .update({ status: 'sent', exported_at: new Date().toISOString() })
+        .eq('user_id', userId).eq('item_id', item.id).eq('status', 'sending')
+      if (markError) throw markError
+
+      if (inserted.status === 409) {
+        return json({ status: 'already_exists', message: 'Az esemény már szerepel a Google Naptárban, a kiküldést nyilvántartásba vettük.' })
+      }
       return json({
         status: 'exported',
         message: 'Az esemény bekerült a Google Naptárba.',
-        calendar_url: created.htmlLink?.startsWith('https://calendar.google.com/') ? created.htmlLink : null,
+        calendar_url: created?.htmlLink?.startsWith('https://calendar.google.com/') ? created.htmlLink : null,
       })
     }
 
