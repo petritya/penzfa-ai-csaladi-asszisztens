@@ -66,7 +66,7 @@ export default function DanishHelp({ onBack }: Props) {
             <ol>
               <li><strong>Opret:</strong> Tilføj en opgave eller aftale.</li>
               <li><strong>Søg:</strong> Find dine og familiens opgaver.</li>
-              <li><strong>Rediger:</strong> Ændr tidspunkt eller påmindelse.</li>
+              <li><strong>Rediger:</strong> Ændr tidspunkt, påmindelse eller tilføj en note.</li>
               <li><strong>Markér som udført:</strong> Afslut en opgave, der er klaret.</li>
               <li><strong>Slet:</strong> Fjern en forkert eller uaktuel opgave.</li>
             </ol>
@@ -82,6 +82,7 @@ export default function DanishHelp({ onBack }: Props) {
               <ul>
                 <li>„Jeg skal ringe til revisoren i morgen kl. 10.”</li>
                 <li>„Bence skal til kontrol næste tirsdag kl. 10.”</li>
+                <li>„Fest på lørdag, note: medbring kage og sodavand.”</li>
               </ul>
             </div>
           </details>
@@ -112,20 +113,20 @@ export default function DanishHelp({ onBack }: Props) {
 
           <details className="help-section">
             <summary>3. Rediger opgaver</summary>
-            <p>Du kan nemmest ændre en opgaves dato, tidspunkt eller påmindelse direkte fra søgeresultaterne.
+            <p>Du kan nemmest ændre en opgaves dato, tidspunkt eller påmindelse eller tilføje en note direkte fra søgeresultaterne.
               På den måde vælger du den rigtige opgave først.</p>
             <ol>
               <li>Søg efter opgaven, for eksempel: „Hvilke åbne opgaver har jeg?”</li>
               <li>Find den opgave, du vil ændre, i søgeresultaterne.</li>
               <li>Vælg <strong>„Rediger dato/tidspunkt”</strong> eller
-                <strong> „Rediger påmindelse”</strong> under opgaven.
+                <strong> „Rediger påmindelse”</strong> eller <strong>„Tilføj note”</strong> under opgaven.
                 Hvis opgaven ikke har en påmindelse, vælg <strong>„Indstil påmindelse”</strong>.</li>
               <li>Skriv eller indtal kun det nye tidspunkt, for eksempel
                 „på fredag kl. 10” eller „2 timer før”, og tryk på <strong>Send</strong>.</li>
               <li>Kontrollér ændringen, og bekræft med <strong>„Ja, rediger”</strong>.</li>
             </ol>
             <p>Du kan også bruge en hel sætning, for eksempel:
-              „Flyt tandlægen til fredag”. Hvis flere opgaver passer, kan appen bede dig præcisere.</p>
+              „Flyt tandlægen til fredag” eller „Tilføj en note til festen: medbring kage”. Hvis flere opgaver passer, kan appen bede dig præcisere.</p>
           </details>
 
           <details className="help-section">
