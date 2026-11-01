@@ -74,9 +74,14 @@ function safeOrigin(raw: string | null): string | null {
   } catch { return null }
 }
 
-function redirectToApp(origin: string, state: 'connected' | 'error'): Response {
+function redirectToApp(origin: string, status: 'connected' | 'error', ticket?: string, oauthState?: string): Response {
   const url = new URL(origin)
-  url.searchParams.set('google_calendar', state)
+  if (ticket && oauthState && status === 'connected') {
+    url.searchParams.set('google_calendar_ticket', ticket)
+    url.searchParams.set('google_calendar_state', oauthState)
+  } else {
+    url.searchParams.set('google_calendar', 'error')
+  }
   return new Response(null, {
     status: 303,
     headers: { Location: url.toString(), 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' },
@@ -144,13 +149,18 @@ Deno.serve(async (request: Request) => {
       if (!refreshToken) return redirectToApp(pending.return_origin, 'error')
 
       const encrypted = await encryptRefreshToken(refreshToken, clientSecret)
-      const { error: saveError } = await db.from('google_calendar_connections').upsert({
+      // A Google callback csak rövid életű, egyszer használható jegyet hoz létre.
+      // A tényleges felhasználói kapcsolat csak az eredeti Pénzfa-munkamenetből jön létre.
+      const ticket = randomUrlSafe()
+      const ticketHash = await sha256UrlSafe(ticket)
+      const { error: ticketError } = await db.from('google_calendar_oauth_completions').insert({
+        ticket_hash: ticketHash,
         user_id: pending.user_id,
         refresh_token_encrypted: encrypted,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id' })
-      if (saveError) return redirectToApp(pending.return_origin, 'error')
-      return redirectToApp(pending.return_origin, 'connected')
+        expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      })
+      if (ticketError) return redirectToApp(pending.return_origin, 'error')
+      return redirectToApp(pending.return_origin, 'connected', ticket, state)
     }
 
     if (request.method !== 'POST') return json({ error: 'Nem támogatott kérés.' }, 405)
@@ -165,12 +175,31 @@ Deno.serve(async (request: Request) => {
     if (authError || !authData.user) return json({ error: 'Érvénytelen felhasználói munkamenet.' }, 401)
     const userId = authData.user.id
 
-    const body = await request.json().catch(() => ({})) as { action?: string; confirmed?: boolean }
+    const body = await request.json().catch(() => ({})) as { action?: string; confirmed?: boolean; ticket?: string }
     if (body.action === 'status') {
       const { data, error } = await db.from('google_calendar_connections')
         .select('connected_at').eq('user_id', userId).maybeSingle()
       if (error) throw error
       return json({ connected: Boolean(data), connected_at: data?.connected_at ?? null })
+    }
+
+    if (body.action === 'complete') {
+      const ticket = String(body.ticket ?? '')
+      if (ticket.length < 32 || ticket.length > 200) return json({ error: 'Érvénytelen összekapcsolási jegy.' }, 400)
+      const ticketHash = await sha256UrlSafe(ticket)
+      const { data: completion, error: consumeError } = await db.from('google_calendar_oauth_completions')
+        .delete().eq('ticket_hash', ticketHash).eq('user_id', userId)
+        .select('refresh_token_encrypted, expires_at').maybeSingle()
+      if (consumeError || !completion || new Date(completion.expires_at).getTime() <= Date.now()) {
+        return json({ error: 'Az összekapcsolás lejárt vagy már fel lett használva.' }, 400)
+      }
+      const { error: saveError } = await db.from('google_calendar_connections').upsert({
+        user_id: userId,
+        refresh_token_encrypted: completion.refresh_token_encrypted,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' })
+      if (saveError) throw saveError
+      return json({ connected: true })
     }
 
     if (body.action === 'start') {
@@ -182,6 +211,7 @@ Deno.serve(async (request: Request) => {
       const hash = await sha256UrlSafe(nonce)
       const challenge = await sha256UrlSafe(verifier)
       await db.from('google_calendar_oauth_states').delete().lt('expires_at', new Date().toISOString())
+      await db.from('google_calendar_oauth_completions').delete().lt('expires_at', new Date().toISOString())
       const { error: stateError } = await db.from('google_calendar_oauth_states').insert({
         state_hash: hash,
         user_id: userId,
@@ -200,7 +230,7 @@ Deno.serve(async (request: Request) => {
       googleUrl.searchParams.set('state', nonce)
       googleUrl.searchParams.set('code_challenge', challenge)
       googleUrl.searchParams.set('code_challenge_method', 'S256')
-      return json({ authorization_url: googleUrl.toString() })
+      return json({ authorization_url: googleUrl.toString(), state: nonce })
     }
 
     if (body.action === 'disconnect') {
