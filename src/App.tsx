@@ -988,7 +988,43 @@ export default function App() {
       return
     }
     let active = true
+
     const checkConnection = async () => {
+      const params = new URL(window.location.href)
+      const ticket = params.searchParams.get('google_calendar_ticket')
+      const returnedState = params.searchParams.get('google_calendar_state')
+      const result = params.searchParams.get('google_calendar')
+
+      if (ticket) {
+        // A Google callback csak akkor zárható le, ha ugyanaz a böngésző
+        // indította az engedélykérést. A Supabase ezen felül a user_id-t is ellenőrzi.
+        const expectedState = window.sessionStorage.getItem('penzfa-calendar-oauth-state')
+        window.sessionStorage.removeItem('penzfa-calendar-oauth-state')
+        params.searchParams.delete('google_calendar_ticket')
+        params.searchParams.delete('google_calendar_state')
+        window.history.replaceState(window.history.state, '', params.pathname + params.search + params.hash)
+
+        if (returnedState && expectedState === returnedState) {
+          const completed = await supabase!.functions.invoke('google-calendar-oauth', {
+            body: { action: 'complete', ticket },
+          })
+          if (!active) return
+          setCalendarNotice(completed.error || completed.data?.error
+            ? (appLocale === 'da-DK' ? 'Google-forbindelsen kunne ikke afsluttes.' : 'Nem sikerült befejezni a Google-összekapcsolást.')
+            : (appLocale === 'da-DK' ? 'Google Kalender er forbundet.' : 'Google Naptár összekapcsolva.'))
+        } else {
+          setCalendarNotice(appLocale === 'da-DK'
+            ? 'Google-autorisationen blev ikke startet i denne browser.'
+            : 'A Google engedélykérést nem ebben a Pénzfa-munkamenetben indítottad.')
+        }
+      } else if (result === 'error') {
+        setCalendarNotice(appLocale === 'da-DK'
+          ? 'Google-autorisation blev afbrudt eller mislykkedes.'
+          : 'A Google engedélykérés megszakadt vagy nem sikerült.')
+        params.searchParams.delete('google_calendar')
+        window.history.replaceState(window.history.state, '', params.pathname + params.search + params.hash)
+      }
+
       const { data, error } = await supabase!.functions.invoke('google-calendar-oauth', {
         body: { action: 'status' },
       })
@@ -1002,15 +1038,6 @@ export default function App() {
         setCalendarError(null)
       }
     }
-    const params = new URL(window.location.href)
-    const result = params.searchParams.get('google_calendar')
-    if (result === 'connected' || result === 'error') {
-      setCalendarNotice(result === 'connected'
-        ? (appLocale === 'da-DK' ? 'Google Kalender er forbundet.' : 'Google Naptár összekapcsolva.')
-        : (appLocale === 'da-DK' ? 'Google-autorisation blev afbrudt eller mislykkedes.' : 'A Google engedélykérés megszakadt vagy nem sikerült.'))
-      params.searchParams.delete('google_calendar')
-      window.history.replaceState(window.history.state, '', params.pathname + params.search + params.hash)
-    }
     void checkConnection()
     return () => { active = false }
   }, [session?.user.id, familyName])
@@ -1023,12 +1050,13 @@ export default function App() {
     const { data, error } = await supabase.functions.invoke('google-calendar-oauth', {
       body: { action: 'start' },
     })
-    if (error || data?.error || typeof data?.authorization_url !== 'string') {
+    if (error || data?.error || typeof data?.authorization_url !== 'string' || typeof data?.state !== 'string') {
       setCalendarError(error?.message ?? data?.error ??
         (appLocale === 'da-DK' ? 'Kunne ikke starte Google Kalender.' : 'Nem sikerült elindítani a Google Naptár kapcsolódását.'))
       setCalendarBusy(false)
       return
     }
+    window.sessionStorage.setItem('penzfa-calendar-oauth-state', data.state)
     window.location.assign(data.authorization_url)
   }
 
