@@ -3052,9 +3052,12 @@ export default function App() {
                           )}
                         </div>
                         {item.notes && (
-                          <p className="confirmation-hint" style={{ whiteSpace: 'pre-wrap' }}>
-                            <strong>{appLocale === 'da-DK' ? 'Note:' : 'Megjegyzés:'}</strong> {item.notes}
-                          </p>
+                          <div className="query-note">
+                            <span className="query-note-label">
+                              {appLocale === 'da-DK' ? 'Note' : 'Megjegyzés'}
+                            </span>
+                            <p className="query-note-text">{item.notes}</p>
+                          </div>
                         )}
                         {item.status === 'open' && (
                           <div className="confirmation-actions">
