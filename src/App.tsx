@@ -315,6 +315,10 @@ export default function App() {
     briefing_time: '07:00',
     notify_partner_on_complete: false,
   })
+  const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null)
+  const [calendarBusy, setCalendarBusy] = useState(false)
+  const [calendarNotice, setCalendarNotice] = useState<string | null>(null)
+  const [calendarError, setCalendarError] = useState<string | null>(null)
   const [settingsError, setSettingsError] = useState<string | null>(null)
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null)
   const [appearanceMode, setAppearanceMode] = useState<AppearanceMode>(() => {
@@ -977,6 +981,77 @@ export default function App() {
       cancelled = true
     }
   }, [session?.user.id, familyName])
+
+  useEffect(() => {
+    if (!supabase || !session?.user.id || !familyName) {
+      setCalendarConnected(null)
+      return
+    }
+    let active = true
+    const checkConnection = async () => {
+      const { data, error } = await supabase!.functions.invoke('google-calendar-oauth', {
+        body: { action: 'status' },
+      })
+      if (!active) return
+      if (error || data?.error) {
+        setCalendarError(appLocale === 'da-DK'
+          ? 'Google Kalender-forbindelsen kunne ikke kontrolleres.'
+          : 'A Google Naptár kapcsolatát nem sikerült ellenőrizni.')
+      } else {
+        setCalendarConnected(Boolean(data?.connected))
+        setCalendarError(null)
+      }
+    }
+    const params = new URL(window.location.href)
+    const result = params.searchParams.get('google_calendar')
+    if (result === 'connected' || result === 'error') {
+      setCalendarNotice(result === 'connected'
+        ? (appLocale === 'da-DK' ? 'Google Kalender er forbundet.' : 'Google Naptár összekapcsolva.')
+        : (appLocale === 'da-DK' ? 'Google-autorisation blev afbrudt eller mislykkedes.' : 'A Google engedélykérés megszakadt vagy nem sikerült.'))
+      params.searchParams.delete('google_calendar')
+      window.history.replaceState(window.history.state, '', params.pathname + params.search + params.hash)
+    }
+    void checkConnection()
+    return () => { active = false }
+  }, [session?.user.id, familyName])
+
+  async function handleConnectCalendar() {
+    if (!supabase || !session || calendarBusy) return
+    setCalendarBusy(true)
+    setCalendarError(null)
+    setCalendarNotice(null)
+    const { data, error } = await supabase.functions.invoke('google-calendar-oauth', {
+      body: { action: 'start' },
+    })
+    if (error || data?.error || typeof data?.authorization_url !== 'string') {
+      setCalendarError(error?.message ?? data?.error ??
+        (appLocale === 'da-DK' ? 'Kunne ikke starte Google Kalender.' : 'Nem sikerült elindítani a Google Naptár kapcsolódását.'))
+      setCalendarBusy(false)
+      return
+    }
+    window.location.assign(data.authorization_url)
+  }
+
+  async function handleDisconnectCalendar() {
+    if (!supabase || !session || calendarBusy) return
+    const confirmed = window.confirm(appLocale === 'da-DK'
+      ? 'Vil du fjerne forbindelsen til Google Kalender?'
+      : 'Biztosan bontod a Google Naptár kapcsolatát?')
+    if (!confirmed) return
+    setCalendarBusy(true)
+    setCalendarError(null)
+    setCalendarNotice(null)
+    const { data, error } = await supabase.functions.invoke('google-calendar-oauth', {
+      body: { action: 'disconnect', confirmed: true },
+    })
+    setCalendarBusy(false)
+    if (error || data?.error) {
+      setCalendarError(error?.message ?? data?.error ?? 'A Google Naptár kapcsolat bontása nem sikerült.')
+      return
+    }
+    setCalendarConnected(false)
+    setCalendarNotice(appLocale === 'da-DK' ? 'Google Kalender er afbrudt.' : 'Google Naptár kapcsolat bontva.')
+  }
 
   async function handleEnablePush() {
     if (!session || !pushAppId) return
@@ -3296,6 +3371,32 @@ export default function App() {
                     <span>{t('partnerDone')}</span>
                   </label>
 
+                  <section className="push-settings" aria-label={appLocale === 'da-DK' ? 'Google Kalender' : 'Google Naptár'}>
+                    <div>
+                      <strong>{appLocale === 'da-DK' ? 'Google Kalender (test)' : 'Google Naptár (teszt)'}</strong>
+                      <small>
+                        {calendarConnected === null
+                          ? (appLocale === 'da-DK' ? 'Kontrollerer forbindelse…' : 'Kapcsolat ellenőrzése…')
+                          : calendarConnected
+                            ? (appLocale === 'da-DK' ? 'Forbundet. Automatisk synkronisering er endnu ikke aktiv.' : 'Összekapcsolva. Az automatikus szinkronizálás még nem aktív.')
+                            : (appLocale === 'da-DK' ? 'Du kan forbinde din Google-konto.' : 'Összekapcsolhatod a Google-fiókodat.')}
+                      </small>
+                    </div>
+                    {calendarConnected ? (
+                      <button className="secondary-button" type="button"
+                        disabled={calendarBusy} onClick={() => void handleDisconnectCalendar()}>
+                        {calendarBusy ? t('saving') : (appLocale === 'da-DK' ? 'Afbryd forbindelse' : 'Kapcsolat bontása')}
+                      </button>
+                    ) : (
+                      <button className="secondary-button" type="button"
+                        disabled={calendarBusy || calendarConnected === null}
+                        onClick={() => void handleConnectCalendar()}>
+                        {calendarBusy ? t('loading') : (appLocale === 'da-DK' ? 'Forbind Google Kalender' : 'Google Naptár összekapcsolása')}
+                      </button>
+                    )}
+                  </section>
+                  {calendarNotice && <p className="notice success">{calendarNotice}</p>}
+                  {calendarError && <p className="notice error">{calendarError}</p>}
                   {settingsError && <p className="notice error">{settingsError}</p>}
 
                   {(settingsBusy || settingsMessage) && (
