@@ -65,6 +65,20 @@ async function decryptRefreshToken(value: string, clientSecret: string): Promise
   return new TextDecoder().decode(plain)
 }
 
+// A Google Calendar eseményazonosítónak base32hex-karaktereket kell tartalmaznia.
+ // A SHA-256 hexadecimális formája megfelel; a felhasználó+ügy páros determinisztikus.
+async function deterministicCalendarId(userId: string, itemId: string): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest(
+    'SHA-256', new TextEncoder().encode('penzfa-calendar-v1:' + userId + ':' + itemId),
+  ))
+  return 'a' + Array.from(digest).map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+function nextCalendarDate(date: string): string {
+  const [year, month, day] = date.split('-').map(Number)
+  return new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10)
+}
+
 function safeOrigin(raw: string | null): string | null {
   if (!raw) return null
   try {
@@ -175,12 +189,117 @@ Deno.serve(async (request: Request) => {
     if (authError || !authData.user) return json({ error: 'Érvénytelen felhasználói munkamenet.' }, 401)
     const userId = authData.user.id
 
-    const body = await request.json().catch(() => ({})) as { action?: string; confirmed?: boolean; ticket?: string }
+    const body = await request.json().catch(() => ({})) as {
+      action?: string
+      confirmed?: boolean
+      ticket?: string
+      item_id?: string
+      expected_updated_at?: string
+    }
     if (body.action === 'status') {
       const { data, error } = await db.from('google_calendar_connections')
         .select('connected_at').eq('user_id', userId).maybeSingle()
       if (error) throw error
       return json({ connected: Boolean(data), connected_at: data?.connected_at ?? null })
+    }
+
+    if (body.action === 'prepare_calendar_export' || body.action === 'confirm_calendar_export') {
+      // Nincs háttérszinkron: kizárólag egy konkrét, bejelentkezett felhasználó
+      // által kijelölt, dátummal rendelkező, egész napos nyitott ügy exportálható.
+      const itemId = typeof body.item_id === 'string' ? body.item_id : ''
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(itemId)) {
+        return json({ error: 'Érvénytelen ügyazonosító.' }, 400)
+      }
+
+      const { data: membership, error: membershipError } = await db.from('family_members')
+        .select('family_id').eq('user_id', userId).eq('member_kind', 'active').maybeSingle()
+      if (membershipError || !membership) return json({ error: 'Nincs aktív családi jogosultság.' }, 403)
+
+      const { data: item, error: itemError } = await db.from('items')
+        .select('id, family_id, title, notes, due_date, due_time, status, updated_at')
+        .eq('id', itemId).eq('family_id', membership.family_id).maybeSingle()
+      if (itemError || !item) return json({ error: 'Az ügy nem található a családodban.' }, 404)
+      if (item.status !== 'open' || !item.due_date || item.due_time) {
+        return json({ error: 'Ebben az első tesztben csak nyitott, dátumos, időpont nélküli ügy küldhető át egész napos eseményként.' }, 400)
+      }
+
+      const { data: connection, error: connectionError } = await db.from('google_calendar_connections')
+        .select('refresh_token_encrypted').eq('user_id', userId).maybeSingle()
+      if (connectionError || !connection) {
+        return json({ error: 'Előbb kapcsolódj a Google Naptárhoz a Beállításokban.' }, 400)
+      }
+
+      if (body.action === 'prepare_calendar_export') {
+        return json({
+          status: 'needs_confirmation',
+          draft: {
+            item_id: item.id,
+            title: item.title,
+            date: item.due_date,
+            notes: item.notes ?? null,
+            expected_updated_at: item.updated_at,
+          },
+        })
+      }
+
+      if (body.confirmed !== true || body.expected_updated_at !== item.updated_at) {
+        return json({ error: 'Az ügy időközben megváltozott, vagy hiányzik a jóváhagyás. Kérj új megerősítést.' }, 409)
+      }
+      if (!clientId || !clientSecret) return json({ error: 'A Google-kapcsolat szerverbeállítása hiányzik.' }, 503)
+
+      const refreshToken = await decryptRefreshToken(connection.refresh_token_encrypted, clientSecret)
+      const refreshResponse = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          grant_type: 'refresh_token',
+          refresh_token: refreshToken,
+        }),
+      })
+      if (!refreshResponse.ok) {
+        return json({ error: 'A Google Naptár engedélye lejárt. Kapcsold újra a Google-fiókot a Beállításokban.' }, 401)
+      }
+      const refreshed = await refreshResponse.json() as { access_token?: string }
+      if (!refreshed.access_token) return json({ error: 'A Google Naptár hozzáférése nem frissíthető.' }, 502)
+
+      const eventId = await deterministicCalendarId(userId, item.id)
+      const url = 'https://www.googleapis.com/calendar/v3/calendars/primary/events'
+      const eventBody = {
+        id: eventId,
+        summary: item.title,
+        description: item.notes ?? '',
+        start: { date: item.due_date },
+        end: { date: nextCalendarDate(item.due_date) },
+        visibility: 'private',
+        reminders: { useDefault: false },
+        extendedProperties: { private: { penzfa_item_id: item.id } },
+      }
+
+      const inserted = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer ' + refreshed.access_token,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(eventBody),
+      })
+      if (inserted.status === 409) {
+        // Ismételt kattintás, hálózati újrapróbálkozás vagy korábbi siker esetén:
+        // nincs új esemény és nem írjuk felül a Google Naptárban szerkesztett adatokat.
+        return json({ status: 'already_exists', message: 'Ez az ügy már szerepel ebben a Google Naptárban.' })
+      }
+      if (!inserted.ok) {
+        return json({ error: 'A Google Naptár nem fogadta el az eseményt. Ellenőrizd a naptárjogosultságot.' }, 502)
+      }
+      const created = await inserted.json() as { id?: string; htmlLink?: string }
+      if (created.id !== eventId) return json({ error: 'Az esemény létrejött, de a válasz ellenőrzése nem sikerült.' }, 502)
+      return json({
+        status: 'exported',
+        message: 'Az esemény bekerült a Google Naptárba.',
+        calendar_url: created.htmlLink?.startsWith('https://calendar.google.com/') ? created.htmlLink : null,
+      })
     }
 
     if (body.action === 'complete') {
