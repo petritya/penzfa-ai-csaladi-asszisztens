@@ -114,6 +114,14 @@ type QueryResultItem = {
   is_overdue: boolean
 }
 
+type CalendarExportDraft = {
+  item_id: string
+  title: string
+  date: string
+  notes: string | null
+  expected_updated_at: string
+}
+
 type OneSignalClient = {
   init: (options: {
     appId: string
@@ -316,6 +324,10 @@ export default function App() {
     notify_partner_on_complete: false,
   })
   const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null)
+  const [calendarExportDraft, setCalendarExportDraft] = useState<CalendarExportDraft | null>(null)
+  const [calendarExportBusy, setCalendarExportBusy] = useState(false)
+  const [calendarExportFeedback, setCalendarExportFeedback] = useState<string | null>(null)
+  const [calendarExportError, setCalendarExportError] = useState<string | null>(null)
   const [calendarBusy, setCalendarBusy] = useState(false)
   const [calendarNotice, setCalendarNotice] = useState<string | null>(null)
   const [calendarError, setCalendarError] = useState<string | null>(null)
@@ -1081,6 +1093,49 @@ export default function App() {
     setCalendarNotice(appLocale === 'da-DK' ? 'Google Kalender er afbrudt.' : 'Google Naptár kapcsolat bontva.')
   }
 
+  async function handlePrepareCalendarExport(itemId: string) {
+    if (!supabase || calendarExportBusy) return
+    setCalendarExportBusy(true)
+    setCalendarExportError(null)
+    setCalendarExportFeedback(null)
+    setCalendarExportDraft(null)
+    const { data, error } = await supabase.functions.invoke('google-calendar-oauth', {
+      body: { action: 'prepare_calendar_export', item_id: itemId },
+    })
+    setCalendarExportBusy(false)
+    if (error || data?.error || data?.status !== 'needs_confirmation' || !data?.draft) {
+      setCalendarExportError(error?.message ?? data?.error ??
+        (appLocale === 'da-DK' ? 'Kunne ikke forberede kalenderoverførslen.' : 'Nem sikerült előkészíteni a naptárba küldést.'))
+      return
+    }
+    setCalendarExportDraft(data.draft as CalendarExportDraft)
+  }
+
+  async function handleConfirmCalendarExport() {
+    if (!supabase || !calendarExportDraft || calendarExportBusy) return
+    const draft = calendarExportDraft
+    setCalendarExportBusy(true)
+    setCalendarExportError(null)
+    const { data, error } = await supabase.functions.invoke('google-calendar-oauth', {
+      body: {
+        action: 'confirm_calendar_export',
+        item_id: draft.item_id,
+        expected_updated_at: draft.expected_updated_at,
+        confirmed: true,
+      },
+    })
+    setCalendarExportBusy(false)
+    if (error || data?.error || (data?.status !== 'exported' && data?.status !== 'already_exists')) {
+      setCalendarExportError(error?.message ?? data?.error ??
+        (appLocale === 'da-DK' ? 'Kunne ikke overføre kalenderaftalen.' : 'Nem sikerült elküldeni az eseményt a Google Naptárba.'))
+      return
+    }
+    setCalendarExportDraft(null)
+    setCalendarExportFeedback(data.status === 'already_exists'
+      ? (appLocale === 'da-DK' ? 'Denne opgave findes allerede i Google Kalender. Der blev ikke oprettet en kopi.' : 'Ez az esemény már szerepel a Google Naptárban. Nem hoztunk létre másolatot.')
+      : (appLocale === 'da-DK' ? 'Begivenheden er tilføjet til Google Kalender.' : 'Az esemény bekerült a Google Naptárba.'))
+  }
+
   async function handleEnablePush() {
     if (!session || !pushAppId) return
 
@@ -1597,6 +1652,9 @@ export default function App() {
 
     const message = createMessage.trim()
     if (!message) return
+    setCalendarExportDraft(null)
+    setCalendarExportFeedback(null)
+    setCalendarExportError(null)
 
 
     if (noteEditTarget) {
@@ -2366,6 +2424,8 @@ export default function App() {
     setNoteEditTarget(null)
     setReminderFollowUp(null)
     setDeleteDraft(null)
+    setCalendarExportDraft(null)
+    setCalendarExportError(null)
     setCreateError(null)
     setCreateSuccess(null)
     setAssistantAnswer(null)
@@ -3044,6 +3104,16 @@ export default function App() {
                             >
                               {appLocale === 'da-DK' ? 'Tilføj note' : 'Megjegyzés hozzáírása'}
                             </button>
+                            {calendarConnected && item.due_date && !item.due_time && (
+                              <button
+                                className="query-action-button"
+                                type="button"
+                                onClick={() => void handlePrepareCalendarExport(item.id)}
+                                disabled={createBusy || calendarExportBusy}
+                              >
+                                {appLocale === 'da-DK' ? 'Send til Google Kalender' : 'Google Naptárba küldés'}
+                              </button>
+                            )}
                             {item.is_overdue && (
                               <button
                                 className="query-action-button query-complete-button"
@@ -3061,6 +3131,49 @@ export default function App() {
                     )
                   })}
                 </div>
+              )}
+
+              {calendarExportDraft && (
+                <div className="confirmation-card">
+                  <strong>{appLocale === 'da-DK' ? 'Bekræft kalenderoverførsel' : 'Google Naptárba küldés megerősítése'}</strong>
+                  <p>
+                    <strong>{calendarExportDraft.title}</strong>
+                    {' – '}
+                    {new Date(calendarExportDraft.date + 'T12:00:00').toLocaleDateString(
+                      appLocale === 'da-DK' ? 'da-DK' : 'hu-HU', { dateStyle: 'long' },
+                    )}
+                    {appLocale === 'da-DK' ? ' (hele dagen)' : ' (egész napos)'}
+                  </p>
+                  {calendarExportDraft.notes && (
+                    <p className="confirmation-hint" style={{ whiteSpace: 'pre-wrap' }}>
+                      <strong>{appLocale === 'da-DK' ? 'Note:' : 'Megjegyzés:'}</strong> {calendarExportDraft.notes}
+                    </p>
+                  )}
+                  <p className="settings-hint">
+                    {appLocale === 'da-DK'
+                      ? 'Kun denne begivenhed oprettes i din primære Google Kalender. Tidligere begivenheder ændres ikke.'
+                      : 'Csak ezt az eseményt hozzuk létre az elsődleges Google Naptáradban. Meglévő naptáreseményeket nem módosítunk.'}
+                  </p>
+                  <div className="confirmation-actions">
+                    <button type="button" className="primary-button"
+                      onClick={() => void handleConfirmCalendarExport()} disabled={calendarExportBusy}>
+                      {calendarExportBusy
+                        ? t('saving')
+                        : (appLocale === 'da-DK' ? 'Ja, send' : 'Igen, küldd')}
+                    </button>
+                    <button type="button" className="secondary-button"
+                      onClick={() => setCalendarExportDraft(null)} disabled={calendarExportBusy}>
+                      {appLocale === 'da-DK' ? 'Annuller' : 'Mégse'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {calendarExportFeedback && (
+                <p className="notice success" role="status">{calendarExportFeedback}</p>
+              )}
+              {calendarExportError && (
+                <p className="notice error" role="alert">{calendarExportError}</p>
               )}
 
               {deleteDraft && (
