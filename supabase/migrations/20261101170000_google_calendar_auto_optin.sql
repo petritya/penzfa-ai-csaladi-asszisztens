@@ -12,6 +12,8 @@ returns table (
   event_title text,
   event_notes text,
   event_date date,
+  event_created_at timestamptz,
+  event_updated_at timestamptz,
   encrypted_refresh_token text
 )
 language sql
@@ -19,7 +21,7 @@ security invoker
 set search_path = ''
 as $$
   select
-    c.user_id, i.id, i.title, i.notes, i.due_date, c.refresh_token_encrypted
+    c.user_id, i.id, i.title, i.notes, i.due_date, i.created_at, i.updated_at, c.refresh_token_encrypted
   from public.google_calendar_connections c
   join public.items i
     on i.responsible_user_id = c.user_id
@@ -47,3 +49,14 @@ grant execute on function public.google_calendar_pending_auto_exports(integer)
 create index if not exists items_calendar_auto_candidates_idx
   on public.items (responsible_user_id, created_at)
   where status = 'open' and due_date is not null and due_time is null;
+
+-- A publikus anon kulccsal azonosított időzített hívásokat is korlátozzuk:
+-- az automatikus küldő legfeljebb 4 percenként futhat, a művelet atomikus.
+create table if not exists public.google_calendar_auto_runs (
+  id integer primary key check (id = 1),
+  last_run_at timestamptz not null default '2000-01-01T00:00:00Z'
+);
+insert into public.google_calendar_auto_runs (id)
+values (1) on conflict (id) do nothing;
+alter table public.google_calendar_auto_runs enable row level security;
+revoke all on public.google_calendar_auto_runs from public, anon, authenticated;
