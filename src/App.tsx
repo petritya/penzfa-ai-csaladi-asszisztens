@@ -101,6 +101,7 @@ type QueryResultItem = {
   id: string
   title: string
   label: string
+  notes?: string | null
   status: 'open' | 'done' | 'deleted'
   due_date: string | null
   due_time: string | null
@@ -332,6 +333,7 @@ export default function App() {
   const [reminderUpdateDraft, setReminderUpdateDraft] = useState<UpdateDraft | null>(null)
   const [reminderEditTarget, setReminderEditTarget] = useState<ReminderEditTarget | null>(null)
   const [dateEditTarget, setDateEditTarget] = useState<ReminderEditTarget | null>(null)
+  const [noteEditTarget, setNoteEditTarget] = useState<ReminderEditTarget | null>(null)
   const [reminderFollowUp, setReminderFollowUp] = useState<ReminderFollowUp | null>(null)
   const [deleteDraft, setDeleteDraft] = useState<DeleteDraft | null>(null)
   const [assistantAnswer, setAssistantAnswer] = useState<string | null>(null)
@@ -371,6 +373,7 @@ export default function App() {
     setReminderUpdateDraft(null)
     setReminderEditTarget(null)
     setDateEditTarget(null)
+    setNoteEditTarget(null)
     setReminderFollowUp(null)
     setDeleteDraft(null)
     setCreateError(null)
@@ -1493,6 +1496,38 @@ export default function App() {
     if (!message) return
 
 
+    if (noteEditTarget) {
+      if (message.length > 1000) {
+        setCreateError(appLocale === 'da-DK'
+          ? 'En note må højst være 1000 tegn.'
+          : 'Egy megjegyzés legfeljebb 1000 karakter lehet.')
+        return
+      }
+      setCreateBusy(true)
+      setCreateError(null)
+      setCreateSuccess(null)
+      setVoiceError(null)
+
+      const { data, error } = await invokeLocalizedCore({
+        body: {
+          action: 'prepare_update_target',
+          target_item_id: noteEditTarget.id,
+          changes: { notes_append: message },
+        },
+      })
+
+      setCreateBusy(false)
+      if (error || data?.status !== 'needs_confirmation' || !data?.draft) {
+        setCreateError(error?.message ?? data?.error ?? 'A megjegyzést nem sikerült előkészíteni.')
+        return
+      }
+
+      setCreateMessage('')
+      setUpdateDraft(data.draft as UpdateDraft)
+      setAssistantAnswer(null)
+      return
+    }
+
     if (dateEditTarget) {
       setCreateBusy(true)
       setCreateError(null)
@@ -1622,6 +1657,7 @@ export default function App() {
     setReminderUpdateDraft(null)
     setReminderEditTarget(null)
     setDateEditTarget(null)
+    setNoteEditTarget(null)
     setReminderFollowUp(null)
     setDeleteDraft(null)
     setCreateError(null)
@@ -1903,6 +1939,7 @@ export default function App() {
   function startReminderEdit(itemId: string, title: string) {
     setReminderFollowUp(null)
     setDateEditTarget(null)
+    setNoteEditTarget(null)
     setReminderEditTarget({ id: itemId, title })
     setReminderUpdateDraft(null)
     setCreateMessage('')
@@ -1924,6 +1961,7 @@ export default function App() {
 
   function startDateEdit(itemId: string, title: string) {
     setReminderFollowUp(null)
+    setNoteEditTarget(null)
     setDateEditTarget({ id: itemId, title })
     setReminderEditTarget(null)
     setReminderUpdateDraft(null)
@@ -1938,6 +1976,28 @@ export default function App() {
     setQueryResults([])
     setAssistantAnswer(
       `Dátum/időpont módosítása: ${title}. Írd vagy mondd be az új dátumot vagy időpontot, például: „jövő kedden 14:30-kor” vagy „aznap 16:00-kor”.`,
+    )
+  }
+
+  function startNoteEdit(itemId: string, title: string) {
+    setReminderFollowUp(null)
+    setNoteEditTarget({ id: itemId, title })
+    setDateEditTarget(null)
+    setReminderEditTarget(null)
+    setReminderUpdateDraft(null)
+    setCreateMessage('')
+    setCreateDraft(null)
+    setCompleteDraft(null)
+    setCompleteCandidates([])
+    setUpdateDraft(null)
+    setDeleteDraft(null)
+    setCreateError(null)
+    setCreateSuccess(null)
+    setQueryResults([])
+    setAssistantAnswer(
+      appLocale === 'da-DK'
+        ? 'Tilføj en note til ' + title + '. Skriv eller indtal kun notens indhold.'
+        : 'Megjegyzés hozzáírása ehhez: ' + title + '. Írd vagy mondd be a megjegyzés szövegét.',
     )
   }
 
@@ -2026,6 +2086,7 @@ export default function App() {
       setCreateMessage('')
       setUpdateDraft(null)
       setDateEditTarget(null)
+      setNoteEditTarget(null)
       const review = data.reminder_review as { reminder_at: string | null } | null
       if (review && data.item?.id) {
         setReminderFollowUp({
@@ -2199,6 +2260,7 @@ export default function App() {
     setReminderUpdateDraft(null)
     setReminderEditTarget(null)
     setDateEditTarget(null)
+    setNoteEditTarget(null)
     setReminderFollowUp(null)
     setDeleteDraft(null)
     setCreateError(null)
@@ -2849,11 +2911,11 @@ export default function App() {
                       setDeleteDraft(null)
                       setCreateError(null)
                       setCreateSuccess(null)
-                      if (!reminderEditTarget && !dateEditTarget) setAssistantAnswer(null)
+                      if (!reminderEditTarget && !dateEditTarget && !noteEditTarget) setAssistantAnswer(null)
                       setQueryResults([])
                       setVoiceError(null)
                     }}
-                    placeholder={dateEditTarget ? tr("Az ügy új dátuma/időpontja…") : reminderEditTarget ? tr("Az új emlékeztetés időpontja…") : tr("Mondd vagy írd le, mit intézzünk…")}
+                    placeholder={noteEditTarget ? (appLocale === 'da-DK' ? 'Skriv din note…' : 'Írd ide a megjegyzést…') : dateEditTarget ? tr("Az ügy új dátuma/időpontja…") : reminderEditTarget ? tr("Az új emlékeztetés időpontja…") : tr("Mondd vagy írd le, mit intézzünk…")}
                     rows={4}
                     disabled={createBusy || voiceListening || voiceTranscribing}
                   />
@@ -2987,6 +3049,11 @@ export default function App() {
                             <strong> – {tr("Nincs emlékeztető")}</strong>
                           )}
                         </div>
+                        {item.notes && (
+                          <p className="confirmation-hint" style={{ whiteSpace: 'pre-wrap' }}>
+                            <strong>{appLocale === 'da-DK' ? 'Note:' : 'Megjegyzés:'}</strong> {item.notes}
+                          </p>
+                        )}
                         {item.status === 'open' && (
                           <div className="confirmation-actions">
                             <button
@@ -3004,6 +3071,14 @@ export default function App() {
                               disabled={createBusy}
                             >
                               {item.reminder_missing ? tr("Emlékeztető beállítása") : tr("Emlékeztető módosítása")}
+                            </button>
+                            <button
+                              className="query-action-button"
+                              type="button"
+                              onClick={() => startNoteEdit(item.id, item.title)}
+                              disabled={createBusy}
+                            >
+                              {appLocale === 'da-DK' ? 'Tilføj note' : 'Megjegyzés hozzáírása'}
                             </button>
                             {item.is_overdue && (
                               <button
@@ -3169,6 +3244,11 @@ export default function App() {
                 <div className="confirmation-card">
                   <strong>{tr("Ezt értettem:")}</strong>
                   <p>{createDraft.confirmation_text}</p>
+                  {createDraft.notes && (
+                    <p className="confirmation-hint" style={{ whiteSpace: 'pre-wrap' }}>
+                      <strong>{appLocale === 'da-DK' ? 'Note:' : 'Megjegyzés:'}</strong> {createDraft.notes}
+                    </p>
+                  )}
                   {createDraft.due_date && !createDraft.first_reminder_at && (
                     <p className="confirmation-hint">
                       {tr("Az ügy többi adata megmarad. Mondd vagy írd be csak az emlékeztetést, például: „aznap 18-kor” vagy „előző nap 18-kor”, majd nyomd meg a Küldést.")}
