@@ -2739,8 +2739,10 @@ export default function App() {
                 <p>
                   A Google Naptárat a Beállításokban kapcsolhatod össze.
                   A dátumos, időpont nélküli ügyeket a találatoknál kézzel átviheted.
-                  Korábban elküldött ügyet csak külön megerősítés után küldünk újra,
-                  ha már nincs meg a Google Naptárban. Az automatikus küldés még nem aktív.
+                  A Beállításokban külön bekapcsolhatod az automatikus küldést.
+                  Csak az ezután létrehozott, neked kijelölt, időpont nélküli dátumos ügyek
+                  kerülnek át. Korábban elküldött ügyet csak külön megerősítés után küldünk újra,
+                  ha már nincs meg a Google Naptárban.
                 </p>
               </details>
 
