@@ -2694,7 +2694,7 @@ export default function App() {
               </details>
 
               <details className="help-section">
-                <summary>Emlékeztetők és reggeli briefing</summary>
+                <summary>Emlékeztetők, briefing és naptár</summary>
                 <p>
                   Emlékeztetőt rögzítéskor vagy később is kérhetsz:
                   „Szólj egy órával előtte.”
@@ -2702,6 +2702,12 @@ export default function App() {
                 <p>
                   A reggeli briefing bekapcsolását és idejét a Beállításokban adhatod meg.
                   Az értesítéseket minden eszközön külön engedélyezd a Fiók és értesítések résznél.
+                </p>
+                <p>
+                  A Google Naptárat a Beállításokban kapcsolhatod össze.
+                  A dátumos, időpont nélküli ügyeket a találatoknál kézzel átviheted.
+                  Korábban elküldött ügyet csak külön megerősítés után küldünk újra,
+                  ha már nincs meg a Google Naptárban. Az automatikus küldés még nem aktív.
                 </p>
               </details>
 
