@@ -1,2 +1,5 @@
 [functions.google-calendar-oauth]
 verify_jwt = false
+
+[functions.dispatch-calendar-exports]
+verify_jwt = true

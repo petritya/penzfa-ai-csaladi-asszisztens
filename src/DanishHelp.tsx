@@ -65,7 +65,9 @@ export default function DanishHelp({ onBack }: Props) {
               Forbind Google Kalender under Indstillinger. Opgaver med dato, men uden
               tidspunkt kan sendes manuelt fra søgeresultaterne. En tidligere sendt
               opgave kan kun sendes igen efter bekræftelse, og kun hvis den ikke
-              længere findes i Google Kalender. Automatisk overførsel er endnu ikke aktiv.
+              længere findes i Google Kalender. Automatisk overførsel kan aktiveres
+              under Indstillinger og gælder kun nye opgaver tildelt dig med dato
+              og uden tidspunkt.
             </p>
           </details>
 

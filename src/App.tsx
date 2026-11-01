@@ -325,6 +325,8 @@ export default function App() {
     notify_partner_on_complete: false,
   })
   const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null)
+  const [calendarAutoExportEnabled, setCalendarAutoExportEnabled] = useState(false)
+  const [calendarNeedsReauth, setCalendarNeedsReauth] = useState(false)
   const [calendarExportDraft, setCalendarExportDraft] = useState<CalendarExportDraft | null>(null)
   const [calendarExportBusy, setCalendarExportBusy] = useState(false)
   const [calendarExportFeedback, setCalendarExportFeedback] = useState<{ kind: 'success' | 'warning'; message: string } | null>(null)
@@ -998,6 +1000,8 @@ export default function App() {
   useEffect(() => {
     if (!supabase || !session?.user.id || !familyName) {
       setCalendarConnected(null)
+      setCalendarAutoExportEnabled(false)
+      setCalendarNeedsReauth(false)
       return
     }
     let active = true
@@ -1048,6 +1052,8 @@ export default function App() {
           : 'A Google Naptár kapcsolatát nem sikerült ellenőrizni.')
       } else {
         setCalendarConnected(Boolean(data?.connected))
+        setCalendarAutoExportEnabled(Boolean(data?.auto_export_enabled))
+        setCalendarNeedsReauth(data?.auto_export_error === 'reauthorize_required')
         setCalendarError(null)
       }
     }
@@ -1091,7 +1097,34 @@ export default function App() {
       return
     }
     setCalendarConnected(false)
+    setCalendarAutoExportEnabled(false)
+    setCalendarNeedsReauth(false)
     setCalendarNotice(appLocale === 'da-DK' ? 'Google Kalender er afbrudt.' : 'Google Naptár kapcsolat bontva.')
+  }
+
+  async function handleToggleCalendarAutoExport(enabled: boolean) {
+    if (!supabase || !session || calendarBusy || !calendarConnected) return
+    if (enabled && !window.confirm(appLocale === 'da-DK'
+      ? 'Automatisk overførsel sender kun nye opgaver med dato og uden tidspunkt, som tildeles dig, fra nu af. Vil du aktivere det?'
+      : 'Az automatikus küldés csak a mostantól létrehozott, neked kijelölt, dátumos és időpont nélküli új ügyekre vonatkozik. Bekapcsolod?')) return
+
+    setCalendarBusy(true)
+    setCalendarError(null)
+    setCalendarNotice(null)
+    const { data, error } = await supabase.functions.invoke('google-calendar-oauth', {
+      body: { action: 'set_auto_export', enabled, confirmed: enabled },
+    })
+    setCalendarBusy(false)
+    if (error || data?.error || typeof data?.auto_export_enabled !== 'boolean') {
+      setCalendarError(error?.message ?? data?.error ??
+        (appLocale === 'da-DK' ? 'Kalender-indstillingen kunne ikke gemmes.' : 'Nem sikerült menteni az automatikus küldés beállítását.'))
+      return
+    }
+    setCalendarAutoExportEnabled(data.auto_export_enabled)
+    setCalendarNeedsReauth(false)
+    setCalendarNotice(data.auto_export_enabled
+      ? (appLocale === 'da-DK' ? 'Automatisk kalenderoverførsel er slået til for nye opgaver.' : 'Az automatikus küldés bekapcsolva az új ügyekhez.')
+      : (appLocale === 'da-DK' ? 'Automatisk kalenderoverførsel er slået fra.' : 'Az automatikus küldés kikapcsolva.'))
   }
 
   async function handlePrepareCalendarExport(itemId: string) {
@@ -2706,8 +2739,10 @@ export default function App() {
                 <p>
                   A Google Naptárat a Beállításokban kapcsolhatod össze.
                   A dátumos, időpont nélküli ügyeket a találatoknál kézzel átviheted.
-                  Korábban elküldött ügyet csak külön megerősítés után küldünk újra,
-                  ha már nincs meg a Google Naptárban. Az automatikus küldés még nem aktív.
+                  A Beállításokban külön bekapcsolhatod az automatikus küldést.
+                  Csak az ezután létrehozott, neked kijelölt, időpont nélküli dátumos ügyek
+                  kerülnek át. Korábban elküldött ügyet csak külön megerősítés után küldünk újra,
+                  ha már nincs meg a Google Naptárban.
                 </p>
               </details>
 
@@ -3571,10 +3606,32 @@ export default function App() {
                         {calendarConnected === null
                           ? (appLocale === 'da-DK' ? 'Kontrollerer forbindelse…' : 'Kapcsolat ellenőrzése…')
                           : calendarConnected
-                            ? (appLocale === 'da-DK' ? 'Forbundet. Automatisk synkronisering er endnu ikke aktiv.' : 'Összekapcsolva. Az automatikus szinkronizálás még nem aktív.')
+                            ? (appLocale === 'da-DK' ? 'Forbundet. Manuel overførsel er også tilgængelig.' : 'Összekapcsolva. A kézi küldés továbbra is használható.')
                             : (appLocale === 'da-DK' ? 'Du kan forbinde din Google-konto.' : 'Összekapcsolhatod a Google-fiókodat.')}
                       </small>
                     </div>
+                    {calendarConnected && (
+                      <>
+                        <label className="settings-toggle">
+                          <input type="checkbox"
+                            checked={calendarAutoExportEnabled}
+                            disabled={calendarBusy || calendarNeedsReauth}
+                            onChange={(event) => void handleToggleCalendarAutoExport(event.target.checked)}
+                          />
+                          <span>{appLocale === 'da-DK'
+                            ? 'Send nye heldagsopgaver automatisk til Google Kalender'
+                            : 'Új, egész napos ügyek automatikus küldése a Google Naptárba'}</span>
+                        </label>
+                        <small>{appLocale === 'da-DK'
+                          ? 'Kun nye opgaver fra aktiveringstidspunktet. Ingen genafsendelse, ingen ændring af eksisterende aftaler. Kontrol ca. hvert 5. minut.'
+                          : 'Csak a bekapcsolás után létrehozott saját ügyek. Nincs automatikus újraküldés vagy naptármódosítás. Ellenőrzés körülbelül 5 percenként.'}</small>
+                        {calendarNeedsReauth && (
+                          <p className="notice warning">{appLocale === 'da-DK'
+                            ? 'Google-tilladelsen er udløbet. Forbind Google Kalender igen for at fortsætte.'
+                            : 'A Google-engedély lejárt. Az automatikus küldés leállt. Kapcsold újra a Google Naptárat a folytatáshoz.'}</p>
+                        )}
+                      </>
+                    )}
                     {calendarConnected ? (
                       <button className="secondary-button" type="button"
                         disabled={calendarBusy} onClick={() => void handleDisconnectCalendar()}>
