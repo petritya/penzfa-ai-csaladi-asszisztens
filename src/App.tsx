@@ -2560,6 +2560,7 @@ export default function App() {
                     <li>„Holnap 10-kor hívjam fel a könyvelőt.”</li>
                     <li>„Bence kontrollja jövő kedden 10-kor.”</li>
                     <li>„Anya pénteken hívja fel a szerelőt.”</li>
+                    <li>„Szombaton buli lesz, megjegyzés: üdítőt és sütit kell vinni.”</li>
                   </ul>
                 </div>
               </details>
@@ -2594,6 +2595,7 @@ export default function App() {
                     <li>„Milyen feladataim vannak a héten?”</li>
                     <li>„Milyen feladataim vannak Bencével ezen a héten?”</li>
                     <li>„Melyik feladathoz nincs emlékeztető?”</li>
+                    <li>„Mi a megjegyzés a szombati bulihoz?”</li>
                   </ul>
                 </div>
               </details>
@@ -2601,7 +2603,7 @@ export default function App() {
               <details className="help-section">
                 <summary>3. Módosítás</summary>
                 <p>
-                  A meglévő ügy dátumát, időpontját vagy emlékeztetőjét a találatoknál
+                  A meglévő ügy dátumát, időpontját, emlékeztetőjét vagy megjegyzését a találatoknál
                   tudod a legegyszerűbben módosítani. Így biztosan a megfelelő ügyet választod ki.
                 </p>
                 <ol>
@@ -2609,7 +2611,7 @@ export default function App() {
                   <li>A találatok között keresd meg a módosítandó ügyet.</li>
                   <li>
                     Kattints az ügy alatt a <strong>„Dátum/idő módosítása”</strong> vagy az
-                    <strong> „Emlékeztető módosítása”</strong> gombra. Ha még nincs emlékeztető,
+                    <strong> „Emlékeztető módosítása”</strong> vagy a <strong>„Megjegyzés hozzáírása”</strong> gombra. Ha még nincs emlékeztető,
                     az <strong>„Emlékeztető beállítása”</strong> gomb jelenik meg.
                   </li>
                   <li>
@@ -2620,7 +2622,7 @@ export default function App() {
                 </ol>
                 <p>
                   Természetes mondattal is kérhetsz módosítást, például:
-                  „A fogorvost tedd át péntekre.” Ha több ügy is megfelel, a rendszer pontosítást kérhet.
+                  „A fogorvost tedd át péntekre.” Megjegyzéshez például: „A szombati bulihoz írd hozzá, hogy üdítőt kell vinni.” Ha több ügy is megfelel, a rendszer pontosítást kérhet.
                 </p>
               </details>
 
