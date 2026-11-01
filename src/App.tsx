@@ -326,7 +326,7 @@ export default function App() {
   const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null)
   const [calendarExportDraft, setCalendarExportDraft] = useState<CalendarExportDraft | null>(null)
   const [calendarExportBusy, setCalendarExportBusy] = useState(false)
-  const [calendarExportFeedback, setCalendarExportFeedback] = useState<string | null>(null)
+  const [calendarExportFeedback, setCalendarExportFeedback] = useState<{ kind: 'success' | 'warning'; message: string } | null>(null)
   const [calendarExportError, setCalendarExportError] = useState<string | null>(null)
   const [calendarBusy, setCalendarBusy] = useState(false)
   const [calendarNotice, setCalendarNotice] = useState<string | null>(null)
@@ -1131,9 +1131,12 @@ export default function App() {
       return
     }
     setCalendarExportDraft(null)
-    setCalendarExportFeedback(data.status === 'already_exists'
-      ? (appLocale === 'da-DK' ? 'Denne opgave findes allerede i Google Kalender. Der blev ikke oprettet en kopi.' : 'Ez az esemény már szerepel a Google Naptárban. Nem hoztunk létre másolatot.')
-      : (appLocale === 'da-DK' ? 'Begivenheden er tilføjet til Google Kalender.' : 'Az esemény bekerült a Google Naptárba.'))
+    setCalendarExportFeedback({
+      kind: data.status === 'already_exists' ? 'warning' : 'success',
+      message: data.status === 'already_exists'
+        ? (appLocale === 'da-DK' ? 'Denne opgave findes allerede i Google Kalender. Der blev ikke oprettet en kopi.' : 'Ez az esemény már szerepel a Google Naptárban. Nem hoztunk létre másolatot.')
+        : (appLocale === 'da-DK' ? 'Begivenheden er tilføjet til Google Kalender.' : 'Az esemény bekerült a Google Naptárba.'),
+    })
   }
 
   async function handleEnablePush() {
@@ -3170,7 +3173,7 @@ export default function App() {
               )}
 
               {calendarExportFeedback && (
-                <p className="notice success" role="status">{calendarExportFeedback}</p>
+                <p className={`notice ${calendarExportFeedback.kind}`} role="status">{calendarExportFeedback.message}</p>
               )}
               {calendarExportError && (
                 <p className="notice error" role="alert">{calendarExportError}</p>
