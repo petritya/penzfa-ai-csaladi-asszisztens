@@ -120,6 +120,7 @@ type CalendarExportDraft = {
   date: string
   notes: string | null
   expected_updated_at: string
+  resend?: boolean
 }
 
 type OneSignalClient = {
@@ -1135,9 +1136,20 @@ export default function App() {
         item_id: draft.item_id,
         expected_updated_at: draft.expected_updated_at,
         confirmed: true,
+        allow_resend: draft.resend === true,
       },
     })
     setCalendarExportBusy(false)
+    if (!error && data?.status === 'still_exists') {
+      setCalendarExportDraft(null)
+      setCalendarExportFeedback({
+        kind: 'warning',
+        message: appLocale === 'da-DK'
+          ? 'Begivenheden findes stadig i Google Kalender. Vi har ikke oprettet en kopi.'
+          : 'Ellenőriztük: az esemény még szerepel a Google Naptárban. Nem hoztunk létre másolatot.',
+      })
+      return
+    }
     if (!error && data?.status === 'delivery_uncertain') {
       setCalendarExportDraft(null)
       setCalendarExportFeedback({
@@ -3161,7 +3173,9 @@ export default function App() {
 
               {calendarExportDraft && (
                 <div className="confirmation-card">
-                  <strong>{appLocale === 'da-DK' ? 'Bekræft kalenderoverførsel' : 'Google Naptárba küldés megerősítése'}</strong>
+                  <strong>{calendarExportDraft.resend
+                    ? (appLocale === 'da-DK' ? 'Bekræft genafsendelse til Google Kalender' : 'Google Naptár – újraküldés megerősítése')
+                    : (appLocale === 'da-DK' ? 'Bekræft kalenderoverførsel' : 'Google Naptárba küldés megerősítése')}</strong>
                   <p>
                     <strong>{calendarExportDraft.title}</strong>
                     {' – '}
@@ -3176,16 +3190,22 @@ export default function App() {
                     </p>
                   )}
                   <p className="settings-hint">
-                    {appLocale === 'da-DK'
-                      ? 'Kun denne begivenhed oprettes i din primære Google Kalender. Tidligere begivenheder ændres ikke.'
-                      : 'Csak ezt az eseményt hozzuk létre az elsődleges Google Naptáradban. Meglévő naptáreseményeket nem módosítunk.'}
+                    {calendarExportDraft.resend
+                      ? (appLocale === 'da-DK'
+                        ? 'Denne opgave blev allerede sendt én gang. Vil du kontrollere, om den stadig findes? Hvis den er slettet, kan den oprettes igen. Ellers sker der ingenting.'
+                        : 'Ezt az ügyet korábban már elküldtük. Biztosan újra szeretnéd küldeni? Előbb ellenőrizzük a Google Naptárat: ha még megvan, nem küldjük ki, ha törölted, újra létrehozzuk.')
+                      : (appLocale === 'da-DK'
+                        ? 'Kun denne begivenhed oprettes i din primære Google Kalender. Tidligere begivenheder ændres ikke.'
+                        : 'Csak ezt az eseményt hozzuk létre az elsődleges Google Naptáradban. Meglévő naptáreseményeket nem módosítunk.')}
                   </p>
                   <div className="confirmation-actions">
                     <button type="button" className="primary-button"
                       onClick={() => void handleConfirmCalendarExport()} disabled={calendarExportBusy}>
                       {calendarExportBusy
                         ? t('saving')
-                        : (appLocale === 'da-DK' ? 'Ja, send' : 'Igen, küldd')}
+                        : calendarExportDraft.resend
+                          ? (appLocale === 'da-DK' ? 'Ja, tjek og send igen' : 'Igen, ellenőrizd és küldd újra')
+                          : (appLocale === 'da-DK' ? 'Ja, send' : 'Igen, küldd')}
                     </button>
                     <button type="button" className="secondary-button"
                       onClick={() => setCalendarExportDraft(null)} disabled={calendarExportBusy}>
