@@ -41,6 +41,7 @@ type UpdateInterpretation = {
   new_date_phrase: string | null
   new_time: string | null
   new_title: string | null
+  new_notes: string | null
 }
 
 type UpdateCandidate = {
@@ -1055,7 +1056,7 @@ async function interpretIntentWithOpenAI(
         'Te egy magyar nyelvű családi asszisztens szándékfelismerő rétege vagy.',
         'Csak azt döntsd el, hogy a felhasználó új ügyet rögzít, meglévőt módosít, készre jelez, töröl/visszavon, vagy kérdez/keres.',
         'create: új feladat, esemény vagy határidő rögzítése. Nincs arra utalás, hogy már meglévő ügyet változtat.',
-        'update: egy már meglévő ügy dátumát, idejét, címét vagy más adatát akarja módosítani.',
+        'update: egy már meglévő ügy dátumát, idejét, címét, megjegyzését vagy más adatát akarja módosítani. Meglévő eseményhez megjegyzés hozzáírása is update.',
         'complete: azt jelzi, hogy valamit elintézett, megtörtént, kész van vagy már túl van rajta.',
         'delete: egy meglévő ügyet törölni, visszavonni vagy érvényteleníteni akar. Ez nem ugyanaz, mint a készre jelölés.',
         'query: kérdez, listát kér, előzményt keres, időpontot vagy állapotot szeretne megtudni.',
@@ -1063,6 +1064,7 @@ async function interpretIntentWithOpenAI(
         'Ha clarify, a clarification egyetlen rövid magyar pontosító kérdés legyen. Máskor legyen null.',
         'Példa: "Jövő kedden fogorvoshoz megyek." => create.',
         'Példa: "A szerelőt tedd szerdára." => update.',
+        'Példa: "A pénteki bulihoz írj megjegyzést: süteményt kell vinni." => update.',
         'Példa: "Voltam a fogorvosnál." => complete.',
         'Példa: "A villanyszámlát befizettem." => complete.',
         'Példa: "Töröld a pénteki tesztkönyvelőt." => delete.',
@@ -1293,6 +1295,7 @@ async function interpretWithOpenAI(
         'Ne adj hozzá olyan cselekvést, birtokos ragot vagy új főnevet, amelyet a felhasználó nem mondott, kivéve a nyelvtanilag természetes feladatcím kialakítását.',
         'Példa: "Mamusnak október 20-án 14:20-kor próba kontroll" => title="próba kontroll", subject_name="Mamus".',
         'Példa: "Anyának pénteken fodrász" => title="fodrász", subject_name="Anya".',
+        'A notes mezőbe kizárólag a kifejezetten megadott kiegészítő megjegyzés kerüljön, ne a feladat címe. Példa: "Szombaton buli, megjegyzés: üdítőt és sütit kell vinni" => notes="üdítőt és sütit kell vinni". Megjegyzés nélkül notes=null.',
         ...danishRules('create', locale),
       ].join('\n'),
       input: message,
@@ -1382,6 +1385,9 @@ async function interpretUpdateWithOpenAI(
         'Ha azt mondja, hogy ugyanazon a napon marad, a new_date_phrase legyen null.',
         'A new_time mezőt HH:MM formára normalizáld, ha új időpont egyértelmű.',
         'Ha új címet nem kér, new_title legyen null.',
+        'A new_notes kizárólag a már meglévő ügyhöz hozzáírandó megjegyzés szövege. Ha a felhasználó jegyzetet/megjegyzést kér, az új tartalmat add vissza, a meglévő tartalmat ne találd ki. Más esetben null.',
+        'Példa: "A szombati bulihoz írd megjegyzésbe, hogy üdítőt és süteményt kell vinni" => target_title="buli", new_notes="üdítőt és süteményt kell vinni", new_title=null.',
+        'Ha a kérés kizárólag megjegyzés hozzáírása, ne állíts be új dátumot, időt vagy címet.',
         ...danishRules('update', locale),
       ].join('\n'),
       input: message,
@@ -1402,6 +1408,7 @@ async function interpretUpdateWithOpenAI(
               new_date_phrase: { type: ['string', 'null'] },
               new_time: { type: ['string', 'null'] },
               new_title: { type: ['string', 'null'] },
+              new_notes: { type: ['string', 'null'] },
             },
             required: [
               'intent',
@@ -1412,6 +1419,7 @@ async function interpretUpdateWithOpenAI(
               'new_date_phrase',
               'new_time',
               'new_title',
+              'new_notes',
             ],
           },
         },
@@ -2757,7 +2765,7 @@ Deno.serve(async (req) => {
           status: 'ok',
           count: 1,
           total_matches: filtered.length,
-          answer: `${item.title} – ${when}.`,
+          answer: `${item.title} – ${when}.${item.notes ? ` Megjegyzés: ${item.notes}` : ''}`,
           interpretation,
         })
       }
@@ -2809,6 +2817,7 @@ Deno.serve(async (req) => {
           id: item.id,
           title: item.title,
           label,
+          notes: item.notes ?? null,
           status: item.status,
           due_date: item.due_date,
           due_time: item.due_time,
@@ -2839,7 +2848,9 @@ Deno.serve(async (req) => {
         })
       }
 
-      const lines = resultItems.map((item) => item.label)
+      const lines = resultItems.map((item) => item.notes
+        ? `${item.label}\n  Megjegyzés: ${item.notes}`
+        : item.label)
 
       const more = filtered.length > visible.length
         ? `\n+ még ${filtered.length - visible.length} találat`
@@ -3859,13 +3870,19 @@ Deno.serve(async (req) => {
           : null,
       }))
 
+      const appendedNote = interpretation.new_notes?.trim() || null
+      if (appendedNote && appendedNote.length > 1000) {
+        return json({ error: 'A megjegyzés legfeljebb 1000 karakter lehet.', code: 'NOTES_TOO_LONG' })
+      }
+
       const changes = {
         due_date: newDate,
         due_time: newTime,
         title: interpretation.new_title?.trim() || null,
+        notes_append: appendedNote,
       }
 
-      const hasChanges = Boolean(changes.due_date || changes.due_time || changes.title)
+      const hasChanges = Boolean(changes.due_date || changes.due_time || changes.title || changes.notes_append)
 
       if (candidates.length === 0) {
         return json({
@@ -3930,7 +3947,9 @@ Deno.serve(async (req) => {
       const draft: UpdateDraft = {
         pending_action_id: pending.id,
         target_item_id: candidate.id,
-        confirmation_text: `Ezt találtam: ${oldText}. Erre módosítsam: ${newText}?`,
+        confirmation_text: changes.notes_append && !changes.due_date && !changes.due_time && !changes.title
+          ? `Ezt találtam: ${oldText}. Ezt a megjegyzést írjam hozzá: „${changes.notes_append}”?`
+          : `Ezt találtam: ${oldText}. Erre módosítsam: ${newText}${changes.notes_append ? `. Megjegyzés hozzáírása: „${changes.notes_append}”` : ''}?`,
       }
 
       return json({ status: 'needs_confirmation', draft })
@@ -4013,7 +4032,7 @@ Deno.serve(async (req) => {
 
       const { data: item } = await db
         .from('items')
-        .select('id, title, due_date, due_time, family_id')
+        .select('id, title, notes, due_date, due_time, family_id')
         .eq('id', targetItemId)
         .eq('family_id', familyId)
         .eq('status', 'open')
@@ -4021,13 +4040,18 @@ Deno.serve(async (req) => {
 
       if (!item) return json({ error: 'A kiválasztott ügy már nem található.' })
 
+      const notesAppend = typeof changes.notes_append === 'string' ? changes.notes_append.trim() : ''
+      if (notesAppend.length > 1000 || (item.notes ?? '').length + notesAppend.length > 3999) {
+        return json({ error: 'A megjegyzés túl hosszú (egy bejegyzés legfeljebb 1000, összesen 4000 karakter lehet).', code: 'NOTES_TOO_LONG' })
+      }
       const normalizedChanges = {
         due_date: changes.due_date || null,
         due_time: changes.due_time || null,
         title: changes.title || null,
+        notes_append: notesAppend || null,
       }
 
-      if (!normalizedChanges.due_date && !normalizedChanges.due_time && !normalizedChanges.title) {
+      if (!normalizedChanges.due_date && !normalizedChanges.due_time && !normalizedChanges.title && !normalizedChanges.notes_append) {
         return json({
           status: 'needs_change_details',
           error: 'Megvan az ügy. Mondd meg, mire szeretnéd módosítani.',
@@ -4051,6 +4075,7 @@ Deno.serve(async (req) => {
               title: item.title,
               due_date: item.due_date,
               due_time: oldTime,
+              notes: item.notes,
             },
             changes: normalizedChanges,
           },
@@ -4064,9 +4089,10 @@ Deno.serve(async (req) => {
         draft: {
           pending_action_id: pending.id,
           target_item_id: item.id,
-          confirmation_text:
-            `Ezt találtam: ${item.title} – ${formatHungarianDate(item.due_date)}${oldTime ? ` ${oldTime}` : ''}. ` +
-            `Erre módosítsam: ${nextTitle} – ${formatHungarianDate(nextDate)}${nextTime ? ` ${nextTime}` : ''}?`,
+          confirmation_text: normalizedChanges.notes_append && !normalizedChanges.due_date && !normalizedChanges.due_time && !normalizedChanges.title
+            ? `Ezt találtam: ${item.title}. Ezt a megjegyzést írjam hozzá: „${normalizedChanges.notes_append}”?`
+            : `Ezt találtam: ${item.title} – ${formatHungarianDate(item.due_date)}${oldTime ? ` ${oldTime}` : ''}. ` +
+              `Erre módosítsam: ${nextTitle} – ${formatHungarianDate(nextDate)}${nextTime ? ` ${nextTime}` : ''}${normalizedChanges.notes_append ? `. Megjegyzés hozzáírása: „${normalizedChanges.notes_append}”` : ''}?`,
         },
       })
     }
@@ -4097,7 +4123,7 @@ Deno.serve(async (req) => {
 
       const { data: item } = await db
         .from('items')
-        .select('id, title, due_date, due_time')
+        .select('id, title, notes, due_date, due_time')
         .eq('id', pending.target_item_id)
         .eq('family_id', familyId)
         .eq('status', 'open')
@@ -4110,6 +4136,14 @@ Deno.serve(async (req) => {
       if (changes.title) updateValues.title = changes.title
       if (changes.due_date) updateValues.due_date = changes.due_date
       if (changes.due_time) updateValues.due_time = changes.due_time
+      if (typeof changes.notes_append === 'string' && changes.notes_append.trim()) {
+        const note = changes.notes_append.trim()
+        const nextNotes = item.notes ? `${item.notes}\n${note}` : note
+        if (note.length > 1000 || nextNotes.length > 4000) {
+          return json({ error: 'A megjegyzés túl hosszú.', code: 'NOTES_TOO_LONG' })
+        }
+        updateValues.notes = nextNotes
+      }
 
       if (Object.keys(updateValues).length === 0) {
         return json({ error: 'Nincs végrehajtható módosítás.' })
