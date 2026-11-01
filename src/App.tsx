@@ -1103,6 +1103,19 @@ export default function App() {
       body: { action: 'prepare_calendar_export', item_id: itemId },
     })
     setCalendarExportBusy(false)
+    if (!error && (data?.status === 'already_exists' || data?.status === 'delivery_uncertain')) {
+      setCalendarExportFeedback({
+        kind: 'warning',
+        message: data.status === 'already_exists'
+          ? (appLocale === 'da-DK'
+            ? 'Denne opgave blev allerede sendt til Google Kalender. Den sendes ikke igen, heller ikke efter sletning i kalenderen.'
+            : 'Ezt az ügyet már kiküldtük a Google Naptárba. Nem küldjük újra akkor sem, ha a naptárból törölted.')
+          : (appLocale === 'da-DK'
+            ? 'En tidligere afsendelse har et usikkert resultat. Vi sender ikke automatisk igen.'
+            : 'A korábbi küldés eredménye bizonytalan. A duplikáció elkerülésére nem küldjük újra.'),
+      })
+      return
+    }
     if (error || data?.error || data?.status !== 'needs_confirmation' || !data?.draft) {
       setCalendarExportError(error?.message ?? data?.error ??
         (appLocale === 'da-DK' ? 'Kunne ikke forberede kalenderoverførslen.' : 'Nem sikerült előkészíteni a naptárba küldést.'))
@@ -1125,6 +1138,16 @@ export default function App() {
       },
     })
     setCalendarExportBusy(false)
+    if (!error && data?.status === 'delivery_uncertain') {
+      setCalendarExportDraft(null)
+      setCalendarExportFeedback({
+        kind: 'warning',
+        message: appLocale === 'da-DK'
+          ? 'En tidligere afsendelse har et usikkert resultat. Vi sender ikke igen.'
+          : 'A korábbi küldés eredménye bizonytalan. Nem küldjük újra automatikusan.',
+      })
+      return
+    }
     if (error || data?.error || (data?.status !== 'exported' && data?.status !== 'already_exists')) {
       setCalendarExportError(error?.message ?? data?.error ??
         (appLocale === 'da-DK' ? 'Kunne ikke overføre kalenderaftalen.' : 'Nem sikerült elküldeni az eseményt a Google Naptárba.'))
