@@ -4,7 +4,6 @@ import { createClient } from 'npm:@supabase/supabase-js@2.117.2'
 // Az automatika SOHA nem adhat allow_resend engedélyt, a tartós exportnapló mindig elsőbbséget élvez.
 const url = Deno.env.get('SUPABASE_URL') ?? ''
 const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
 const clientId = Deno.env.get('GOOGLE_CALENDAR_CLIENT_ID') ?? ''
 const clientSecret = Deno.env.get('GOOGLE_CALENDAR_CLIENT_SECRET') ?? ''
 
@@ -53,12 +52,15 @@ function nextDate(date: string): string {
 
 Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return json({ error: 'Csak POST kérés.' }, 405)
-  if (!url || !serviceKey || !clientId || !clientSecret || !anonKey) {
+  if (!url || !serviceKey || !clientId || !clientSecret) {
     return json({ error: 'Hiányzó szerverkonfiguráció.' }, 503)
   }
-  // A cron a már meglévő Supabase Vault scheduler_anon_key kulcsával hív.
-  // Ez nem privilegizált hozzáférés; a munka kizárólag opt-in és rate limit mellett fut.
-  if (req.headers.get('Authorization') !== 'Bearer ' + anonKey) return json({ error: 'Nem engedélyezett kérés.' }, 401)
+  // A Supabase Gateway előbb ellenőrzi a JWT-t (verify_jwt=true).
+  // A projekt Vault-ban lévő cron JWT eltérhet az Edge belső SUPABASE_ANON_KEY értékétől.
+  // Nem szabad ezeket bájtról bájtra összehasonlítani.
+  if (!req.headers.get('Authorization')?.startsWith('Bearer ')) {
+    return json({ error: 'Hiányzó időzítő-hitelesítés.' }, 401)
+  }
   const body = await req.json().catch(() => ({})) as { source?: string }
   if (body.source !== 'cron') return json({ error: 'Nem időzített kérés.' }, 400)
 
