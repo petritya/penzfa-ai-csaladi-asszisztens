@@ -2457,205 +2457,61 @@ export default function App() {
 
             <div className="help-sections">
               <details className="help-section" open>
-                <summary>Mi az AI családi asszisztens?</summary>
+                <summary>Első lépések</summary>
                 <p>
-                  Az AI családi asszisztens abban segít, hogy ne kelljen fejben tartanod
-                  a család mindennapi teendőit, időpontjait és határidőit.
-                  Természetes nyelven elmondhatod vagy leírhatod, mit kell elintézni.
+                  Írd be vagy diktáld természetesen, mit kell elintézni.
+                  Lehetőleg mondd el, mi a teendő, mikor esedékes, és ki intézi.
                 </p>
-                <p>
-                  A rendszer értelmezi a kérésedet, strukturáltan eltárolja a fontos adatokat,
-                  emlékeztethet rá, reggeli összefoglalót készíthet, és később vissza is keresheted.
-                </p>
-                <div className="help-examples">
-                  <strong>Alapfogalmak</strong>
-                  <ul>
-                    <li>
-                      <strong>Családi felhasználó:</strong> saját fiókkal rendelkezik, be tud lépni,
-                      használhatja az alkalmazást, feladatokat kezelhet és értesítéseket kaphat.
-                    </li>
-                    <li>
-                      <strong>Kezelt családtag:</strong> nincs saját belépése, de a hozzá kapcsolódó
-                      feladatokat és eseményeket a családi felhasználók kezelhetik.
-                    </li>
-                    <li>
-                      Egy családhoz jelenleg legfeljebb két családi felhasználó tartozhat,
-                      kezelt családtagból pedig több is felvehető.
-                    </li>
-                  </ul>
-                </div>
-                              <p>
-                  A Családtagok résznél név szerint felvehetsz kezelt családtagokat.
-                  Egy másik családi felhasználót e-mailben meghívhatsz,
-                  így ketten használhatjátok ugyanazt a családot.
-                </p>
-              </details>
-
-              <details className="help-section">
-                <summary>Értesítések, reggeli briefing és telepítés</summary>
-                <p>
-                  Az értesítéseket eszközönként kell engedélyezni a Fiók és értesítések részben.
-                  A reggeli briefing időpontja a Beállítások alatt módosítható.
-                </p>
-                <p>
-                  Ha még böngészőből használod az alkalmazást, a Telepítés a telefonra résznél
-                  kiteheted a kezdőképernyőre.
-                </p>
-                              <p>
-                  Ha a másik családi felhasználónak adsz feladatot, értesítést kap róla,
-                  ha az értesítéseket a saját eszközén engedélyezte.
-                </p>
-              </details>
-
-              <details className="help-section" open>
-                <summary>Hogyan diktálj röviden és egyértelműen?</summary>
-                <p>
-                  Egyszerű, rövid mondatokat használj. Új feladatnál lehetőleg mondd el:
-                  <strong> ki</strong> intézi (ha nem te), <strong>mit csinál</strong>,
-                  <strong> mikor</strong>, és <strong>mikor kérsz emlékeztetőt</strong>.
-                  A cselekvést igével is nevezd meg.
-                </p>
-                <div className="help-examples">
-                  <strong>Jól használható rövid minták</strong>
-                  <ul>
-                    <li>„Holnap 12-kor bankba megyek, szólj 2 órával előtte.”</li>
-                    <li>„Anya pénteken felhívja a szerelőt, emlékeztesd előző nap.”</li>
-                    <li>„Bence kedden 10-kor kontrollra megy.”</li>
-                  </ul>
-                </div>
-                <p>
-                  Ha a saját feladatodról beszélsz, nem kell mindig kimondanod a neved.
-                  A „holnap 12 óra bank” túl bizonytalan lehet; inkább mondd:
-                  „holnap 12-kor bankba megyek”.
-                  Hosszabb, természetes mondatot is használhatsz.
-                </p>
-                <p>
-                  A rövid megfogalmazás segíthet elkerülni a félreértéseket,
-                  de önmagában nem garantál gyorsabb feldolgozást.
-                </p>
+                <p><strong>Példa:</strong> „Holnap 10-kor hívjam fel a könyvelőt.”</p>
+                <p>Mentés és módosítás előtt ellenőrizd a felismert adatokat.</p>
               </details>
 
               <details className="help-section" open>
                 <summary>Az 5 alapművelet</summary>
-                <p>Írhatsz vagy diktálhatsz. A Pénzfában ezeket a műveleteket végezheted el:</p>
                 <ol>
-                  <li><strong>Rögzítés:</strong> új feladat vagy esemény felvétele.</li>
-                  <li><strong>Keresés:</strong> saját és családi ügyek lekérdezése.</li>
-                  <li><strong>Módosítás:</strong> időpont vagy emlékeztető megváltoztatása.</li>
-                  <li><strong>Készre jelölés:</strong> az elintézett ügy lezárása.</li>
-                  <li><strong>Törlés:</strong> téves vagy már nem aktuális ügy eltávolítása.</li>
+                  <li><strong>Rögzítés:</strong> új feladat, esemény vagy határidő felvétele.</li>
+                  <li><strong>Keresés:</strong> „Mik a nyitott feladataim?”</li>
+                  <li><strong>Módosítás:</strong> dátum, időpont, emlékeztető vagy megjegyzés hozzáadása.</li>
+                  <li><strong>Készre jelölés:</strong> „A könyvelőt felhívtam.”</li>
+                  <li><strong>Törlés:</strong> „Töröld a pénteki fodrászt.”</li>
                 </ol>
-                <p>Rögzítés, módosítás és lezárás előtt ellenőrizd a kiválasztott ügyet. A törlést külön meg kell erősítened.</p>
+                <p>Bizonytalan ügyválasztásnál pontosítást kérünk; módosítás, lezárás és törlés előtt jóváhagyás szükséges.</p>
+              </details>
+
+              <details className="help-section" open>
+                <summary>Megjegyzések</summary>
+                <p>
+                  Már az új ügy rögzítésekor is adhatsz megjegyzést:
+                  „Szombaton buli Petiéknél, megjegyzés: süteményt kell vinni.”
+                </p>
+                <p>
+                  Meglévő ügyhöz keress rá a feladatra, válaszd a
+                  <strong> „Megjegyzés hozzáírása”</strong> gombot, majd írd vagy mondd be
+                  az új szöveget, és hagyd jóvá.
+                </p>
+                <p>A korábbi megjegyzések megmaradnak, és a találatoknál is láthatók.</p>
               </details>
 
               <details className="help-section">
-                <summary>1. Rögzítés – feladat vagy esemény</summary>
+                <summary>Emlékeztetők és reggeli briefing</summary>
                 <p>
-                  Mondd el, mi a teendő, kire vonatkozik és mikorra kell.
-                  A rendszer rögzítés előtt visszakérdez és megerősítést kér.
+                  Emlékeztetőt rögzítéskor vagy később is kérhetsz:
+                  „Szólj egy órával előtte.”
                 </p>
-                <div className="help-examples">
-                  <strong>Példák</strong>
-                  <ul>
-                    <li>„Holnap 10-kor hívjam fel a könyvelőt.”</li>
-                    <li>„Bence kontrollja jövő kedden 10-kor.”</li>
-                    <li>„Anya pénteken hívja fel a szerelőt.”</li>
-                    <li>„Szombaton buli lesz, megjegyzés: üdítőt és sütit kell vinni.”</li>
-                  </ul>
-                </div>
-              </details>
-
-              <details className="help-section">
-                <summary>Emlékeztetők</summary>
                 <p>
-                  Az emlékeztetőt megadhatod már a rögzítéskor, vagy később is.
-                  Ha másik családi felhasználó a felelős, a saját emlékeztetőjét ő kapja.
-                </p>
-                <div className="help-examples">
-                  <strong>Példák</strong>
-                  <ul>
-                    <li>„Szólj egy órával előtte.”</li>
-                    <li>„Másfél órával előtte.”</li>
-                    <li>„Emlékeztess hétfőn 18:00-kor.”</li>
-                  </ul>
-                </div>
-              </details>
-
-              <details className="help-section">
-                <summary>2. Keresés és lekérdezés</summary>
-                <p>
-                  Kérdezhetsz a saját vagy a család nyitott és korábbi feladatairól.
-                  Családtag, felelős és időszak szerint is szűrhetsz.
-                </p>
-                <div className="help-examples">
-                  <strong>Példák</strong>
-                  <ul>
-                    <li>„Mik a nyitott feladataim?”</li>
-                    <li>„Milyen lejárt feladataim vannak?”</li>
-                    <li>„Milyen feladataim vannak a héten?”</li>
-                    <li>„Milyen feladataim vannak Bencével ezen a héten?”</li>
-                    <li>„Melyik feladathoz nincs emlékeztető?”</li>
-                    <li>„Mi a megjegyzés a szombati bulihoz?”</li>
-                  </ul>
-                </div>
-              </details>
-
-              <details className="help-section">
-                <summary>3. Módosítás</summary>
-                <p>
-                  A meglévő ügy dátumát, időpontját, emlékeztetőjét vagy megjegyzését a találatoknál
-                  tudod a legegyszerűbben módosítani. Így biztosan a megfelelő ügyet választod ki.
-                </p>
-                <ol>
-                  <li>Keress rá az ügyre, például: „Mik a nyitott feladataim?” vagy „Mikor megyek fogorvoshoz?”</li>
-                  <li>A találatok között keresd meg a módosítandó ügyet.</li>
-                  <li>
-                    Kattints az ügy alatt a <strong>„Dátum/idő módosítása”</strong> vagy az
-                    <strong> „Emlékeztető módosítása”</strong> vagy a <strong>„Megjegyzés hozzáírása”</strong> gombra. Ha még nincs emlékeztető,
-                    az <strong>„Emlékeztető beállítása”</strong> gomb jelenik meg.
-                  </li>
-                  <li>
-                    Ezután már csak az új időpontot mondd vagy írd be, például:
-                    „pénteken 10-kor” vagy „2 órával előtte”, majd nyomd meg a <strong>Küldés</strong> gombot.
-                  </li>
-                  <li>Ellenőrizd a felajánlott módosítást, és hagyd jóvá az <strong>„Igen, módosítsd”</strong> gombbal.</li>
-                </ol>
-                <p>
-                  Természetes mondattal is kérhetsz módosítást, például:
-                  „A fogorvost tedd át péntekre.” Megjegyzéshez például: „A szombati bulihoz írd hozzá, hogy üdítőt kell vinni.” Ha több ügy is megfelel, a rendszer pontosítást kérhet.
+                  A reggeli briefing bekapcsolását és idejét a Beállításokban adhatod meg.
+                  Az értesítéseket minden eszközön külön engedélyezd a Fiók és értesítések résznél.
                 </p>
               </details>
 
               <details className="help-section">
-                <summary>4. Készre jelölés</summary>
+                <summary>Családtagok és telepítés</summary>
                 <p>
-                  Ha egy ügy megtörtént vagy elkészült, jelöld késznek.
-                  A rendszer azonosítja a nyitott ügyet; ha több lehetséges találat van,
-                  kiválaszthatod a megfelelőt. A lezárást jóvá kell hagynod.
+                  A Családtagok résznél felvehetsz saját fiók nélküli családtagokat,
+                  és meghívhatsz egy másik családi felhasználót. Egy családhoz
+                  legfeljebb két belépő felhasználó tartozhat.
                 </p>
-                <div className="help-examples">
-                  <strong>Példák</strong>
-                  <ul>
-                    <li>„A könyvelőt felhívtam.”</li>
-                    <li>„A banki ügyet elintéztem.”</li>
-                  </ul>
-                </div>
-              </details>
-
-              <details className="help-section">
-                <summary>5. Törlés</summary>
-                <p>
-                  Tévesen rögzített vagy már nem aktuális ügyet törölhetsz.
-                  A törlés nem ugyanaz, mint a készre jelölés: az elintézett ügyet inkább
-                  jelöld késznek, hogy később visszakereshető maradjon.
-                  Törlés előtt azonosítás és megerősítés szükséges.
-                </p>
-                <div className="help-examples">
-                  <strong>Példa</strong>
-                  <ul>
-                    <li>„Töröld a pénteki fodrászt.”</li>
-                  </ul>
-                </div>
+                <p>Az alkalmazást a Telepítés a telefonra résznél teheted a kezdőképernyőre.</p>
               </details>
             </div>
           </section>
