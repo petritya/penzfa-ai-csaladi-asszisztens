@@ -196,12 +196,35 @@ Deno.serve(async (request: Request) => {
       item_id?: string
       expected_updated_at?: string
       allow_resend?: boolean
+      enabled?: boolean
     }
     if (body.action === 'status') {
       const { data, error } = await db.from('google_calendar_connections')
-        .select('connected_at').eq('user_id', userId).maybeSingle()
+        .select('connected_at, auto_export_enabled_at, auto_export_error').eq('user_id', userId).maybeSingle()
       if (error) throw error
-      return json({ connected: Boolean(data), connected_at: data?.connected_at ?? null })
+      return json({
+        connected: Boolean(data),
+        connected_at: data?.connected_at ?? null,
+        auto_export_enabled: Boolean(data?.auto_export_enabled_at),
+        auto_export_error: data?.auto_export_error ?? null,
+      })
+    }
+
+    if (body.action === 'set_auto_export') {
+      if (typeof body.enabled !== 'boolean') return json({ error: 'Hiányzó automatikus küldési beállítás.' }, 400)
+      if (body.enabled && body.confirmed !== true) return json({ error: 'Az automatikus küldés bekapcsolásához megerősítés szükséges.' }, 400)
+
+      // Visszakapcsoláskor új kezdőpontot veszünk fel; nincs korábbi feladatok utólagos kiküldése.
+      const { data: result, error: updateError } = await db.from('google_calendar_connections')
+        .update({
+          auto_export_enabled_at: body.enabled ? new Date().toISOString() : null,
+          auto_export_error: null,
+        })
+        .eq('user_id', userId)
+        .select('auto_export_enabled_at').maybeSingle()
+      if (updateError) throw updateError
+      if (!result) return json({ error: 'Nincs összekapcsolt Google Naptár.' }, 400)
+      return json({ auto_export_enabled: Boolean(result.auto_export_enabled_at) })
     }
 
     if (body.action === 'prepare_calendar_export' || body.action === 'confirm_calendar_export') {
@@ -420,6 +443,7 @@ Deno.serve(async (request: Request) => {
       const { error: saveError } = await db.from('google_calendar_connections').upsert({
         user_id: userId,
         refresh_token_encrypted: completion.refresh_token_encrypted,
+        auto_export_error: null,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'user_id' })
       if (saveError) throw saveError
