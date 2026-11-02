@@ -2845,6 +2845,10 @@ export default function App() {
                   Csak az ezután létrehozott, neked kijelölt dátumos ügyek
                   kerülnek át. Korábban elküldött ügyet csak külön megerősítés után küldünk újra,
                   ha már nincs meg a Google Naptárban.
+                  A Google Naptár új eseményeinek figyelését külön bekapcsolhatod.
+                  Minden új bejegyzésre legfeljebb egy push érkezik; átvételhez külön
+                  jóváhagyás kell. Válasz nélkül egyszer a következő reggeli briefingben
+                  jelezzük, majd a javaslat lejár.
                 </p>
               </details>
 
