@@ -67,6 +67,10 @@ export default function DanishHelp({ onBack }: Props) {
               opgave kan kun sendes igen efter bekræftelse, og kun hvis den ikke
               længere findes i Google Kalender. Automatisk overførsel kan aktiveres
               under Indstillinger og gælder kun nye opgaver tildelt dig med dato.
+              Nye begivenheder i Google Kalender kan også overvåges efter særskilt
+              aktivering. Du får højst én push-besked pr. begivenhed, og Pénzfa
+              opretter først en opgave, når du godkender den. Uden svar nævnes
+              forslaget højst én gang i næste morgenoverblik og udløber derefter.
             </p>
           </details>
 
