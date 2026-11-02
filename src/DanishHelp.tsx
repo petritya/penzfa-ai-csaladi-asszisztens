@@ -62,12 +62,11 @@ export default function DanishHelp({ onBack }: Props) {
               Aktivér notifikationer særskilt på hver enhed under Konto og notifikationer.
             </p>
             <p>
-              Forbind Google Kalender under Indstillinger. Opgaver med dato, men uden
-              tidspunkt kan sendes manuelt fra søgeresultaterne. En tidligere sendt
+              Forbind Google Kalender under Indstillinger. Opgaver med dato kan sendes manuelt fra søgeresultaterne.
+              Uden klokkeslæt bliver de heldagsaftaler, ellers varer de 1 time. En tidligere sendt
               opgave kan kun sendes igen efter bekræftelse, og kun hvis den ikke
               længere findes i Google Kalender. Automatisk overførsel kan aktiveres
-              under Indstillinger og gælder kun nye opgaver tildelt dig med dato
-              og uden tidspunkt.
+              under Indstillinger og gælder kun nye opgaver tildelt dig med dato.
             </p>
           </details>
 
