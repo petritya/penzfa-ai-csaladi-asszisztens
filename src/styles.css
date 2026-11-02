@@ -1224,3 +1224,9 @@ h2 {
     background: #0b1220;
   }
 }
+
+/* Bejövő Google Naptár-javaslatok, ugyanazokkal a megerősítő gombokkal. */
+.calendar-import-inbox { display: grid; gap: 12px; }
+.calendar-import-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.calendar-import-heading h2 { margin: 0; }
+.calendar-import-inbox .confirmation-card { margin: 0; }

@@ -114,6 +114,15 @@ type QueryResultItem = {
   is_overdue: boolean
 }
 
+type CalendarImportCandidate = {
+  event_id: string
+  title: string
+  notes: string | null
+  due_date: string
+  due_time: string | null
+  expires_at: string
+}
+
 type CalendarExportDraft = {
   item_id: string
   title: string
@@ -327,6 +336,13 @@ export default function App() {
   })
   const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null)
   const [calendarAutoExportEnabled, setCalendarAutoExportEnabled] = useState(false)
+  const [calendarAutoImportEnabled, setCalendarAutoImportEnabled] = useState(false)
+  const [calendarImportNeedsReauth, setCalendarImportNeedsReauth] = useState(false)
+  const [calendarImportCandidates, setCalendarImportCandidates] = useState<CalendarImportCandidate[]>([])
+  const [calendarImportBusy, setCalendarImportBusy] = useState(false)
+  const [calendarImportLoading, setCalendarImportLoading] = useState(false)
+  const [calendarImportNotice, setCalendarImportNotice] = useState<string | null>(null)
+  const [calendarImportError, setCalendarImportError] = useState<string | null>(null)
   const [calendarNeedsReauth, setCalendarNeedsReauth] = useState(false)
   const [calendarExportDraft, setCalendarExportDraft] = useState<CalendarExportDraft | null>(null)
   const [calendarExportBusy, setCalendarExportBusy] = useState(false)
@@ -1001,6 +1017,8 @@ export default function App() {
   useEffect(() => {
     if (!supabase || !session?.user.id || !familyName) {
       setCalendarConnected(null)
+      setCalendarAutoImportEnabled(false)
+      setCalendarImportCandidates([])
       setCalendarAutoExportEnabled(false)
       setCalendarNeedsReauth(false)
       return
@@ -1053,6 +1071,19 @@ export default function App() {
           : 'A Google Naptár kapcsolatát nem sikerült ellenőrizni.')
       } else {
         setCalendarConnected(Boolean(data?.connected))
+        setCalendarAutoImportEnabled(Boolean(data?.auto_import_enabled))
+        setCalendarImportNeedsReauth(data?.auto_import_error === 'reauthorize_required')
+        if (data?.connected) {
+          const imports = await supabase!.functions.invoke('google-calendar-oauth', {
+            body: { action: 'list_calendar_imports' },
+          })
+          if (!active) return
+          if (!imports.error && Array.isArray(imports.data?.items)) {
+            setCalendarImportCandidates(imports.data.items as CalendarImportCandidate[])
+          }
+        } else {
+          setCalendarImportCandidates([])
+        }
         setCalendarAutoExportEnabled(Boolean(data?.auto_export_enabled))
         setCalendarNeedsReauth(data?.auto_export_error === 'reauthorize_required')
         setCalendarError(null)
@@ -1098,6 +1129,8 @@ export default function App() {
       return
     }
     setCalendarConnected(false)
+    setCalendarAutoImportEnabled(false)
+    setCalendarImportCandidates([])
     setCalendarAutoExportEnabled(false)
     setCalendarNeedsReauth(false)
     setCalendarNotice(appLocale === 'da-DK' ? 'Google Kalender er afbrudt.' : 'Google Naptár kapcsolat bontva.')
@@ -1126,6 +1159,73 @@ export default function App() {
     setCalendarNotice(data.auto_export_enabled
       ? (appLocale === 'da-DK' ? 'Automatisk kalenderoverførsel er slået til for nye opgaver.' : 'Az automatikus küldés bekapcsolva az új ügyekhez.')
       : (appLocale === 'da-DK' ? 'Automatisk kalenderoverførsel er slået fra.' : 'Az automatikus küldés kikapcsolva.'))
+  }
+
+  async function reloadCalendarImports() {
+    if (!supabase || !session) return
+    setCalendarImportLoading(true)
+    const { data, error } = await supabase.functions.invoke('google-calendar-oauth', {
+      body: { action: 'list_calendar_imports' },
+    })
+    setCalendarImportLoading(false)
+    if (error || data?.error) {
+      setCalendarImportError(error?.message ?? data?.error ?? 'A Google Naptár-javaslatok nem tölthetők be.')
+      return
+    }
+    setCalendarImportCandidates(Array.isArray(data?.items) ? data.items as CalendarImportCandidate[] : [])
+    setCalendarImportError(null)
+  }
+
+  async function handleToggleCalendarAutoImport(enabled: boolean) {
+    if (!supabase || !session || calendarBusy || !calendarConnected) return
+    if (enabled && !window.confirm(appLocale === 'da-DK'
+      ? 'Vil du kontrollere nye Google Kalender-aftaler hvert 5. minut? Der sendes højst én push-besked pr. aftale, og du bestemmer altid, om den overføres til Pénzfa.'
+      : 'Figyeljük ötpercenként az új Google Naptár-bejegyzéseket? Eseményenként legfeljebb egy push érkezik, és csak a jóváhagyásoddal kerülnek be a Pénzfába.')) return
+    setCalendarBusy(true)
+    setCalendarError(null)
+    setCalendarNotice(null)
+    const { data, error } = await supabase.functions.invoke('google-calendar-oauth', {
+      body: { action: 'set_auto_import', enabled, confirmed: enabled },
+    })
+    setCalendarBusy(false)
+    if (error || data?.error || typeof data?.auto_import_enabled !== 'boolean') {
+      setCalendarError(error?.message ?? data?.error ?? 'A Google Naptár figyelésének mentése nem sikerült.')
+      return
+    }
+    setCalendarAutoImportEnabled(data.auto_import_enabled)
+    setCalendarImportNeedsReauth(false)
+    setCalendarNotice(data.auto_import_enabled
+      ? (appLocale === 'da-DK' ? 'Nye Google Kalender-aftaler overvåges nu.' : 'Új Google Naptár-események figyelése bekapcsolva.')
+      : (appLocale === 'da-DK' ? 'Kalenderovervågning slået fra.' : 'Google Naptár figyelése kikapcsolva.'))
+    await reloadCalendarImports()
+  }
+
+  async function handleDecideCalendarImport(candidate: CalendarImportCandidate, decision: 'accept' | 'reject') {
+    if (!supabase || !session || calendarImportBusy) return
+    const yes = decision === 'accept'
+    if (!window.confirm(yes
+      ? (appLocale === 'da-DK'
+        ? 'Overfør denne begivenhed til Pénzfa: ' + candidate.title + '?'
+        : 'Biztosan átveszed a Pénzfába ezt az eseményt: ' + candidate.title + '?')
+      : (appLocale === 'da-DK'
+        ? 'Afvis denne begivenhed permanent: ' + candidate.title + '?'
+        : 'Biztosan elutasítod végleg ezt az eseményt: ' + candidate.title + '?'))) return
+    setCalendarImportBusy(true)
+    setCalendarImportError(null)
+    setCalendarImportNotice(null)
+    const { data, error } = await supabase.functions.invoke('google-calendar-oauth', {
+      body: { action: 'decide_calendar_import', event_id: candidate.event_id, decision, confirmed: true },
+    })
+    setCalendarImportBusy(false)
+    if (error || data?.error) {
+      setCalendarImportError(error?.message ?? data?.error ?? 'A döntést nem sikerült menteni.')
+      await reloadCalendarImports()
+      return
+    }
+    setCalendarImportCandidates((current) => current.filter((item) => item.event_id !== candidate.event_id))
+    setCalendarImportNotice(yes
+      ? (appLocale === 'da-DK' ? 'Begivenheden er overført til Pénzfa.' : 'Az esemény bekerült a Pénzfába.')
+      : (appLocale === 'da-DK' ? 'Begivenheden afvist. Vi spørger ikke igen.' : 'Elutasítva. Erre az eseményre nem kérdezünk rá újra.'))
   }
 
   async function handlePrepareCalendarExport(itemId: string) {
@@ -2745,6 +2845,10 @@ export default function App() {
                   Csak az ezután létrehozott, neked kijelölt dátumos ügyek
                   kerülnek át. Korábban elküldött ügyet csak külön megerősítés után küldünk újra,
                   ha már nincs meg a Google Naptárban.
+                  A Google Naptár új eseményeinek figyelését külön bekapcsolhatod.
+                  Minden új bejegyzésre legfeljebb egy push érkezik; átvételhez külön
+                  jóváhagyás kell. Válasz nélkül egyszer a következő reggeli briefingben
+                  jelezzük, majd a javaslat lejár.
                 </p>
               </details>
 
@@ -2984,6 +3088,49 @@ export default function App() {
                   {tr("Emlékeztető módosítása")}
                 </button>
               )}
+            </section>
+          )}
+
+          {familyName && calendarConnected && (
+            <section className="capture-block calendar-import-inbox" aria-label={appLocale === 'da-DK' ? 'Google Kalender – forslag' : 'Google Naptár – átvételi javaslatok'}>
+              <div className="calendar-import-heading">
+                <h2>{appLocale === 'da-DK' ? 'Nye begivenheder fra Google Kalender' : 'Új események a Google Naptárból'}</h2>
+                <button className="secondary-button" type="button" disabled={calendarImportLoading || calendarImportBusy}
+                  onClick={() => void reloadCalendarImports()}>
+                  {calendarImportLoading ? t('loading') : (appLocale === 'da-DK' ? 'Opdater' : 'Frissítés')}
+                </button>
+              </div>
+              {calendarImportNotice && <p className="notice success">{calendarImportNotice}</p>}
+              {calendarImportError && <p className="notice error">{calendarImportError}</p>}
+              {calendarImportCandidates.length === 0 ? (
+                <p className="settings-hint">{appLocale === 'da-DK'
+                  ? 'Ingen nye begivenheder afventer godkendelse.'
+                  : 'Nincs jóváhagyásra váró új naptáresemény.'}</p>
+              ) : calendarImportCandidates.map((candidate) => (
+                <div className="confirmation-card" key={candidate.event_id}>
+                  <strong>{candidate.title}</strong>
+                  <p>{new Date(candidate.due_date + 'T12:00:00').toLocaleDateString(
+                    appLocale === 'da-DK' ? 'da-DK' : 'hu-HU', { dateStyle: 'long' })}
+                    {candidate.due_time ? ' – ' + candidate.due_time.slice(0, 5)
+                      : (appLocale === 'da-DK' ? ' (hele dagen)' : ' (egész napos)')}</p>
+                  {candidate.notes && <p className="confirmation-hint" style={{whiteSpace:'pre-wrap'}}>
+                    <strong>{appLocale === 'da-DK' ? 'Note:' : 'Megjegyzés:'}</strong> {candidate.notes}
+                  </p>}
+                  <p className="settings-hint">{appLocale === 'da-DK' ? 'Kan godkendes indtil: ' : 'Döntési határidő: '}
+                    {new Date(candidate.expires_at).toLocaleString(appLocale === 'da-DK' ? 'da-DK' : 'hu-HU',
+                      {dateStyle:'medium',timeStyle:'short'})}</p>
+                  <div className="confirmation-actions">
+                    <button type="button" className="primary-button" disabled={calendarImportBusy}
+                      onClick={() => void handleDecideCalendarImport(candidate, 'accept')}>
+                      {appLocale === 'da-DK' ? 'Overfør' : 'Átveszem'}
+                    </button>
+                    <button type="button" className="secondary-button" disabled={calendarImportBusy}
+                      onClick={() => void handleDecideCalendarImport(candidate, 'reject')}>
+                      {appLocale === 'da-DK' ? 'Afvis' : 'Nem kérem'}
+                    </button>
+                  </div>
+                </div>
+              ))}
             </section>
           )}
 
@@ -3621,6 +3768,24 @@ export default function App() {
                     </div>
                     {calendarConnected && (
                       <>
+                        <label className="settings-toggle">
+                          <input type="checkbox"
+                            checked={calendarAutoImportEnabled}
+                            disabled={calendarBusy || calendarImportNeedsReauth}
+                            onChange={(event) => void handleToggleCalendarAutoImport(event.target.checked)}
+                          />
+                          <span>{appLocale === 'da-DK'
+                            ? 'Foreslå nye Google Kalender-aftaler i Pénzfa'
+                            : 'Új Google Naptár-események átvételének felajánlása'}</span>
+                        </label>
+                        <small>{appLocale === 'da-DK'
+                          ? 'Kontrol hvert 5. minut: højst én push. Uden svar nævnes aftalen i næste morgenoverblik én gang og udløber næste dags aften. Ingen automatisk import.'
+                          : 'Ötpercenkénti ellenőrzés, eseményenként legfeljebb egy push. Válasz nélkül egyszer a következő reggeli briefingben jelezzük, majd másnap éjfélkor lejár. Nincs automatikus átvétel.'}</small>
+                        {calendarImportNeedsReauth && (
+                          <p className="notice warning">{appLocale === 'da-DK'
+                            ? 'Google-adgangen er udløbet. Forbind kalenderen igen.'
+                            : 'A Google-engedély lejárt. Kapcsold újra a Google Naptárat.'}</p>
+                        )}
                         <label className="settings-toggle">
                           <input type="checkbox"
                             checked={calendarAutoExportEnabled}

@@ -244,17 +244,127 @@ Deno.serve(async (request: Request) => {
       expected_updated_at?: string
       allow_resend?: boolean
       enabled?: boolean
+      event_id?: string
+      decision?: 'accept' | 'reject'
     }
     if (body.action === 'status') {
       const { data, error } = await db.from('google_calendar_connections')
-        .select('connected_at, auto_export_enabled_at, auto_export_error').eq('user_id', userId).maybeSingle()
+        .select('connected_at, auto_export_enabled_at, auto_export_error, auto_import_enabled_at, auto_import_error').eq('user_id', userId).maybeSingle()
       if (error) throw error
       return json({
         connected: Boolean(data),
         connected_at: data?.connected_at ?? null,
         auto_export_enabled: Boolean(data?.auto_export_enabled_at),
         auto_export_error: data?.auto_export_error ?? null,
+        auto_import_enabled: Boolean(data?.auto_import_enabled_at),
+        auto_import_error: data?.auto_import_error ?? null,
       })
+    }
+
+    if (body.action === 'set_auto_import') {
+      if (typeof body.enabled !== 'boolean') return json({ error: 'Hiányzik a naptárfigyelés beállítása.' }, 400)
+      if (body.enabled && body.confirmed !== true) return json({ error: 'A Google Naptár figyelését külön jóvá kell hagynod.' }, 400)
+      // Minden új engedélyezés friss kezdőpont; visszamenőleg nincs importjavaslat.
+      const { data: updated, error: updateError } = await db.from('google_calendar_connections')
+        .update({
+          auto_import_enabled_at: body.enabled ? new Date().toISOString() : null,
+          auto_import_last_scanned_at: null,
+          auto_import_error: null,
+        })
+        .eq('user_id', userId)
+        .select('auto_import_enabled_at').maybeSingle()
+      if (updateError) throw updateError
+      if (!updated) return json({ error: 'A Google Naptár nincs csatlakoztatva.' }, 400)
+      return json({ auto_import_enabled: Boolean(updated.auto_import_enabled_at) })
+    }
+
+    if (body.action === 'list_calendar_imports') {
+      const now = new Date().toISOString()
+      // Csak bejelentkezett felhasználó saját, még eldönthető javaslatait adjuk át.
+      const { data, error } = await db.from('google_calendar_import_candidates')
+        .select('event_id, title, notes, due_date, due_time, expires_at')
+        .eq('user_id', userId).eq('status', 'pending')
+        .gt('expires_at', now).order('discovered_at', { ascending: false }).limit(20)
+      if (error) throw error
+      return json({ items: data ?? [] })
+    }
+
+    if (body.action === 'decide_calendar_import') {
+      const eventId = typeof body.event_id === 'string' ? body.event_id : ''
+      if (!eventId || eventId.length > 1024 ||
+          (body.decision !== 'accept' && body.decision !== 'reject') ||
+          body.confirmed !== true) {
+        return json({ error: 'Az átvételhez konkrét eseményt és megerősítést kell megadni.' }, 400)
+      }
+      const { data: member, error: memberError } = await db.from('family_members')
+        .select('family_id').eq('user_id', userId).eq('member_kind', 'active').maybeSingle()
+      if (memberError || !member) return json({ error: 'Nincs aktív családi jogosultság.' }, 403)
+      const now = new Date().toISOString()
+      // Atomikus állapotváltás. Párhuzamos kattintásból nem lesz két ügy.
+      const nextStatus = body.decision === 'accept' ? 'accepting' : 'declined'
+      const { data: claimed, error: claimError } = await db.from('google_calendar_import_candidates')
+        .update({
+          status: nextStatus,
+          ...(nextStatus === 'declined' ? { decided_at: now, notes: null } : {}),
+        })
+        .eq('user_id', userId).eq('event_id', eventId).eq('status', 'pending')
+        .gt('expires_at', now)
+        .select('event_id, title, notes, due_date, due_time').maybeSingle()
+      if (claimError) throw claimError
+      if (!claimed) return json({ error: 'Az eseményt már elbíráltuk vagy a javaslat lejárt.' }, 409)
+      if (body.decision === 'reject') return json({ status: 'declined' })
+
+      // Determinisztikus UUID: hiba vagy újrapróbálkozás sem hozhat létre második ügyet.
+      const digest = new Uint8Array(await crypto.subtle.digest('SHA-256',
+        new TextEncoder().encode('penzfa-google-inbound-v1:' + userId + ':' + eventId)))
+      digest[6] = (digest[6] & 15) | 64
+      digest[8] = (digest[8] & 63) | 128
+      const hex = Array.from(digest.slice(0, 16)).map((b) => b.toString(16).padStart(2, '0')).join('')
+      const itemId = hex.slice(0, 8) + '-' + hex.slice(8, 12) + '-' + hex.slice(12, 16)
+        + '-' + hex.slice(16, 20) + '-' + hex.slice(20, 32)
+
+      // A védőnaplót még az ügy létrehozása ELŐTT rögzítjük:
+      // így az automatikus Pénzfa -> Google kör egy párhuzamos futás alatt
+      // sem tudja visszaküldeni a Google-ből importált eseményt.
+      const { error: exportError } = await db.from('google_calendar_exports').insert({
+        user_id: userId, item_id: itemId, event_id: eventId,
+        status: 'sent', exported_at: now,
+      })
+      if (exportError && exportError.code !== '23505') {
+        await db.from('google_calendar_import_candidates').update({ status: 'pending' })
+          .eq('user_id', userId).eq('event_id', eventId).eq('status', 'accepting')
+        return json({ error: 'A duplikációvédelem rögzítése nem sikerült.' }, 500)
+      }
+
+      const { error: itemError } = await db.from('items').insert({
+        id: itemId,
+        family_id: member.family_id,
+        created_by: userId,
+        responsible_user_id: userId,
+        item_type: 'event',
+        title: claimed.title,
+        notes: claimed.notes,
+        due_date: claimed.due_date,
+        due_time: claimed.due_time,
+        status: 'open',
+      })
+      if (itemError && itemError.code !== '23505') {
+        // Sikertelen INSERT után oldjuk fel az újonnan létrehozott védelmet,
+        // az ügy újra jóváhagyható lesz. Ismeretlen kimenetnél marad a zárolás.
+        const {data: actualItem} = await db.from('items').select('id').eq('id', itemId).maybeSingle()
+        if (!actualItem) {
+          if (!exportError) await db.from('google_calendar_exports').delete()
+            .eq('user_id', userId).eq('item_id', itemId).eq('event_id', eventId)
+          await db.from('google_calendar_import_candidates').update({status: 'pending'})
+            .eq('user_id', userId).eq('event_id', eventId).eq('status', 'accepting')
+        }
+        return json({error: 'A Pénzfa-ügy létrehozása nem sikerült.'},500)
+      }
+      const { error: finishError } = await db.from('google_calendar_import_candidates')
+        .update({ status: 'accepted', item_id: itemId, decided_at: now })
+        .eq('user_id', userId).eq('event_id', eventId).eq('status', 'accepting')
+      if (finishError) throw finishError
+      return json({ status: 'accepted', item_id: itemId })
     }
 
     if (body.action === 'set_auto_export') {
@@ -511,6 +621,9 @@ Deno.serve(async (request: Request) => {
         user_id: userId,
         refresh_token_encrypted: completion.refresh_token_encrypted,
         auto_export_error: null,
+        auto_import_enabled_at: null,
+        auto_import_last_scanned_at: null,
+        auto_import_error: null,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'user_id' })
       if (saveError) throw saveError
