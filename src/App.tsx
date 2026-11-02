@@ -1176,6 +1176,28 @@ export default function App() {
     setCalendarImportError(null)
   }
 
+  // Mobilos push-megnyitáskor egy már futó PWA is visszatérhet előtérbe.
+  // Ilyenkor újra lekérjük a függő Google Naptár-eseményeket, hogy a
+  // jóváhagyási lehetőség kézi Frissítés nélkül is megjelenjen.
+  useEffect(() => {
+    if (!session || !familyName || !calendarConnected || !calendarAutoImportEnabled) return
+    let lastRefresh = 0
+
+    const refreshOnResume = () => {
+      if (document.visibilityState !== 'visible') return
+      if (Date.now() - lastRefresh < 2000) return
+      lastRefresh = Date.now()
+      void reloadCalendarImports()
+    }
+
+    document.addEventListener('visibilitychange', refreshOnResume)
+    window.addEventListener('focus', refreshOnResume)
+    return () => {
+      document.removeEventListener('visibilitychange', refreshOnResume)
+      window.removeEventListener('focus', refreshOnResume)
+    }
+  }, [session?.user.id, familyName, calendarConnected, calendarAutoImportEnabled])
+
   async function handleToggleCalendarAutoImport(enabled: boolean) {
     if (!supabase || !session || calendarBusy || !calendarConnected) return
     if (enabled && !window.confirm(appLocale === 'da-DK'
