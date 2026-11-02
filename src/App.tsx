@@ -118,6 +118,7 @@ type CalendarExportDraft = {
   item_id: string
   title: string
   date: string
+  time?: string | null
   notes: string | null
   expected_updated_at: string
   resend?: boolean
@@ -1105,8 +1106,8 @@ export default function App() {
   async function handleToggleCalendarAutoExport(enabled: boolean) {
     if (!supabase || !session || calendarBusy || !calendarConnected) return
     if (enabled && !window.confirm(appLocale === 'da-DK'
-      ? 'Automatisk overførsel sender kun nye opgaver med dato og uden tidspunkt, som tildeles dig, fra nu af. Vil du aktivere det?'
-      : 'Az automatikus küldés csak a mostantól létrehozott, neked kijelölt, dátumos és időpont nélküli új ügyekre vonatkozik. Bekapcsolod?')) return
+      ? 'Automatisk overførsel sender kun nye opgaver med dato, som tildeles dig, fra nu af. Aftaler med klokkeslæt varer 1 time. Vil du aktivere det?'
+      : 'Az automatikus küldés a mostantól létrehozott, neked kijelölt, dátumos új ügyekre vonatkozik. Konkrét időpont esetén 1 órás esemény készül. Bekapcsolod?')) return
 
     setCalendarBusy(true)
     setCalendarError(null)
@@ -2738,9 +2739,10 @@ export default function App() {
                 </p>
                 <p>
                   A Google Naptárat a Beállításokban kapcsolhatod össze.
-                  A dátumos, időpont nélküli ügyeket a találatoknál kézzel átviheted.
+                  A dátumos ügyeket a találatoknál kézzel átviheted.
+                  Időponttal 1 órás, anélkül egész napos esemény készül.
                   A Beállításokban külön bekapcsolhatod az automatikus küldést.
-                  Csak az ezután létrehozott, neked kijelölt, időpont nélküli dátumos ügyek
+                  Csak az ezután létrehozott, neked kijelölt dátumos ügyek
                   kerülnek át. Korábban elküldött ügyet csak külön megerősítés után küldünk újra,
                   ha már nincs meg a Google Naptárban.
                 </p>
@@ -3183,7 +3185,7 @@ export default function App() {
                             >
                               {appLocale === 'da-DK' ? 'Tilføj note' : 'Megjegyzés hozzáírása'}
                             </button>
-                            {calendarConnected && item.due_date && !item.due_time && (
+                            {calendarConnected && item.due_date && (
                               <button
                                 className="query-action-button"
                                 type="button"
@@ -3223,7 +3225,14 @@ export default function App() {
                     {new Date(calendarExportDraft.date + 'T12:00:00').toLocaleDateString(
                       appLocale === 'da-DK' ? 'da-DK' : 'hu-HU', { dateStyle: 'long' },
                     )}
-                    {appLocale === 'da-DK' ? ' (hele dagen)' : ' (egész napos)'}
+                    {calendarExportDraft.time
+                      ? (' – ' + calendarExportDraft.time.slice(0, 5) + '–' +
+                        new Date(Date.parse('2000-01-01T' + calendarExportDraft.time + 'Z') + 60 * 60_000)
+                          .toISOString().slice(11, 16) +
+                        (Number(calendarExportDraft.time.slice(0, 2)) === 23
+                          ? (appLocale === 'da-DK' ? ' (næste dag)' : ' (másnap)')
+                          : ''))
+                      : (appLocale === 'da-DK' ? ' (hele dagen)' : ' (egész napos)')}
                   </p>
                   {calendarExportDraft.notes && (
                     <p className="confirmation-hint" style={{ whiteSpace: 'pre-wrap' }}>
@@ -3619,12 +3628,12 @@ export default function App() {
                             onChange={(event) => void handleToggleCalendarAutoExport(event.target.checked)}
                           />
                           <span>{appLocale === 'da-DK'
-                            ? 'Send nye heldagsopgaver automatisk til Google Kalender'
-                            : 'Új, egész napos ügyek automatikus küldése a Google Naptárba'}</span>
+                            ? 'Send nye opgaver med dato automatisk til Google Kalender'
+                            : 'Új, dátumos ügyek automatikus küldése a Google Naptárba'}</span>
                         </label>
                         <small>{appLocale === 'da-DK'
-                          ? 'Kun nye opgaver fra aktiveringstidspunktet. Ingen genafsendelse, ingen ændring af eksisterende aftaler. Kontrol ca. hvert 5. minut.'
-                          : 'Csak a bekapcsolás után létrehozott saját ügyek. Nincs automatikus újraküldés vagy naptármódosítás. Ellenőrzés körülbelül 5 percenként.'}</small>
+                          ? 'Kun nye opgaver fra aktiveringstidspunktet. Med klokkeslæt varer aftalen 1 time, ellers hele dagen. Ingen automatisk genafsendelse. Kontrol ca. hvert 5. minut.'
+                          : 'Csak a bekapcsolás után létrehozott saját ügyek. Időponttal 1 órás, időpont nélkül egész napos esemény. Nincs automatikus újraküldés. Ellenőrzés körülbelül 5 percenként.'}</small>
                         {calendarNeedsReauth && (
                           <p className="notice warning">{appLocale === 'da-DK'
                             ? 'Google-tilladelsen er udløbet. Forbind Google Kalender igen for at fortsætte.'
