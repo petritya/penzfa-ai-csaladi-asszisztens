@@ -323,6 +323,19 @@ Deno.serve(async (request: Request) => {
       const itemId = hex.slice(0, 8) + '-' + hex.slice(8, 12) + '-' + hex.slice(12, 16)
         + '-' + hex.slice(16, 20) + '-' + hex.slice(20, 32)
 
+      // A védőnaplót még az ügy létrehozása ELŐTT rögzítjük:
+      // így az automatikus Pénzfa -> Google kör egy párhuzamos futás alatt
+      // sem tudja visszaküldeni a Google-ből importált eseményt.
+      const { error: exportError } = await db.from('google_calendar_exports').insert({
+        user_id: userId, item_id: itemId, event_id: eventId,
+        status: 'sent', exported_at: now,
+      })
+      if (exportError && exportError.code !== '23505') {
+        await db.from('google_calendar_import_candidates').update({ status: 'pending' })
+          .eq('user_id', userId).eq('event_id', eventId).eq('status', 'accepting')
+        return json({ error: 'A duplikációvédelem rögzítése nem sikerült.' }, 500)
+      }
+
       const { error: itemError } = await db.from('items').insert({
         id: itemId,
         family_id: member.family_id,
@@ -336,19 +349,16 @@ Deno.serve(async (request: Request) => {
         status: 'open',
       })
       if (itemError && itemError.code !== '23505') {
-        await db.from('google_calendar_import_candidates').update({ status: 'pending' })
-          .eq('user_id', userId).eq('event_id', eventId).eq('status', 'accepting')
-        return json({ error: 'A Pénzfa-ügy létrehozása nem sikerült.' }, 500)
-      }
-      // A Google-esemény már létezik: a régi exportnaplóban is regisztráljuk,
-      // hogy az automatikus Pénzfa -> Google kör sose küldje vissza.
-      const { error: exportError } = await db.from('google_calendar_exports').insert({
-        user_id: userId, item_id: itemId, event_id: eventId,
-        status: 'sent', exported_at: now,
-      })
-      if (exportError && exportError.code !== '23505') {
-        // Az ügy már létrejött: a zárolás maradjon meg a következő ellenőrzésig.
-        return json({ error: 'Az esemény rögzítése részben sikerült. Nem ismételjük automatikusan.' }, 500)
+        // Sikertelen INSERT után oldjuk fel az újonnan létrehozott védelmet,
+        // az ügy újra jóváhagyható lesz. Ismeretlen kimenetnél marad a zárolás.
+        const {data: actualItem} = await db.from('items').select('id').eq('id', itemId).maybeSingle()
+        if (!actualItem) {
+          if (!exportError) await db.from('google_calendar_exports').delete()
+            .eq('user_id', userId).eq('item_id', itemId).eq('event_id', eventId)
+          await db.from('google_calendar_import_candidates').update({status: 'pending'})
+            .eq('user_id', userId).eq('event_id', eventId).eq('status', 'accepting')
+        }
+        return json({error: 'A Pénzfa-ügy létrehozása nem sikerült.'},500)
       }
       const { error: finishError } = await db.from('google_calendar_import_candidates')
         .update({ status: 'accepted', item_id: itemId, decided_at: now })
