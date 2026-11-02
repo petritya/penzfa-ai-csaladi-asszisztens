@@ -368,13 +368,32 @@ Deno.serve(async (req) => {
         return !reminder?.enabled || !reminder.next_notification_at
       })
 
+      // Az egyetlen másnapi lehetőség: csak a tegnap felfedezett,
+      // még eldöntetlen Google Naptár-javaslatok említése.
+      const { data: importCandidates, error: importsError } = await db
+        .from('google_calendar_import_candidates')
+        .select('event_id, title')
+        .eq('user_id', settings.user_id)
+        .eq('status', 'pending')
+        .eq('briefing_date', local.date)
+        .is('briefing_included_at', null)
+        .gt('expires_at', now.toISOString())
+        .order('discovered_at', { ascending: true })
+        .limit(25)
+      if (importsError) throw importsError
+      const importTitles = (importCandidates ?? []).map((candidate) => String(candidate.title))
+      const importNote = importTitles.length
+        ? '\nGoogle Naptár: ' + importTitles.slice(0, 3).join(', ')
+          + (importTitles.length > 3 ? ' (+' + (importTitles.length - 3) + ')' : '')
+          + '. Átveszed a Pénzfába? Ma még dönthetsz az alkalmazásban.'
+        : ''
       const message = buildBriefingMessage(
         membership.display_name,
         dueToday,
         overdue,
         reminderToday,
         missingReminder,
-      )
+      ) + importNote
 
       // A briefing_runs továbbra is az eredeti ügycímeket tartalmazó
       // alapüzenetet őrzi, hogy későbbi nyelvváltáskor újrafordítható legyen.
@@ -385,10 +404,18 @@ Deno.serve(async (req) => {
         ...reminderToday.slice(0, 3),
       ].map((item) => item.title))]
       const localizedTitles = await translateBriefingTitles(shownTitles, userLocale)
+      const translatedImportNote = importTitles.length
+        ? '\n' + (userLocale === 'da-DK' ? 'Google Kalender: ' : 'Google Naptár: ')
+          + importTitles.slice(0, 3).join(', ')
+          + (importTitles.length > 3 ? ' (+' + (importTitles.length - 3) + ')' : '')
+          + (userLocale === 'da-DK'
+            ? '. Vil du overføre til Pénzfa? Du kan svare i appen i dag.'
+            : '. Átveszed a Pénzfába? Ma még dönthetsz az alkalmazásban.')
+        : ''
       const pushMessage = buildBriefingMessage(
         membership.display_name, dueToday, overdue, reminderToday, missingReminder,
         userLocale, localizedTitles,
-      )
+      ) + translatedImportNote
 
       const { data: run, error: runError } = await db
         .from('briefing_runs')
@@ -463,6 +490,16 @@ Deno.serve(async (req) => {
           sent_at: now.toISOString(),
         })
         .eq('id', run.id)
+
+      // Legfeljebb egyszer szerepelhet a következő napi briefingben.
+      // Sikertelen push-nál nincs jelölés, így a meglévő briefing retry dönt.
+      if (importCandidates?.length) {
+        await db.from('google_calendar_import_candidates')
+          .update({ briefing_included_at: now.toISOString() })
+          .eq('user_id', settings.user_id).eq('briefing_date', local.date)
+          .eq('status', 'pending').is('briefing_included_at', null)
+          .in('event_id', importCandidates.map((candidate) => candidate.event_id))
+      }
 
       await db.from('activity_log').insert({
         family_id: membership.family_id,
