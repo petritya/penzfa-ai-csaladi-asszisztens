@@ -79,6 +79,53 @@ function nextCalendarDate(date: string): string {
   return new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10)
 }
 
+
+function calendarEventWindow(date: string, time: string | null, timeZone: string) {
+  if (!time) return {
+    start: { date },
+    end: { date: nextCalendarDate(date) },
+  }
+
+  // A Pénzfában a dátum és idő helyi érték. Az IANA időzóna alapján
+  // valós időpontra alakítjuk, majd PONTOSAN 60 percet adunk hozzá.
+  // Így az óraátállításon átívelő program is valóban egyórás.
+  const [year, month, day] = date.split('-').map(Number)
+  const [hour, minute] = time.split(':').map(Number)
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    throw new Error('Invalid local event time')
+  }
+  const desired = Date.UTC(year, month - 1, day, hour, minute)
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  })
+  let instant = desired
+  for (let i = 0; i < 4; i++) {
+    const values = Object.fromEntries(
+      formatter.formatToParts(new Date(instant)).map((part) => [part.type, part.value]),
+    )
+    const represented = Date.UTC(
+      Number(values.year), Number(values.month) - 1, Number(values.day),
+      Number(values.hour), Number(values.minute),
+    )
+    if (represented === desired) break
+    instant += desired - represented
+  }
+  const representedParts = Object.fromEntries(
+    formatter.formatToParts(new Date(instant)).map((part) => [part.type, part.value]),
+  )
+  const representedTime = Date.UTC(
+    Number(representedParts.year), Number(representedParts.month) - 1, Number(representedParts.day),
+    Number(representedParts.hour), Number(representedParts.minute),
+  )
+  if (representedTime !== desired) throw new Error('Nonexistent time during timezone change')
+
+  return {
+    start: { dateTime: new Date(instant).toISOString(), timeZone },
+    end: { dateTime: new Date(instant + 60 * 60_000).toISOString(), timeZone },
+  }
+}
+
 function safeOrigin(raw: string | null): string | null {
   if (!raw) return null
   try {
@@ -228,8 +275,8 @@ Deno.serve(async (request: Request) => {
     }
 
     if (body.action === 'prepare_calendar_export' || body.action === 'confirm_calendar_export') {
-      // Nincs háttérszinkron: kizárólag egy konkrét, bejelentkezett felhasználó
-      // által kijelölt, dátummal rendelkező, egész napos nyitott ügy exportálható.
+      // Kizárólag egy konkrét, bejelentkezett felhasználó
+      // által kijelölt, dátumos nyitott ügy exportálható.
       const itemId = typeof body.item_id === 'string' ? body.item_id : ''
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(itemId)) {
         return json({ error: 'Érvénytelen ügyazonosító.' }, 400)
@@ -243,8 +290,8 @@ Deno.serve(async (request: Request) => {
         .select('id, family_id, title, notes, due_date, due_time, status, updated_at')
         .eq('id', itemId).eq('family_id', membership.family_id).maybeSingle()
       if (itemError || !item) return json({ error: 'Az ügy nem található a családodban.' }, 404)
-      if (item.status !== 'open' || !item.due_date || item.due_time) {
-        return json({ error: 'Ebben az első tesztben csak nyitott, dátumos, időpont nélküli ügy küldhető át egész napos eseményként.' }, 400)
+      if (item.status !== 'open' || !item.due_date) {
+        return json({ error: 'Csak nyitott, dátummal rendelkező ügy küldhető át a Google Naptárba.' }, 400)
       }
 
       // Elsődlegesen a Pénzfa tartós küldési naplója dönt.
@@ -272,6 +319,7 @@ Deno.serve(async (request: Request) => {
             item_id: item.id,
             title: item.title,
             date: item.due_date,
+            time: item.due_time,
             notes: item.notes ?? null,
             expected_updated_at: item.updated_at,
             resend: exportLog?.status === 'sent',
@@ -364,12 +412,31 @@ Deno.serve(async (request: Request) => {
           throw reserveError
         }
       }
+      const { data: userSettings, error: settingsError } = await db.from('user_settings')
+        .select('timezone').eq('user_id', userId).maybeSingle()
+      if (settingsError) throw settingsError
+      const timeZone = userSettings?.timezone || 'Europe/Budapest'
+      // Érvénytelen időzóna vagy helyi idő esetén még NINCS Google API hívás.
+      // Az előzetes foglalást feloldjuk; a felhasználó kijavíthatja a beállítását.
+      let window: ReturnType<typeof calendarEventWindow>
+      try {
+        window = calendarEventWindow(item.due_date, item.due_time, timeZone)
+      } catch {
+        if (isManualResend) {
+          await db.from('google_calendar_exports').update({ status: 'sent' })
+            .eq('user_id', userId).eq('item_id', item.id)
+            .eq('event_id', exportLog.event_id).eq('status', 'sending')
+        } else {
+          await db.from('google_calendar_exports').delete()
+            .eq('user_id', userId).eq('item_id', item.id).eq('status', 'sending')
+        }
+        return json({ error: 'Az esemény helyi időpontja vagy időzónája nem érvényes.' }, 400)
+      }
       const eventBody = {
         id: eventId,
         summary: item.title,
         description: item.notes ?? '',
-        start: { date: item.due_date },
-        end: { date: nextCalendarDate(item.due_date) },
+        ...window,
         visibility: 'private',
         reminders: { useDefault: false },
         extendedProperties: { private: { penzfa_item_id: item.id } },

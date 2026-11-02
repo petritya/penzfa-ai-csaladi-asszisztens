@@ -13,6 +13,8 @@ type Pending = {
   event_title: string
   event_notes: string | null
   event_date: string
+  event_time: string | null
+  event_timezone: string
   event_created_at: string
   event_updated_at: string
   encrypted_refresh_token: string
@@ -48,6 +50,48 @@ async function deterministicId(userId: string, itemId: string): Promise<string> 
 function nextDate(date: string): string {
   const [y, m, d] = date.split('-').map(Number)
   return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10)
+}
+
+
+function calendarEventWindow(date: string, time: string | null, timeZone: string) {
+  if (!time) return {
+    start: { date },
+    end: { date: nextDate(date) },
+  }
+  const [year, month, day] = date.split('-').map(Number)
+  const [hour, minute] = time.split(':').map(Number)
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    throw new Error('Invalid local event time')
+  }
+  const desired = Date.UTC(year, month - 1, day, hour, minute)
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  })
+  let instant = desired
+  for (let i = 0; i < 4; i++) {
+    const values = Object.fromEntries(
+      formatter.formatToParts(new Date(instant)).map((part) => [part.type, part.value]),
+    )
+    const represented = Date.UTC(
+      Number(values.year), Number(values.month) - 1, Number(values.day),
+      Number(values.hour), Number(values.minute),
+    )
+    if (represented === desired) break
+    instant += desired - represented
+  }
+  const values = Object.fromEntries(
+    formatter.formatToParts(new Date(instant)).map((part) => [part.type, part.value]),
+  )
+  const represented = Date.UTC(
+    Number(values.year), Number(values.month) - 1, Number(values.day),
+    Number(values.hour), Number(values.minute),
+  )
+  if (represented !== desired) throw new Error('Nonexistent time during timezone change')
+  return {
+    start: { dateTime: new Date(instant).toISOString(), timeZone },
+    end: { dateTime: new Date(instant + 60 * 60_000).toISOString(), timeZone },
+  }
 }
 
 Deno.serve(async (req: Request) => {
@@ -95,7 +139,7 @@ Deno.serve(async (req: Request) => {
       ])
       if (!connection?.auto_export_enabled_at || connection.auto_export_error
         || !current || current.status !== 'open'
-        || current.due_time !== null || current.due_date !== row.event_date
+        || current.due_time !== row.event_time || current.due_date !== row.event_date
         || current.responsible_user_id !== row.user_id
         || new Date(current.created_at).getTime() < new Date(connection.auto_export_enabled_at).getTime()
         || new Date(current.updated_at).getTime() !== new Date(row.event_updated_at).getTime()) {
@@ -129,6 +173,8 @@ Deno.serve(async (req: Request) => {
       if (!tokenBody.access_token) return 'failed'
 
       const eventId = await deterministicId(row.user_id, row.item_id)
+      // Időzóna és helyi időpont ellenőrzése még a foglalás és Google API előtt.
+      const eventWindow = calendarEventWindow(row.event_date, row.event_time, row.event_timezone)
       // A legkorábbi foglalás nyer; ha korábban bármilyen kiküldési kísérlet
       // volt, semmiképp nem indítjuk újra automatikusan.
       const { error: reservation } = await db.from('google_calendar_exports').insert({
@@ -147,8 +193,7 @@ Deno.serve(async (req: Request) => {
           id: eventId,
           summary: row.event_title,
           description: row.event_notes ?? '',
-          start: { date: row.event_date },
-          end: { date: nextDate(row.event_date) },
+          ...eventWindow,
           visibility: 'private',
           reminders: { useDefault: false },
           extendedProperties: { private: { penzfa_item_id: row.item_id } },
