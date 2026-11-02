@@ -3,3 +3,6 @@ verify_jwt = false
 
 [functions.dispatch-calendar-exports]
 verify_jwt = true
+
+[functions.dispatch-calendar-imports]
+verify_jwt = true
