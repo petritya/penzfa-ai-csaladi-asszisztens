@@ -3308,30 +3308,49 @@ export default function App() {
             <section className="capture-block capture-primary" aria-label={tr("Kommunikáció")}>
               <h2>{noteEditTarget
                 ? (appLocale === 'da-DK' ? 'Tilføj note' : 'Megjegyzés hozzáírása')
-                : t('captureHeading')}</h2>
-              {noteEditTarget ? (
+                : dateEditTarget
+                  ? (appLocale === 'da-DK' ? 'Rediger dato/tid' : 'Dátum/időpont módosítása')
+                  : reminderEditTarget
+                    ? (appLocale === 'da-DK' ? 'Rediger påmindelse' : 'Emlékeztető módosítása')
+                    : t('captureHeading')}</h2>
+              {selectedEditTarget ? (
                 <div className="note-edit-context" role="group" aria-label={appLocale === 'da-DK' ? 'Opgave, der redigeres' : 'Módosított ügy'}>
                   <span className="note-edit-context-caption">
-                    {appLocale === 'da-DK' ? 'Du redigerer denne opgave:' : 'Ehhez az ügyhöz írsz megjegyzést:'}
+                    {noteEditTarget
+                      ? (appLocale === 'da-DK' ? 'Du tilføjer en note til:' : 'Ehhez az ügyhöz írsz megjegyzést:')
+                      : dateEditTarget
+                        ? (appLocale === 'da-DK' ? 'Du ændrer tidspunktet for:' : 'Ennek az ügynek módosítod az időpontját:')
+                        : (appLocale === 'da-DK' ? 'Du ændrer påmindelsen for:' : 'Ennek az ügynek módosítod az emlékeztetőjét:')}
                   </span>
-                  <strong className="note-edit-context-title">{noteEditTarget.title}</strong>
+                  <strong className="note-edit-context-title">{selectedEditTarget.title}</strong>
                   <span className="note-edit-context-date">
-                    {noteEditTarget.due_date
-                      ? new Date(noteEditTarget.due_date + 'T12:00:00').toLocaleDateString(
+                    {selectedEditTarget.due_date
+                      ? new Date(selectedEditTarget.due_date + 'T12:00:00').toLocaleDateString(
                         appLocale === 'da-DK' ? 'da-DK' : 'hu-HU', { dateStyle: 'long' },
-                      ) + (noteEditTarget.due_time ? ' – ' + noteEditTarget.due_time.slice(0, 5) : '')
-                      : (appLocale === 'da-DK' ? 'Ingen dato' : 'Nincs megadott dátum')}
+                      ) + (selectedEditTarget.due_time ? ' – ' + selectedEditTarget.due_time.slice(0, 5) : '')
+                      : (appLocale === 'da-DK' ? 'Dato ikke angivet' : 'Nincs megadott dátum')}
                   </span>
+                  {reminderEditTarget && (
+                    <span className="note-edit-context-date">
+                      {appLocale === 'da-DK' ? 'Nuværende påmindelse: ' : 'Jelenlegi emlékeztető: '}
+                      {reminderEditTarget.reminder_at
+                        ? new Date(reminderEditTarget.reminder_at).toLocaleString(
+                          appLocale === 'da-DK' ? 'da-DK' : 'hu-HU',
+                          { dateStyle: 'long', timeStyle: 'short' },
+                        )
+                        : (appLocale === 'da-DK' ? 'Ingen indstillet eller ukendt' : 'Nincs beállítva vagy nem ismert')}
+                    </span>
+                  )}
                   <p className="note-edit-context-hint">
-                    {updateDraft
-                      ? (appLocale === 'da-DK'
-                        ? 'Bekræft ændringen nedenfor for at gemme noten.'
-                        : 'A megjegyzés mentéséhez erősítsd meg a módosítást lent.')
-                      : (appLocale === 'da-DK'
-                        ? 'Skriv eller indtal notens tekst nedenfor.'
-                        : 'Írd vagy diktáld a megjegyzés szövegét az alábbi mezőbe.')}
+                    {noteEditTarget
+                      ? (appLocale === 'da-DK' ? 'Skriv eller indtal notens tekst nedenfor.' : 'Írd vagy diktáld a megjegyzés szövegét az alábbi mezőbe.')
+                      : dateEditTarget
+                        ? (appLocale === 'da-DK' ? 'Angiv den nye dato eller tid, fx i morgen kl. 14:30. Afsend gemmer ændringen.' : 'Add meg az új dátumot vagy időpontot, például: holnap 14:30. A Küldés elmenti a módosítást.')
+                        : (appLocale === 'da-DK'
+                          ? 'Angiv den nye påmindelse, fx en halv time før eller ingen påmindelse. Afsend gemmer ændringen.'
+                          : 'Add meg az új emlékeztetőt, például: előtte fél órával, aznap 18:00-kor, vagy nem kérek emlékeztetőt. A Küldés elmenti a módosítást.')}
                   </p>
-                  {!updateDraft && (
+                  {!updateDraft && !reminderUpdateDraft && (
                     <button className="secondary-button note-edit-cancel" type="button"
                       disabled={createBusy}
                       onClick={() => {
