@@ -950,6 +950,21 @@ function resolveQueryDateRange(
     return { start, end: addDays(start, 6) }
   }
 
+  // A teljes hónapot dátumtartományként kezeljük, nem egyetlen napként.
+  // Év nélkül a felhasználó helyi ideje szerinti aktuális évet vesszük.
+  if (phrase) {
+    const month = findHungarianMonth(phrase)
+    const day = findDayOfMonth(phrase)
+    if (month !== null && day === null) {
+      const yearMatch = normalize(phrase).match(/\b(20\d{2})\b/)
+      const year = yearMatch ? Number(yearMatch[1]) : Number(today.slice(0, 4))
+      const start = makeIsoDate(year, month, 1)
+      const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate()
+      const end = makeIsoDate(year, month, lastDay)
+      if (start && end) return { start, end }
+    }
+  }
+
   const date = resolveDatePhrase(phrase, timeZone)
   return date ? { start: date, end: date } : null
 }
@@ -1641,6 +1656,7 @@ async function interpretQueryWithOpenAI(
         'reminder_filter: missing, ha a kérdés az emlékeztető/jelzés nélküli ügyekre vonatkozik ("melyikhez nincs emlékeztető", "nincs jelzés beállítva"); set, ha a beállított emlékeztetőjű ügyekre kérdez; egyébként any.',
         'A hiányzó emlékeztetőre vonatkozó lekérdezésnél status=open legyen, és a "nincs emlékeztető" kifejezés NE kerüljön a keywords mezőbe.',
         'specific_date esetén a date_phrase őrizze meg az eredeti dátumkifejezést. Más scope esetén date_phrase legyen null.',
+        'Egész hónapra vonatkozó kérdésnél, például "Milyen feladataim vannak novemberben?", date_scope=specific_date, date_phrase="novemberben" legyen. Ne találj ki napot vagy évet.',
         'Példák: "Mi van holnap?" => open, family, subject_name=null, responsible_name=null, tomorrow.',
         '"Mikor megy Anya fodrászhoz?" => open, family, subject_name=Anya, responsible_name=null, keywords=fodrász, none.',
         '"Milyen nyitott ügyeim vannak?" => open, mine, subject_name=null, responsible_name=null, none.',
