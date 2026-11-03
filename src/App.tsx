@@ -346,6 +346,8 @@ export default function App() {
   const [calendarNeedsReauth, setCalendarNeedsReauth] = useState(false)
   const [calendarExportDraft, setCalendarExportDraft] = useState<CalendarExportDraft | null>(null)
   const [calendarExportBusy, setCalendarExportBusy] = useState(false)
+  const [calendarExportedItemIds, setCalendarExportedItemIds] = useState<string[] | null>(null)
+  const [calendarExportStatusError, setCalendarExportStatusError] = useState<string | null>(null)
   const [calendarExportFeedback, setCalendarExportFeedback] = useState<{ kind: 'success' | 'warning'; message: string } | null>(null)
   const [calendarExportError, setCalendarExportError] = useState<string | null>(null)
   const [calendarBusy, setCalendarBusy] = useState(false)
@@ -1257,6 +1259,61 @@ export default function App() {
       : (appLocale === 'da-DK' ? 'Begivenheden afvist. Vi spørger ikke igen.' : 'Elutasítva. Erre az eseményre nem kérdezünk rá újra.'))
   }
 
+  // A kézi Google Naptár-gomb csak a még nem küldött ügyekhez látszik.
+  // A lista a felhasználó saját exportnaplójából, egyetlen kérésben készül.
+  useEffect(() => {
+    if (!supabase || !session || !calendarConnected || queryResults.length === 0) {
+      setCalendarExportedItemIds(null)
+      setCalendarExportStatusError(null)
+      return
+    }
+
+    const itemIds = queryResults
+      .filter((item) => item.status === 'open' && Boolean(item.due_date))
+      .map((item) => item.id)
+    if (itemIds.length === 0) {
+      setCalendarExportedItemIds([])
+      setCalendarExportStatusError(null)
+      return
+    }
+
+    let cancelled = false
+    let lastRefreshAt = 0
+    setCalendarExportedItemIds(null)
+    setCalendarExportStatusError(null)
+
+    const refreshStatuses = async () => {
+      if (document.visibilityState !== 'visible' || Date.now() - lastRefreshAt < 2000) return
+      lastRefreshAt = Date.now()
+
+      const { data, error } = await supabase!.functions.invoke('google-calendar-oauth', {
+        body: { action: 'list_calendar_export_statuses', item_ids: itemIds.slice(0, 100) },
+      })
+      if (cancelled) return
+
+      if (error || data?.error || !Array.isArray(data?.exported_item_ids)) {
+        setCalendarExportedItemIds(null)
+        setCalendarExportStatusError(appLocale === 'da-DK'
+          ? 'Kalenderstatus kunne ikke kontrolleres. Søg igen for at prøve på ny.'
+          : 'Nem sikerült ellenőrizni a naptárba küldést. Új lekérdezéssel próbálhatod újra.')
+        return
+      }
+
+      setCalendarExportedItemIds(data.exported_item_ids as string[])
+      setCalendarExportStatusError(null)
+    }
+
+    const onResume = () => { void refreshStatuses() }
+    void refreshStatuses()
+    document.addEventListener('visibilitychange', onResume)
+    window.addEventListener('focus', onResume)
+    return () => {
+      cancelled = true
+      document.removeEventListener('visibilitychange', onResume)
+      window.removeEventListener('focus', onResume)
+    }
+  }, [session?.user.id, calendarConnected, queryResults])
+
   async function handlePrepareCalendarExport(itemId: string) {
     if (!supabase || calendarExportBusy) return
     setCalendarExportBusy(true)
@@ -1329,6 +1386,7 @@ export default function App() {
       return
     }
     setCalendarExportDraft(null)
+    setCalendarExportedItemIds((current) => current ? [...new Set([...current, draft.item_id])] : current)
     setCalendarExportFeedback({
       kind: data.status === 'already_exists' ? 'warning' : 'success',
       message: data.status === 'already_exists'
@@ -3338,7 +3396,9 @@ export default function App() {
                           </div>
                         )}
                         {item.status === 'open' && (
-                          <div className="confirmation-actions">
+                          <details className="query-actions-details">
+                            <summary>{appLocale === 'da-DK' ? 'Handlinger' : 'Műveletek'}</summary>
+                            <div className="confirmation-actions">
                             <button
                               className="query-action-button"
                               type="button"
@@ -3363,7 +3423,8 @@ export default function App() {
                             >
                               {appLocale === 'da-DK' ? 'Tilføj note' : 'Megjegyzés hozzáírása'}
                             </button>
-                            {calendarConnected && item.due_date && (
+                            {calendarConnected && item.due_date && calendarExportedItemIds !== null
+                              && !calendarExportedItemIds.includes(item.id) && (
                               <button
                                 className="query-action-button"
                                 type="button"
@@ -3384,11 +3445,15 @@ export default function App() {
                                 {tr("Késznek jelölöm")}
                               </button>
                             )}
-                          </div>
+                            </div>
+                          </details>
                         )}
                       </div>
                     )
                   })}
+                  {calendarConnected && calendarExportStatusError && (
+                    <p className="settings-hint" role="status">{calendarExportStatusError}</p>
+                  )}
                 </div>
               )}
 
@@ -3793,7 +3858,7 @@ export default function App() {
                         {calendarConnected === null
                           ? (appLocale === 'da-DK' ? 'Kontrollerer forbindelse…' : 'Kapcsolat ellenőrzése…')
                           : calendarConnected
-                            ? (appLocale === 'da-DK' ? 'Forbundet. Manuel overførsel er også tilgængelig.' : 'Összekapcsolva. A kézi küldés továbbra is használható.')
+                            ? (appLocale === 'da-DK' ? 'Forbundet. Automatisk overførsel i hver retning kan indstilles separat.' : 'Összekapcsolva. A két szinkronizálási irány külön kapcsolható.')
                             : (appLocale === 'da-DK' ? 'Du kan forbinde din Google-konto.' : 'Összekapcsolhatod a Google-fiókodat.')}
                       </small>
                     </div>
@@ -3807,7 +3872,7 @@ export default function App() {
                           />
                           <span>{appLocale === 'da-DK'
                             ? 'Foreslå nye Google Kalender-aftaler i Pénzfa'
-                            : 'Új Google Naptár-események átvételének felajánlása'}</span>
+                            : 'Google Naptár → Pénzfa: új események felajánlása'}</span>
                         </label>
                         <small>{appLocale === 'da-DK'
                           ? 'Kontrol hvert 5. minut: højst én push. Uden svar nævnes aftalen i næste morgenoverblik én gang og udløber næste dags aften. Ingen automatisk import.'
@@ -3825,7 +3890,7 @@ export default function App() {
                           />
                           <span>{appLocale === 'da-DK'
                             ? 'Send nye opgaver med dato automatisk til Google Kalender'
-                            : 'Új, dátumos ügyek automatikus küldése a Google Naptárba'}</span>
+                            : 'Pénzfa → Google Naptár: automatikus feltöltés'}</span>
                         </label>
                         <small>{appLocale === 'da-DK'
                           ? 'Kun nye opgaver fra aktiveringstidspunktet. Med klokkeslæt varer aftalen 1 time, ellers hele dagen. Ingen automatisk genafsendelse. Kontrol ca. hvert 5. minut.'
