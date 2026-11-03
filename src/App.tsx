@@ -1945,15 +1945,38 @@ export default function App() {
         },
       })
 
+      if (error || data?.status !== 'needs_confirmation'
+        || !data?.draft?.pending_action_id || data.draft.target_item_id !== noteEditTarget.id) {
+        setCreateBusy(false)
+        setCreateError(error?.message ?? data?.error ??
+          (appLocale === 'da-DK' ? 'Kunne ikke forberede noten.' : 'A megjegyzést nem sikerült előkészíteni.'))
+        return
+      }
+
+      // A felhasználó már a konkrét ügyet választotta ki és a Küldés gombra kattintott.
+      // A szerver meglévő jogosultság- és hosszellenőrzése után ugyanabban
+      // a folyamatban mentjük a megjegyzést, további megerősítő gomb nélkül.
+      const { data: saved, error: saveError } = await invokeLocalizedCore({
+        body: {
+          action: 'confirm_update',
+          pending_action_id: data.draft.pending_action_id,
+        },
+      })
+
       setCreateBusy(false)
-      if (error || data?.status !== 'needs_confirmation' || !data?.draft) {
-        setCreateError(error?.message ?? data?.error ?? 'A megjegyzést nem sikerült előkészíteni.')
+      if (saveError || saved?.status !== 'updated' || saved?.item?.id !== noteEditTarget.id) {
+        setCreateError(saveError?.message ?? saved?.error ??
+          (appLocale === 'da-DK' ? 'Kunne ikke gemme noten.' : 'Nem sikerült menteni a megjegyzést.'))
         return
       }
 
       setCreateMessage('')
-      setUpdateDraft(data.draft as UpdateDraft)
+      setNoteEditTarget(null)
+      setUpdateDraft(null)
       setAssistantAnswer(null)
+      setCreateSuccess(appLocale === 'da-DK'
+        ? `Note tilføjet: ${saved.item.title ?? noteEditTarget.title}`
+        : `Megjegyzés hozzáadva: ${saved.item.title ?? noteEditTarget.title}`)
       return
     }
 
