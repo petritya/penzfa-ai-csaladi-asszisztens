@@ -2588,7 +2588,14 @@ Deno.serve(async (req) => {
       if (selfVisitQuery) {
         interpretation.status = 'open'
         interpretation.responsibility = 'mine'
-        if (simpleVisitTarget) interpretation.keywords = simpleVisitTarget[1]
+        if (simpleVisitTarget) {
+          interpretation.subject_name = null
+          interpretation.responsible_name = null
+          interpretation.keywords = simpleVisitTarget[1]
+          interpretation.date_scope = 'none'
+          interpretation.date_phrase = null
+          interpretation.reminder_filter = 'any'
+        }
       }
 
       const timeZone = settings?.timezone ?? 'Europe/Budapest'
