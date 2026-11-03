@@ -1665,7 +1665,7 @@ async function interpretQueryWithOpenAI(
         'Ha azt kérdezik, hogy egy kezelt családtagnak (gyerek, nagyszülő) milyen ügyei vannak, subject_name legyen az ő neve.',
         'Ha konkrét eseményre kérdeznek rá, például "Mikor megy Anya fodrászhoz?", az esemény alanya legyen subject_name, akkor is, ha aktív családi felhasználó.',
         'A subject_name és responsible_name egyszerre is kitölthető, például "Mamus ügyei, amik Anyához tartoznak".',
-        'keywords legyen rövid keresőkifejezés, például "fodrász", ha konkrét ügytípust keres. Általános listázásnál legyen null.',
+        'keywords a keresett ügy TÉMÁJA vagy megnevezése legyen, jellemzően főnév/tárgy (pl. fodrász, villanyszámla, orvosi kontroll). Ne tegyél bele a kérdésből igéket, mint megyek, van, felhívom, befizetem. A cselekvést csak akkor használd szűkítésre, ha az ügy megnevezéséből egyértelműen megkülönböztethető. Általános listázásnál legyen null.',
         'date_scope: today, tomorrow, this_week (ezen a héten), next_week (jövő héten: következő hétfőtől vasárnapig), next_7_days (következő hét nap), specific_date vagy none.',
         'reminder_filter: missing, ha a kérdés az emlékeztető/jelzés nélküli ügyekre vonatkozik ("melyikhez nincs emlékeztető", "nincs jelzés beállítva"); set, ha a beállított emlékeztetőjű ügyekre kérdez; egyébként any.',
         'A hiányzó emlékeztetőre vonatkozó lekérdezésnél status=open legyen, és a "nincs emlékeztető" kifejezés NE kerüljön a keywords mezőbe.',
@@ -1674,6 +1674,7 @@ async function interpretQueryWithOpenAI(
         'Példák: "Mi van holnap?" => open, family, subject_name=null, responsible_name=null, tomorrow.',
         '"Mikor megy Anya fodrászhoz?" => open, family, subject_name=Anya, responsible_name=null, keywords=fodrász, none.',
         '"Mikor megyek fodrászhoz?" => open, mine, subject_name=null, responsible_name=null, keywords=fodrász, none. Első személyű kérdésnél ne tegyél a subject_name mezőbe családtagot; a keywords csak a keresett ügy neve legyen, ne a kérdés igéje.',
+        '"Mikor hívom fel a fodrászt?" és "Mikor van fodrász?" => keywords=fodrász. Az ige nem kötelező része az adatbázisban tárolt címnek.',
         '"Milyen nyitott ügyeim vannak?" => open, mine, subject_name=null, responsible_name=null, none.',
         '"Mit intéztem el ezen a héten?" => done, mine, subject_name=null, responsible_name=null, this_week.',
         '"Milyen törölt ügyeim vannak?" => deleted, mine, subject_name=null, responsible_name=null, none.',
@@ -2717,6 +2718,7 @@ Deno.serve(async (req) => {
       })
 
       let semanticFallbackUsed = false
+      let topicFallbackUsed = false
       if (!filtered.length && keywordTokens.length) {
         const dateEligible = ownershipFiltered.filter((item) => {
           if (!dateRange) return true
@@ -2724,11 +2726,32 @@ Deno.serve(async (req) => {
           return Boolean(itemDate && itemDate >= dateRange.start && itemDate <= dateRange.end)
         })
 
-        const candidateIds = await findSemanticQueryCandidateIds(message, dateEligible)
-        if (candidateIds.length) {
-          const candidateSet = new Set(candidateIds)
-          filtered = dateEligible.filter((item) => candidateSet.has(item.id))
-          semanticFallbackUsed = true
+        // Második kör: ha a teljes kulcsszó-kifejezés nem egyezik,
+        // az ügy CÍMÉBEN a témát keressük. A mellékesen felismert igék
+        // nem lehetnek kötelező feltételei a találatnak.
+        if (keywordTokens.length > 1) {
+          const ranked = dateEligible.map((item) => ({
+            item,
+            titleHits: keywordTokens.filter((token) =>
+              queryKeywordMatches(normalize(item.title), token)).length,
+          }))
+          const bestHits = Math.max(0, ...ranked.map((row) => row.titleHits))
+          if (bestHits > 0) {
+            filtered = ranked.filter((row) => row.titleHits === bestHits)
+              .map((row) => row.item)
+            topicFallbackUsed = true
+          }
+        }
+
+        // Ha még a címben sincs felismerhető témaszó, csak akkor
+        // használjuk a szemantikai keresés eddigi tartalék ágát.
+        if (!filtered.length) {
+          const candidateIds = await findSemanticQueryCandidateIds(message, dateEligible)
+          if (candidateIds.length) {
+            const candidateSet = new Set(candidateIds)
+            filtered = dateEligible.filter((item) => candidateSet.has(item.id))
+            semanticFallbackUsed = true
+          }
         }
       }
 
@@ -2900,11 +2923,11 @@ Deno.serve(async (req) => {
         }
       })
 
-      if (semanticFallbackUsed && resultItems.length > 1) {
+      if ((semanticFallbackUsed || topicFallbackUsed) && resultItems.length > 1) {
         return json({
           status: 'choose_target',
           count: resultItems.length,
-          answer: `Nem találtam pontos szöveges egyezést. Ezek közül melyikre gondoltál?`,
+          answer: `Több lehetséges találatot találtam a témához. Melyikre gondoltál?`,
           items: resultItems,
           interpretation,
         })
