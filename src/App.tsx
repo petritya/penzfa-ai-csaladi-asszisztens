@@ -3742,6 +3742,15 @@ export default function App() {
               {reminderFollowUp && (
                 <div className="confirmation-card">
                   <strong>{tr("Mi legyen az emlékeztetővel?")}</strong>
+                  <p className="note-edit-confirmation-target">
+                    <strong>{appLocale === 'da-DK' ? 'Opgave:' : 'Érintett ügy:'}</strong>{' '}
+                    {reminderFollowUp.title}
+                    {reminderFollowUp.due_date && (' – ' +
+                      new Date(reminderFollowUp.due_date + 'T12:00:00').toLocaleDateString(
+                        appLocale === 'da-DK' ? 'da-DK' : 'hu-HU',
+                        { dateStyle: 'long' },
+                      ) + (reminderFollowUp.due_time ? ' ' + reminderFollowUp.due_time.slice(0, 5) : ''))}
+                  </p>
                   <p>
                     {reminderFollowUp.reminder_at
                       ? (appLocale === 'da-DK'
