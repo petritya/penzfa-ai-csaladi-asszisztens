@@ -2423,11 +2423,7 @@ export default function App() {
     setCreateError(null)
     setCreateSuccess(null)
     setQueryResults([])
-    setAssistantAnswer(
-      appLocale === 'da-DK'
-        ? 'Tilføj en note til ' + title + '. Skriv eller indtal kun notens indhold.'
-        : 'Megjegyzés hozzáírása ehhez: ' + title + '. Írd vagy mondd be a megjegyzés szövegét.',
-    )
+    setAssistantAnswer(null)
   }
 
   async function handleConfirmReminderUpdate() {
@@ -3250,6 +3246,15 @@ export default function App() {
                       ) + (noteEditTarget.due_time ? ' – ' + noteEditTarget.due_time.slice(0, 5) : '')
                       : (appLocale === 'da-DK' ? 'Ingen dato' : 'Nincs megadott dátum')}
                   </span>
+                  <p className="note-edit-context-hint">
+                    {updateDraft
+                      ? (appLocale === 'da-DK'
+                        ? 'Bekræft ændringen nedenfor for at gemme noten.'
+                        : 'A megjegyzés mentéséhez erősítsd meg a módosítást lent.')
+                      : (appLocale === 'da-DK'
+                        ? 'Skriv eller indtal notens tekst nedenfor.'
+                        : 'Írd vagy diktáld a megjegyzés szövegét az alábbi mezőbe.')}
+                  </p>
                   {!updateDraft && (
                     <button className="secondary-button note-edit-cancel" type="button"
                       disabled={createBusy}
@@ -3289,16 +3294,18 @@ export default function App() {
                       setQueryResults([])
                       setVoiceError(null)
                     }}
-                    placeholder={noteEditTarget ? (appLocale === 'da-DK' ? 'Skriv din note…' : 'Írd ide a megjegyzést…') : dateEditTarget ? tr("Az ügy új dátuma/időpontja…") : reminderEditTarget ? tr("Az új emlékeztetés időpontja…") : tr("Mondd vagy írd le, mit intézzünk…")}
+                    placeholder={noteEditTarget ? (updateDraft
+                      ? (appLocale === 'da-DK' ? 'Afventer bekræftelse…' : 'Megerősítésre vár…')
+                      : (appLocale === 'da-DK' ? 'Skriv din note…' : 'Írd ide a megjegyzést…')) : dateEditTarget ? tr("Az ügy új dátuma/időpontja…") : reminderEditTarget ? tr("Az új emlékeztetés időpontja…") : tr("Mondd vagy írd le, mit intézzünk…")}
                     rows={4}
-                    disabled={createBusy || voiceListening || voiceTranscribing}
+                    disabled={createBusy || voiceListening || voiceTranscribing || Boolean(noteEditTarget && updateDraft)}
                   />
 
                   <button
                     className={voiceListening ? 'voice-button listening' : 'voice-button'}
                     type="button"
                     onClick={handleVoiceInput}
-                    disabled={createBusy || voiceTranscribing}
+                    disabled={createBusy || voiceTranscribing || Boolean(noteEditTarget && updateDraft)}
                     aria-label={
                       voiceTranscribing
                         ? tr("Hang átírása")
@@ -3353,6 +3360,7 @@ export default function App() {
                       || voiceListening
                       || voiceTranscribing
                       || !createMessage.trim()
+                      || Boolean(noteEditTarget && updateDraft)
                     }
                   >
                     {createBusy ? (appLocale === 'da-DK' ? 'Behandler…' : tr("Feldolgozás…")) : t('send')}
