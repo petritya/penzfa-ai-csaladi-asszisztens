@@ -547,6 +547,13 @@ export default function App() {
   }, [createSuccess])
 
   // A Google Naptár döntése után csak röviden jelenik meg a visszajelzés.
+  // A naptárbeállítások sikeres visszajelzése öt másodperc után eltűnik.
+  useEffect(() => {
+    if (!calendarNotice) return
+    const timer = window.setTimeout(() => setCalendarNotice(null), 5000)
+    return () => window.clearTimeout(timer)
+  }, [calendarNotice])
+
   useEffect(() => {
     if (!calendarImportNotice) return
     const timer = window.setTimeout(() => setCalendarImportNotice(null), 5000)
@@ -1068,7 +1075,7 @@ export default function App() {
         } else {
           setCalendarNotice(appLocale === 'da-DK'
             ? 'Google-autorisationen blev ikke startet i denne browser.'
-            : 'A Google engedélykérést nem ebben a Pénzfa-munkamenetben indítottad.')
+            : 'A Google engedélykérést nem ebben az alkalmazás-munkamenetben indítottad.')
         }
       } else if (result === 'error') {
         setCalendarNotice(appLocale === 'da-DK'
@@ -1218,8 +1225,8 @@ export default function App() {
   async function handleToggleCalendarAutoImport(enabled: boolean) {
     if (!supabase || !session || calendarBusy || !calendarConnected) return
     if (enabled && !window.confirm(appLocale === 'da-DK'
-      ? 'Vil du kontrollere nye Google Kalender-aftaler hvert 5. minut? Der sendes højst én push-besked pr. aftale, og du bestemmer altid, om den overføres til Pénzfa.'
-      : 'Figyeljük ötpercenként az új Google Naptár-bejegyzéseket? Eseményenként legfeljebb egy push érkezik, és csak a jóváhagyásoddal kerülnek be a Pénzfába.')) return
+      ? 'Vil du kontrollere nye Google Kalender-aftaler hvert 5. minut? Der sendes højst én push-besked pr. aftale, og du bestemmer altid, om den overføres til assistenten.'
+      : 'Figyeljük ötpercenként az új Google Naptár-bejegyzéseket? Eseményenként legfeljebb egy push érkezik, és csak a jóváhagyásoddal kerülnek be az asszisztensbe.')) return
     setCalendarBusy(true)
     setCalendarError(null)
     setCalendarNotice(null)
@@ -1244,8 +1251,8 @@ export default function App() {
     const yes = decision === 'accept'
     if (!window.confirm(yes
       ? (appLocale === 'da-DK'
-        ? 'Overfør denne begivenhed til Pénzfa: ' + candidate.title + '?'
-        : 'Biztosan átveszed a Pénzfába ezt az eseményt: ' + candidate.title + '?')
+        ? 'Overfør denne begivenhed til assistenten: ' + candidate.title + '?'
+        : 'Biztosan átveszed az asszisztensbe ezt az eseményt: ' + candidate.title + '?')
       : (appLocale === 'da-DK'
         ? 'Afvis denne begivenhed permanent: ' + candidate.title + '?'
         : 'Biztosan elutasítod végleg ezt az eseményt: ' + candidate.title + '?'))) return
@@ -1263,7 +1270,7 @@ export default function App() {
     }
     setCalendarImportCandidates((current) => current.filter((item) => item.event_id !== candidate.event_id))
     setCalendarImportNotice(yes
-      ? (appLocale === 'da-DK' ? 'Begivenheden er overført til Pénzfa.' : 'Az esemény bekerült a Pénzfába.')
+      ? (appLocale === 'da-DK' ? 'Begivenheden er overført til assistenten.' : 'Az esemény bekerült az asszisztensbe.')
       : (appLocale === 'da-DK' ? 'Begivenheden afvist. Vi spørger ikke igen.' : 'Elutasítva. Erre az eseményre nem kérdezünk rá újra.'))
   }
 
@@ -4011,7 +4018,7 @@ export default function App() {
 
                   <section className="push-settings" aria-label={appLocale === 'da-DK' ? 'Google Kalender' : 'Google Naptár'}>
                     <div>
-                      <strong>{appLocale === 'da-DK' ? 'Google Kalender (test)' : 'Google Naptár (teszt)'}</strong>
+                      <strong>{appLocale === 'da-DK' ? 'Google Kalender' : 'Google Naptár'}</strong>
                       <small>
                         {calendarConnected === null
                           ? (appLocale === 'da-DK' ? 'Kontrollerer forbindelse…' : 'Kapcsolat ellenőrzése…')
@@ -4029,8 +4036,8 @@ export default function App() {
                             onChange={(event) => void handleToggleCalendarAutoImport(event.target.checked)}
                           />
                           <span>{appLocale === 'da-DK'
-                            ? 'Foreslå nye Google Kalender-aftaler i Pénzfa'
-                            : 'Google Naptár → Pénzfa: új események felajánlása'}</span>
+                            ? 'Google Kalender → Assistent: foreslå nye aftaler'
+                            : 'Google Naptár → AI családi asszisztens: új események felajánlása'}</span>
                         </label>
                         <small>{appLocale === 'da-DK'
                           ? 'Kontrol hvert 5. minut: højst én push. Uden svar nævnes aftalen i næste morgenoverblik én gang og udløber næste dags aften. Ingen automatisk import.'
@@ -4048,7 +4055,7 @@ export default function App() {
                           />
                           <span>{appLocale === 'da-DK'
                             ? 'Send nye opgaver med dato automatisk til Google Kalender'
-                            : 'Pénzfa → Google Naptár: automatikus feltöltés'}</span>
+                            : 'AI családi asszisztens → Google Naptár: automatikus feltöltés'}</span>
                         </label>
                         <small>{appLocale === 'da-DK'
                           ? 'Kun nye opgaver fra aktiveringstidspunktet. Med klokkeslæt varer aftalen 1 time, ellers hele dagen. Ingen automatisk genafsendelse. Kontrol ca. hvert 5. minut.'
