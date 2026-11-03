@@ -281,6 +281,13 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.note-edit-context-hint {
+  margin: 5px 0 0;
+  color: #475569;
+  font-size: 0.87rem;
+  line-height: 1.45;
+}
+
 .note-edit-cancel {
   margin-top: 7px;
 }
@@ -303,6 +310,10 @@ h2 {
 :root[data-theme='dark'] .note-edit-context-caption,
 :root[data-theme='dark'] .note-edit-context-date {
   color: #94a3b8;
+}
+
+:root[data-theme='dark'] .note-edit-context-hint {
+  color: #cbd5e1;
 }
 
 :root[data-theme='dark'] .note-edit-confirmation-target {
