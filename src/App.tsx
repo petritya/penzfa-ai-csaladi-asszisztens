@@ -1316,7 +1316,7 @@ export default function App() {
       document.removeEventListener('visibilitychange', onResume)
       window.removeEventListener('focus', onResume)
     }
-  }, [session?.user.id, calendarConnected, queryResults])
+  }, [session?.user.id, calendarConnected, queryResults, appLocale])
 
   async function handlePrepareCalendarExport(itemId: string) {
     if (!supabase || calendarExportBusy) return
