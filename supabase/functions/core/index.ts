@@ -1600,7 +1600,7 @@ function quickCompleteIntent(message: string) {
 function queryKeywordMatches(haystack: string, token: string) {
   if (haystack.includes(token)) return true
 
-  const suffixes = ['hoz', 'hez', 'hon', 'ban', 'ben', 'nal', 'nel', 'nak', 'nek',
+  const suffixes = ['hoz', 'hez', 'ban', 'ben', 'nal', 'nel', 'nak', 'nek',
     'bol', 'rol', 'tol', 'val', 'vel', 'ra', 're', 'ba', 'be', 'on', 'en', 't']
   return suffixes.some((suffix) =>
     token.endsWith(suffix)
@@ -2580,6 +2580,14 @@ Deno.serve(async (req) => {
       if (selfVisitQuery) {
         interpretation.status = 'open'
         interpretation.responsibility = 'mine'
+        // Az egyszerű "Mikor megyek [a] fodrászhoz?" típusú kérdésekben
+        // a keresett helyet közvetlenül a mondatból is ki tudjuk nyerni.
+        // Így nem függünk attól, hogy az AI belerakta-e a "megyek" igét a kulcsszóba.
+        const simpleTarget = normalize(message)
+          .replace(/[?!.,:]+/g, ' ')
+          .trim()
+          .match(/^mikor\s+megyek\s+(?:(?:a|az)\s+)?([a-z]{4,})$/)
+        if (simpleTarget) interpretation.keywords = simpleTarget[1]
       }
 
       const timeZone = settings?.timezone ?? 'Europe/Budapest'
