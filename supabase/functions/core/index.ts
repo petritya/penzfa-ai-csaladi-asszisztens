@@ -1595,6 +1595,20 @@ function quickCompleteIntent(message: string) {
 }
 
 // Egyszerű, egyértelmű feladatlistáknál az AI helyett a Core értelmez.
+// Az egyszerű magyar ragokat a keresésnél kezeljük, a mentett ügy címét
+// nem módosítjuk. Pl. "fodrászhoz" és "fodrász" ugyanarra találjon.
+function queryKeywordMatches(haystack: string, token: string) {
+  if (haystack.includes(token)) return true
+
+  const suffixes = ['hoz', 'hez', 'hon', 'ban', 'ben', 'nal', 'nel', 'nak', 'nek',
+    'bol', 'rol', 'tol', 'val', 'vel', 'ra', 're', 'ba', 'be', 'on', 'en', 't']
+  return suffixes.some((suffix) =>
+    token.endsWith(suffix)
+    && token.length - suffix.length >= 4
+    && haystack.includes(token.slice(0, -suffix.length)),
+  )
+}
+
 function quickListInterpretation(message: string): QueryInterpretation | null {
   const text = normalize(message).replace(/[?!.,:]+/g, ' ').replace(/\s+/g, ' ').trim()
   const huOverdue = /^(?:(?:milyen|melyik|mik|mutasd|sorold)\s+)?(?:a\s+)?lejart\s+(feladataim|ugyeim|teendoim|feladataink|ugyeink|teendoink|feladatok|ugyek|teendok)(?:\s+vannak)?$/.exec(text)
@@ -1659,6 +1673,7 @@ async function interpretQueryWithOpenAI(
         'Egész hónapra vonatkozó kérdésnél, például "Milyen feladataim vannak novemberben?", date_scope=specific_date, date_phrase="novemberben" legyen. Ne találj ki napot vagy évet.',
         'Példák: "Mi van holnap?" => open, family, subject_name=null, responsible_name=null, tomorrow.',
         '"Mikor megy Anya fodrászhoz?" => open, family, subject_name=Anya, responsible_name=null, keywords=fodrász, none.',
+        '"Mikor megyek fodrászhoz?" => open, mine, subject_name=null, responsible_name=null, keywords=fodrász, none. Első személyű kérdésnél ne tegyél a subject_name mezőbe családtagot; a keywords csak a keresett ügy neve legyen, ne a kérdés igéje.',
         '"Milyen nyitott ügyeim vannak?" => open, mine, subject_name=null, responsible_name=null, none.',
         '"Mit intéztem el ezen a héten?" => done, mine, subject_name=null, responsible_name=null, this_week.',
         '"Milyen törölt ügyeim vannak?" => deleted, mine, subject_name=null, responsible_name=null, none.',
@@ -2554,6 +2569,19 @@ Deno.serve(async (req) => {
         requestLocale,
       )
 
+      // Első személyben ("mikor megyek ...") a saját felelősségű ügyet
+      // keressük akkor is, ha nincs külön subject_member_id rögzítve.
+      // Más családtag név szerinti lekérdezésének szabályát nem módosítjuk.
+      const selfVisitQuery = /\bmegyek\b/.test(normalize(message))
+        && (!interpretation.subject_name
+          || normalize(interpretation.subject_name) === normalize(activeMembership.display_name))
+        && (!interpretation.responsible_name
+          || normalize(interpretation.responsible_name) === normalize(activeMembership.display_name))
+      if (selfVisitQuery) {
+        interpretation.status = 'open'
+        interpretation.responsibility = 'mine'
+      }
+
       const timeZone = settings?.timezone ?? 'Europe/Budapest'
       const dateRange = resolveQueryDateRange(
         interpretation.date_scope,
@@ -2622,11 +2650,13 @@ Deno.serve(async (req) => {
         }
       }
 
-      if (subjectId) {
+      if (subjectId && !selfVisitQuery) {
         itemsQuery = itemsQuery.eq('subject_member_id', subjectId)
       }
 
-      if (responsibleUserId) {
+      if (selfVisitQuery) {
+        itemsQuery = itemsQuery.eq('responsible_user_id', user.id)
+      } else if (responsibleUserId) {
         itemsQuery = itemsQuery.eq('responsible_user_id', responsibleUserId)
       } else if (interpretation.responsibility === 'mine') {
         itemsQuery = itemsQuery.eq('responsible_user_id', user.id)
@@ -2659,7 +2689,7 @@ Deno.serve(async (req) => {
       let filtered = ownershipFiltered.filter((item) => {
         if (keywordTokens.length) {
           const haystack = normalize(`${item.title} ${item.notes ?? ''}`)
-          if (!keywordTokens.every((token) => haystack.includes(token))) return false
+          if (!keywordTokens.every((token) => queryKeywordMatches(haystack, token))) return false
         }
 
         if (dateRange) {
