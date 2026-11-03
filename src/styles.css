@@ -256,6 +256,59 @@ h2 {
   line-height: 1.5;
 }
 
+/* A megjegyzés szerkesztése alatt egyértelműen látszik a célügy és az időpont. */
+.note-edit-context {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.note-edit-context-caption,
+.note-edit-context-date {
+  color: #64748b;
+  font-size: 0.87rem;
+}
+
+.note-edit-context-title {
+  color: #0f172a;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.note-edit-cancel {
+  margin-top: 7px;
+}
+
+.note-edit-confirmation-target {
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e2e8f0;
+  overflow-wrap: anywhere;
+}
+
+:root[data-theme='dark'] .note-edit-context {
+  border-color: #334155;
+  background: #0f172a;
+}
+
+:root[data-theme='dark'] .note-edit-context-title {
+  color: #f8fafc;
+}
+
+:root[data-theme='dark'] .note-edit-context-caption,
+:root[data-theme='dark'] .note-edit-context-date {
+  color: #94a3b8;
+}
+
+:root[data-theme='dark'] .note-edit-confirmation-target {
+  border-bottom-color: #334155;
+}
+
 .capture-form {
   display: grid;
   gap: 10px;
