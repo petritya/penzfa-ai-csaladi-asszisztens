@@ -74,6 +74,11 @@ type ReminderEditTarget = {
   title: string
 }
 
+type NoteEditTarget = ReminderEditTarget & {
+  due_date: string | null
+  due_time: string | null
+}
+
 type ReminderFollowUp = ReminderEditTarget & {
   reminder_at: string | null
 }
@@ -371,7 +376,7 @@ export default function App() {
   const [reminderUpdateDraft, setReminderUpdateDraft] = useState<UpdateDraft | null>(null)
   const [reminderEditTarget, setReminderEditTarget] = useState<ReminderEditTarget | null>(null)
   const [dateEditTarget, setDateEditTarget] = useState<ReminderEditTarget | null>(null)
-  const [noteEditTarget, setNoteEditTarget] = useState<ReminderEditTarget | null>(null)
+  const [noteEditTarget, setNoteEditTarget] = useState<NoteEditTarget | null>(null)
   const [reminderFollowUp, setReminderFollowUp] = useState<ReminderFollowUp | null>(null)
   const [deleteDraft, setDeleteDraft] = useState<DeleteDraft | null>(null)
   const [assistantAnswer, setAssistantAnswer] = useState<string | null>(null)
@@ -2403,9 +2408,9 @@ export default function App() {
     )
   }
 
-  function startNoteEdit(itemId: string, title: string) {
+  function startNoteEdit(itemId: string, title: string, dueDate: string | null, dueTime: string | null) {
     setReminderFollowUp(null)
-    setNoteEditTarget({ id: itemId, title })
+    setNoteEditTarget({ id: itemId, title, due_date: dueDate, due_time: dueTime })
     setDateEditTarget(null)
     setReminderEditTarget(null)
     setReminderUpdateDraft(null)
@@ -3229,11 +3234,38 @@ export default function App() {
 
           {familyName && (
             <section className="capture-block capture-primary" aria-label={tr("Kommunikáció")}>
-              <h2>{t('captureHeading')}</h2>
-              <p className="capture-help">
-                {appLocale === 'da-DK' ? t('captureDescription') : <>Írd be vagy diktáld természetesen. Például: „{exampleText}” vagy „Mik a nyitott ügyeink?”</>}
-              </p>
-
+              <h2>{noteEditTarget
+                ? (appLocale === 'da-DK' ? 'Tilføj note' : 'Megjegyzés hozzáírása')
+                : t('captureHeading')}</h2>
+              {noteEditTarget ? (
+                <div className="note-edit-context" role="group" aria-label={appLocale === 'da-DK' ? 'Opgave, der redigeres' : 'Módosított ügy'}>
+                  <span className="note-edit-context-caption">
+                    {appLocale === 'da-DK' ? 'Du redigerer denne opgave:' : 'Ehhez az ügyhöz írsz megjegyzést:'}
+                  </span>
+                  <strong className="note-edit-context-title">{noteEditTarget.title}</strong>
+                  <span className="note-edit-context-date">
+                    {noteEditTarget.due_date
+                      ? new Date(noteEditTarget.due_date + 'T12:00:00').toLocaleDateString(
+                        appLocale === 'da-DK' ? 'da-DK' : 'hu-HU', { dateStyle: 'long' },
+                      ) + (noteEditTarget.due_time ? ' – ' + noteEditTarget.due_time.slice(0, 5) : '')
+                      : (appLocale === 'da-DK' ? 'Ingen dato' : 'Nincs megadott dátum')}
+                  </span>
+                  {!updateDraft && (
+                    <button className="secondary-button note-edit-cancel" type="button"
+                      disabled={createBusy}
+                      onClick={() => {
+                        handleCancelCreate()
+                        setCreateMessage('')
+                      }}>
+                      {appLocale === 'da-DK' ? 'Annuller' : 'Mégse'}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <p className="capture-help">
+                  {appLocale === 'da-DK' ? t('captureDescription') : <>Írd be vagy diktáld természetesen. Például: „{exampleText}” vagy „Mik a nyitott ügyeink?”</>}
+                </p>
+              )}
 
               <form className="capture-form" onSubmit={handleMessage}>
                 <div className="capture-input-shell">
@@ -3422,7 +3454,7 @@ export default function App() {
                             <button
                               className="query-action-button"
                               type="button"
-                              onClick={() => startNoteEdit(item.id, item.title)}
+                              onClick={() => startNoteEdit(item.id, item.title, item.due_date, item.due_time)}
                               disabled={createBusy}
                             >
                               {appLocale === 'da-DK' ? 'Tilføj note' : 'Megjegyzés hozzáírása'}
@@ -3572,6 +3604,16 @@ export default function App() {
               {updateDraft && (
                 <div className="confirmation-card">
                   <strong>{tr("Megerősítés:")}</strong>
+                  {noteEditTarget && (
+                    <p className="note-edit-confirmation-target">
+                      <strong>{appLocale === 'da-DK' ? 'Opgave:' : 'Érintett ügy:'}</strong>{' '}
+                      {noteEditTarget.title}
+                      {noteEditTarget.due_date && (' – ' +
+                        new Date(noteEditTarget.due_date + 'T12:00:00').toLocaleDateString(
+                          appLocale === 'da-DK' ? 'da-DK' : 'hu-HU', { dateStyle: 'long' },
+                        ) + (noteEditTarget.due_time ? ' ' + noteEditTarget.due_time.slice(0, 5) : ''))}
+                    </p>
+                  )}
                   <p>{updateDraft.confirmation_text}</p>
                   <div className="confirmation-actions">
                     <button
