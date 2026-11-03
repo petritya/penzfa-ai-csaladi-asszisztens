@@ -2011,15 +2011,46 @@ export default function App() {
         },
       })
 
-      setCreateBusy(false)
-      if (error || data?.status !== 'needs_confirmation' || !data?.draft) {
+      if (error || data?.status !== 'needs_confirmation'
+        || !data?.draft?.pending_action_id || data.draft.target_item_id !== dateEditTarget.id) {
+        setCreateBusy(false)
         setCreateError(error?.message ?? data?.error ?? 'A módosítást nem sikerült előkészíteni.')
         return
       }
 
+      // Kiválasztott ügy + egyértelműen értelmezett időpont: a felhasználó
+      // Küldés gombja elegendő, a szerver eredeti ellenőrzéseit megtartjuk.
+      const { data: saved, error: saveError } = await invokeLocalizedCore({
+        body: {
+          action: 'confirm_update',
+          pending_action_id: data.draft.pending_action_id,
+        },
+      })
+
+      setCreateBusy(false)
+      if (saveError || saved?.status !== 'updated' || saved?.item?.id !== dateEditTarget.id) {
+        setCreateError(saveError?.message ?? saved?.error ?? 'Nem sikerült menteni az új időpontot.')
+        return
+      }
+
       setCreateMessage('')
-      setUpdateDraft(data.draft as UpdateDraft)
-      setCreateError(null)
+      setUpdateDraft(null)
+      setDateEditTarget(null)
+      setAssistantAnswer(null)
+      setCreateSuccess((appLocale === 'da-DK' ? 'Tidspunkt ændret: ' : 'Dátum/időpont módosítva: ')
+        + (saved.item.title ?? dateEditTarget.title))
+      const review = saved.reminder_review as { reminder_at: string | null } | null
+      if (review) {
+        setReminderFollowUp({
+          id: String(saved.item.id),
+          title: String(saved.item.title),
+          due_date: saved.item.due_date ?? null,
+          due_time: saved.item.due_time ?? null,
+          reminder_at: review.reminder_at,
+        })
+      } else {
+        setReminderFollowUp(null)
+      }
       return
     }
 
@@ -2037,27 +2068,44 @@ export default function App() {
         },
       })
 
-      setCreateBusy(false)
-      setCreateMessage('')
-
       if (error) {
+        setCreateBusy(false)
         setCreateError(error.message)
         return
       }
 
-      if (data?.status === 'needs_confirmation' && data?.draft) {
-        setReminderUpdateDraft(data.draft as UpdateDraft)
-        setAssistantAnswer(null)
-        setCreateError(null)
-        return
-      }
-
       if (data?.status === 'reminder_needs_clarification') {
+        setCreateBusy(false)
         setCreateError(data.error ?? 'Az emlékeztetés időpontját még pontosítani kell.')
         return
       }
 
-      setCreateError(data?.error ?? 'Az emlékeztetést most nem sikerült módosítani.')
+      if (data?.status !== 'needs_confirmation'
+        || !data?.draft?.pending_action_id || data.draft.target_item_id !== reminderEditTarget.id) {
+        setCreateBusy(false)
+        setCreateError(data?.error ?? 'Az emlékeztetést nem sikerült előkészíteni.')
+        return
+      }
+
+      const { data: saved, error: saveError } = await invokeLocalizedCore({
+        body: {
+          action: 'confirm_reminder_update',
+          pending_action_id: data.draft.pending_action_id,
+        },
+      })
+
+      setCreateBusy(false)
+      if (saveError || saved?.status !== 'reminder_updated' || saved?.item?.id !== reminderEditTarget.id) {
+        setCreateError(saveError?.message ?? saved?.error ?? 'Az emlékeztetést most nem sikerült módosítani.')
+        return
+      }
+
+      setCreateMessage('')
+      setReminderUpdateDraft(null)
+      setReminderEditTarget(null)
+      setAssistantAnswer(null)
+      setCreateSuccess((appLocale === 'da-DK' ? 'Påmindelse ændret: ' : 'Emlékeztető módosítva: ')
+        + (saved.item.title ?? reminderEditTarget.title))
       return
     }
 
