@@ -2572,22 +2572,23 @@ Deno.serve(async (req) => {
       // Első személyben ("mikor megyek ...") a saját felelősségű ügyet
       // keressük akkor is, ha nincs külön subject_member_id rögzítve.
       // Más családtag név szerinti lekérdezésének szabályát nem módosítjuk.
-      const selfVisitQuery = /\bmegyek\b/.test(normalize(message))
+      // A rövid, egyértelmű első személyű kérdésben a keresett ügyet
+      // determinisztikusan azonosítjuk, az AI személymegjelölésétől függetlenül.
+      const simpleVisitTarget = normalize(message)
+        .replace(/[?!.,:]+/g, ' ')
+        .trim()
+        .match(/^mikor\s+megyek\s+(?:(?:a|az)\s+)?([a-z]{4,})$/)
+      const selfVisitQuery = Boolean(simpleVisitTarget) || (
+        /\bmegyek\b/.test(normalize(message))
         && (!interpretation.subject_name
           || normalize(interpretation.subject_name) === normalize(activeMembership.display_name))
         && (!interpretation.responsible_name
           || normalize(interpretation.responsible_name) === normalize(activeMembership.display_name))
+      )
       if (selfVisitQuery) {
         interpretation.status = 'open'
         interpretation.responsibility = 'mine'
-        // Az egyszerű "Mikor megyek [a] fodrászhoz?" típusú kérdésekben
-        // a keresett helyet közvetlenül a mondatból is ki tudjuk nyerni.
-        // Így nem függünk attól, hogy az AI belerakta-e a "megyek" igét a kulcsszóba.
-        const simpleTarget = normalize(message)
-          .replace(/[?!.,:]+/g, ' ')
-          .trim()
-          .match(/^mikor\s+megyek\s+(?:(?:a|az)\s+)?([a-z]{4,})$/)
-        if (simpleTarget) interpretation.keywords = simpleTarget[1]
+        if (simpleVisitTarget) interpretation.keywords = simpleVisitTarget[1]
       }
 
       const timeZone = settings?.timezone ?? 'Europe/Budapest'
