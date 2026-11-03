@@ -241,6 +241,7 @@ Deno.serve(async (request: Request) => {
       confirmed?: boolean
       ticket?: string
       item_id?: string
+      item_ids?: string[]
       expected_updated_at?: string
       allow_resend?: boolean
       enabled?: boolean
@@ -276,6 +277,23 @@ Deno.serve(async (request: Request) => {
       if (updateError) throw updateError
       if (!updated) return json({ error: 'A Google Naptár nincs csatlakoztatva.' }, 400)
       return json({ auto_import_enabled: Boolean(updated.auto_import_enabled_at) })
+    }
+
+    // Csak az aktuális felhasználó saját korábbi naptárküldéseit adjuk vissza.
+    // A 'sending' állapotot is foglaltnak tekintjük: így nem ajánlunk fel
+    // ismételt küldést bizonytalan korábbi eredménynél.
+    if (body.action === 'list_calendar_export_statuses') {
+      const itemIds = body.item_ids
+      const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      if (!Array.isArray(itemIds) || itemIds.length > 100
+        || itemIds.some((id) => typeof id !== 'string' || !uuid.test(id))) {
+        return json({ error: 'Érvénytelen ügyazonosító-lista.' }, 400)
+      }
+      if (itemIds.length === 0) return json({ exported_item_ids: [] })
+      const { data, error } = await db.from('google_calendar_exports')
+        .select('item_id').eq('user_id', userId).in('item_id', itemIds)
+      if (error) throw error
+      return json({ exported_item_ids: (data ?? []).map((entry) => entry.item_id) })
     }
 
     if (body.action === 'list_calendar_imports') {
