@@ -1286,12 +1286,16 @@ export default function App() {
       if (document.visibilityState !== 'visible' || Date.now() - lastRefreshAt < 2000) return
       lastRefreshAt = Date.now()
 
-      const { data, error } = await supabase!.functions.invoke('google-calendar-oauth', {
-        body: { action: 'list_calendar_export_statuses', item_ids: itemIds.slice(0, 100) },
-      })
+      const requests = []
+      for (let offset = 0; offset < itemIds.length; offset += 100) {
+        requests.push(supabase!.functions.invoke('google-calendar-oauth', {
+          body: { action: 'list_calendar_export_statuses', item_ids: itemIds.slice(offset, offset + 100) },
+        }))
+      }
+      const responses = await Promise.all(requests)
       if (cancelled) return
 
-      if (error || data?.error || !Array.isArray(data?.exported_item_ids)) {
+      if (responses.some(({ data, error }) => error || data?.error || !Array.isArray(data?.exported_item_ids))) {
         setCalendarExportedItemIds(null)
         setCalendarExportStatusError(appLocale === 'da-DK'
           ? 'Kalenderstatus kunne ikke kontrolleres. Søg igen for at prøve på ny.'
@@ -1299,7 +1303,7 @@ export default function App() {
         return
       }
 
-      setCalendarExportedItemIds(data.exported_item_ids as string[])
+      setCalendarExportedItemIds(responses.flatMap(({ data }) => data.exported_item_ids as string[]))
       setCalendarExportStatusError(null)
     }
 
