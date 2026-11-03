@@ -1656,7 +1656,7 @@ async function interpretQueryWithOpenAI(
         'Csak a keresési szándékot strukturáld. Ne kérdezz adatbázist és ne számolj relatív dátumot.',
         'status=open: nyitott vagy jövőbeli ügyek; done: elintézett/kész előzmények; deleted: törölt vagy visszavont ügyek; all: csak ha a kérdés tényleg a nyitott és kész ügyeket együtt kéri. A törölt ügyek csak kifejezett kérésre legyenek deleted státuszúak.',
         'Az "utoljára", "legutóbb", "legutóbbi" múltbeli kérdéseknél status=done legyen.',
-        'responsibility=mine, ha a felhasználó kifejezetten a saját felelősségi körére kérdez (pl. "ami hozzám tartozik", "az én feladataim"). Egyébként family.',
+        'responsibility=mine, ha a felhasználó kifejezetten a saját felelősségi körére kérdez (pl. "ami hozzám tartozik", "az én feladataim"), vagy első személyben kérdez egy saját ügyéről (pl. "mikor megyek", "mikor hívom fel", "mikor fizetem be"). Első személyben subject_name és responsible_name legyen null, ha nincs név szerint megadott másik családtag. Egyébként family.',
         `Aktív családi felhasználók: ${activeMemberNames.length ? activeMemberNames.join(', ') : 'nincs'}.`,
         `Kezelt családtagok: ${managedMemberNames.length ? managedMemberNames.join(', ') : 'nincs'}.`,
         'subject_name azt jelenti, hogy kire vonatkozik az ügy. Kezelt családtagnál általában ezt használd.',
