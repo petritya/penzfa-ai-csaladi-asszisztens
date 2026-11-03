@@ -536,6 +536,13 @@ export default function App() {
     return () => window.clearTimeout(timer)
   }, [createSuccess])
 
+  // A Google Naptár döntése után csak röviden jelenik meg a visszajelzés.
+  useEffect(() => {
+    if (!calendarImportNotice) return
+    const timer = window.setTimeout(() => setCalendarImportNotice(null), 5000)
+    return () => window.clearTimeout(timer)
+  }, [calendarImportNotice])
+
   useEffect(() => {
     if (!settingsMessage) return
 
@@ -3113,22 +3120,24 @@ export default function App() {
             </section>
           )}
 
-          {familyName && calendarConnected && (
+          {familyName && calendarConnected && calendarImportNotice && (
+            <p className="notice success" role="status">{calendarImportNotice}</p>
+          )}
+          {familyName && calendarConnected && (calendarImportCandidates.length > 0 || Boolean(calendarImportError)) && (
             <section className="capture-block calendar-import-inbox" aria-label={appLocale === 'da-DK' ? 'Google Kalender – forslag' : 'Google Naptár – átvételi javaslatok'}>
-              <div className="calendar-import-heading">
+              {calendarImportCandidates.length > 0 && (
                 <h2>{appLocale === 'da-DK' ? 'Nye begivenheder fra Google Kalender' : 'Új események a Google Naptárból'}</h2>
-                <button className="secondary-button" type="button" disabled={calendarImportLoading || calendarImportBusy}
-                  onClick={() => void reloadCalendarImports()}>
-                  {calendarImportLoading ? t('loading') : (appLocale === 'da-DK' ? 'Opdater' : 'Frissítés')}
-                </button>
-              </div>
-              {calendarImportNotice && <p className="notice success">{calendarImportNotice}</p>}
-              {calendarImportError && <p className="notice error">{calendarImportError}</p>}
-              {calendarImportCandidates.length === 0 ? (
-                <p className="settings-hint">{appLocale === 'da-DK'
-                  ? 'Ingen nye begivenheder afventer godkendelse.'
-                  : 'Nincs jóváhagyásra váró új naptáresemény.'}</p>
-              ) : calendarImportCandidates.map((candidate) => (
+              )}
+              {calendarImportError && (
+                <>
+                  <p className="notice error" role="alert">{calendarImportError}</p>
+                  <button className="secondary-button" type="button" disabled={calendarImportLoading || calendarImportBusy}
+                    onClick={() => void reloadCalendarImports()}>
+                    {calendarImportLoading ? t('loading') : (appLocale === 'da-DK' ? 'Prøv igen' : 'Újrapróbálás')}
+                  </button>
+                </>
+              )}
+              {calendarImportCandidates.map((candidate) => (
                 <div className="confirmation-card" key={candidate.event_id}>
                   <strong>{candidate.title}</strong>
                   <p>{new Date(candidate.due_date + 'T12:00:00').toLocaleDateString(
