@@ -77,10 +77,13 @@ type ReminderEditTarget = {
 type NoteEditTarget = ReminderEditTarget & {
   due_date: string | null
   due_time: string | null
+  reminder_at?: string | null
 }
 
 type ReminderFollowUp = ReminderEditTarget & {
   reminder_at: string | null
+  due_date?: string | null
+  due_time?: string | null
 }
 
 type PushStatus = 'idle' | 'loading' | 'ready' | 'enabled' | 'blocked' | 'unsupported' | 'error'
@@ -374,8 +377,8 @@ export default function App() {
   const [completeCandidates, setCompleteCandidates] = useState<CompleteCandidate[]>([])
   const [updateDraft, setUpdateDraft] = useState<UpdateDraft | null>(null)
   const [reminderUpdateDraft, setReminderUpdateDraft] = useState<UpdateDraft | null>(null)
-  const [reminderEditTarget, setReminderEditTarget] = useState<ReminderEditTarget | null>(null)
-  const [dateEditTarget, setDateEditTarget] = useState<ReminderEditTarget | null>(null)
+  const [reminderEditTarget, setReminderEditTarget] = useState<NoteEditTarget | null>(null)
+  const [dateEditTarget, setDateEditTarget] = useState<NoteEditTarget | null>(null)
   const [noteEditTarget, setNoteEditTarget] = useState<NoteEditTarget | null>(null)
   const [reminderFollowUp, setReminderFollowUp] = useState<ReminderFollowUp | null>(null)
   const [deleteDraft, setDeleteDraft] = useState<DeleteDraft | null>(null)
@@ -2388,11 +2391,14 @@ export default function App() {
     setCreateError(data?.error ?? 'Az ügyet most nem sikerült törölni.')
   }
 
-  function startReminderEdit(itemId: string, title: string) {
+  function startReminderEdit(itemId: string, title: string,
+    dueDate: string | null = null, dueTime: string | null = null,
+    reminderAt: string | null = null,
+  ) {
     setReminderFollowUp(null)
     setDateEditTarget(null)
     setNoteEditTarget(null)
-    setReminderEditTarget({ id: itemId, title })
+    setReminderEditTarget({ id: itemId, title, due_date: dueDate, due_time: dueTime, reminder_at: reminderAt })
     setReminderUpdateDraft(null)
     setCreateMessage('')
     setCreateDraft(null)
@@ -2403,18 +2409,16 @@ export default function App() {
     setCreateError(null)
     setCreateSuccess(null)
     setQueryResults([])
-    setAssistantAnswer(
-      appLocale === 'da-DK'
-        ? `Rediger påmindelsen for ${title}. Skriv eller indtal det nye tidspunkt, for eksempel "en halv time før", "samme dag kl. 18" eller "ingen påmindelse".`
-        : `Emlékeztető módosítása: ${title}. Írd vagy mondd be az új időpontot, például: „előtte fél órával”, „aznap 18-kor”, vagy „nem kérek emlékeztetőt”.`,
-    )
+    setAssistantAnswer(null)
   }
 
 
-  function startDateEdit(itemId: string, title: string) {
+  function startDateEdit(itemId: string, title: string,
+    dueDate: string | null, dueTime: string | null,
+  ) {
     setReminderFollowUp(null)
     setNoteEditTarget(null)
-    setDateEditTarget({ id: itemId, title })
+    setDateEditTarget({ id: itemId, title, due_date: dueDate, due_time: dueTime })
     setReminderEditTarget(null)
     setReminderUpdateDraft(null)
     setCreateMessage('')
@@ -2426,9 +2430,7 @@ export default function App() {
     setCreateError(null)
     setCreateSuccess(null)
     setQueryResults([])
-    setAssistantAnswer(
-      `Dátum/időpont módosítása: ${title}. Írd vagy mondd be az új dátumot vagy időpontot, például: „jövő kedden 14:30-kor” vagy „aznap 16:00-kor”.`,
-    )
+    setAssistantAnswer(null)
   }
 
   function startNoteEdit(itemId: string, title: string, dueDate: string | null, dueTime: string | null) {
@@ -2502,7 +2504,7 @@ export default function App() {
     }
 
     setReminderFollowUp(null)
-    setReminderEditTarget(target)
+    setReminderEditTarget({ ...target, due_date: target.due_date ?? null, due_time: target.due_time ?? null })
     setReminderUpdateDraft(data.draft as UpdateDraft)
     setCreateSuccess(null)
   }
@@ -2540,6 +2542,8 @@ export default function App() {
         setReminderFollowUp({
           id: String(data.item.id),
           title: String(data.item.title),
+          due_date: data.item.due_date ?? null,
+          due_time: data.item.due_time ?? null,
           reminder_at: review.reminder_at,
         })
       } else {
@@ -2872,6 +2876,7 @@ export default function App() {
     const currentPushCopy = localizedPush?.source === pushContext?.message
       && localizedPush?.locale === appLocale ? localizedPush : null
     const exampleManagedMember = familyMembers.find((member) => member.member_kind === 'managed') ?? null
+    const selectedEditTarget = noteEditTarget ?? dateEditTarget ?? reminderEditTarget
     const exampleText = exampleManagedMember
       ? `${exampleManagedMember.display_name} kontrollja jövő kedden 10-kor.`
       : 'Jövő kedden 10-kor kontroll.'
@@ -3469,7 +3474,7 @@ export default function App() {
                             <button
                               className="query-action-button"
                               type="button"
-                              onClick={() => startDateEdit(item.id, item.title)}
+                              onClick={() => startDateEdit(item.id, item.title, item.due_date, item.due_time)}
                               disabled={createBusy}
                             >
                               {tr("Dátum/idő módosítása")}
@@ -3477,7 +3482,7 @@ export default function App() {
                             <button
                               className="query-action-button"
                               type="button"
-                              onClick={() => startReminderEdit(item.id, item.title)}
+                              onClick={() => startReminderEdit(item.id, item.title, item.due_date, item.due_time, item.reminder_at ?? null)}
                               disabled={createBusy}
                             >
                               {item.reminder_missing ? tr("Emlékeztető beállítása") : tr("Emlékeztető módosítása")}
@@ -3689,7 +3694,7 @@ export default function App() {
                     <button
                       className="primary-button"
                       type="button"
-                      onClick={() => startReminderEdit(reminderFollowUp.id, reminderFollowUp.title)}
+                      onClick={() => startReminderEdit(reminderFollowUp.id, reminderFollowUp.title, reminderFollowUp.due_date ?? null, reminderFollowUp.due_time ?? null, reminderFollowUp.reminder_at)}
                       disabled={createBusy}
                     >
                       {reminderFollowUp.reminder_at ? tr("Emlékeztető módosítása") : tr("Emlékeztető beállítása")}
