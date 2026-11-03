@@ -554,6 +554,33 @@ h2 {
   line-height: 1.5;
 }
 
+/* Az ügyek alaphelyzetben rövidek maradnak; a műveletek külön lenyithatók. */
+.query-actions-details {
+  margin-top: 8px;
+}
+
+.query-actions-details summary {
+  display: list-item;
+  width: fit-content;
+  cursor: pointer;
+  color: #475569;
+  font-size: 0.85rem;
+  font-weight: 800;
+  padding: 4px 0;
+}
+
+.query-actions-details[open] summary {
+  margin-bottom: 4px;
+}
+
+.query-actions-details .confirmation-actions {
+  padding-bottom: 4px;
+}
+
+:root[data-theme='dark'] .query-actions-details summary {
+  color: #94a3b8;
+}
+
 .query-action-button {
   margin-top: 9px;
   border: 0;
