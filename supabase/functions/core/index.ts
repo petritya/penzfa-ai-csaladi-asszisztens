@@ -4380,11 +4380,11 @@ Deno.serve(async (req) => {
       )
 
       const timeZone = settings?.timezone ?? 'Europe/Budapest'
-      const targetDate = relativePastDayFromPhrase(
-        interpretation.target_date_phrase ?? message, timeZone,
-      ) ?? (interpretation.target_date_phrase
-        ? resolveDatePhrase(interpretation.target_date_phrase, timeZone)
-        : null)
+      const targetDate = relativePastDayFromPhrase(interpretation.target_date_phrase, timeZone)
+        ?? relativePastDayFromPhrase(message, timeZone)
+        ?? (interpretation.target_date_phrase
+          ? resolveDatePhrase(interpretation.target_date_phrase, timeZone)
+          : null)
 
       if (interpretation.target_date_phrase && !targetDate) {
         return json({
@@ -4433,12 +4433,14 @@ Deno.serve(async (req) => {
       if (itemsError) throw itemsError
 
       const normalizedMessage = normalize(message)
-      const doneOnly = /\b(?:lezart|elintezett|elvegzett|keszre|befejezett|udfort|afsluttet|faerdig)\b/.test(normalizedMessage)
+      const doneOnly = /\b(?:lezart|elintezett|elvegzett|keszre|kesznek|befejezett|udfort|afsluttet|faerdig)\b/.test(normalizedMessage)
       const openOnly = /\b(?:nyitott|abne|aabne)\b/.test(normalizedMessage)
+      // Az idő- és állapotszavak nem az ügy címei. Csak a tényleges
+      // témaszavakat használjuk a kiválasztáshoz.
       const targetTitle = normalize(interpretation.target_title).replace(
-        /\b(?:tegnap(?:i|rol)?|tegnapelott(?:i)?|igar|i gar|forgars|i forgars|lezart|elintezett|keszre|nyitott)\b/g, ' ',
+        /\b(?:a|az|egy|mar|tegnap(?:i|rol)?|tegnapelott(?:i)?|igar|i gar|forgars|i forgars|lezart|elintezett|elvegzett|keszre|kesznek|jelolt|nyitott|esemeny(?:t|ek|eim|emet|em)?|feladat(?:ot|ok|aim|om)?|ugy(?:et|ek|eim|em)?|teendo(?:t|k|m)?|aftale(?:n|r)?|opgave(?:n|r)?)\b/g, ' ',
       ).replace(/\s+/g, ' ').trim()
-      const genericTarget = /^(?:|a|az|egy|esemeny(?:t|ek|eim)?|feladat(?:ot|ok|aim)?|ugy(?:et|ek|eim)?|teendo(?:t|k)?|aftale(?:n|r)?|opgave(?:n|r)?)$/.test(targetTitle)
+      const genericTarget = !targetTitle
       const targetTokens = genericTarget ? [] : targetTitle.split(/\s+/).filter((token) => token.length >= 3)
       let matches = (eligibleItems ?? []).filter((item) => {
         if (subjectId && item.subject_member_id !== subjectId) return false
