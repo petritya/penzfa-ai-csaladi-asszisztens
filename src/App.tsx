@@ -796,6 +796,13 @@ export default function App() {
       setLocalizedPush(null)
       return
     }
+    // A szerveren eltárolt briefing magyar szöveg. Magyar felületen
+    // ne fordítsuk újra AI-val: a fölösleges fordítás idegen nyelvű
+    // (pl. német) választ is eredményezhet.
+    if (appLocale === 'hu-HU' && pushContext.type === 'briefing') {
+      setLocalizedPush(null)
+      return
+    }
     let cancelled = false
     setLocalizedPush(null)
     const sourceLines = pushContext.message.split('\n').map((line) => line.trim()).filter(Boolean)
