@@ -398,6 +398,9 @@ export default function App() {
   const [noteEditTarget, setNoteEditTarget] = useState<NoteEditTarget | null>(null)
   const [reminderFollowUp, setReminderFollowUp] = useState<ReminderFollowUp | null>(null)
   const [deleteDraft, setDeleteDraft] = useState<DeleteDraft | null>(null)
+  const [calendarDeleteFollowUp, setCalendarDeleteFollowUp] = useState<{id:string;title:string}|null>(null)
+  const [calendarDeleteBusy, setCalendarDeleteBusy] = useState(false)
+  const [calendarDeleteError, setCalendarDeleteError] = useState<string|null>(null)
   const [assistantAnswer, setAssistantAnswer] = useState<string | null>(null)
   const [queryResults, setQueryResults] = useState<QueryResultItem[]>([])
   const [voiceListening, setVoiceListening] = useState(false)
@@ -2536,10 +2539,43 @@ export default function App() {
       setCreateSuccess(`${appLocale === 'da-DK' ? 'Slettet' : 'Törölve'}: ${data.item?.title ?? (appLocale === 'da-DK' ? 'opgave' : 'ügy')}`)
       setCreateMessage('')
       setDeleteDraft(null)
+      if (calendarConnected && data.item?.id) {
+        const { data: linked } = await supabase.functions.invoke('google-calendar-oauth', {
+          body: { action: 'get_linked_calendar_item', item_id: data.item.id },
+        })
+        if (linked?.linked) {
+          setCalendarDeleteFollowUp({
+            id: String(data.item.id), title: String(data.item.title ?? 'Esemény'),
+          })
+        }
+      }
       return
     }
 
     setCreateError(data?.error ?? 'Az ügyet most nem sikerült törölni.')
+  }
+
+  async function handleDeleteLinkedGoogleEvent() {
+    if (!supabase || !session || !calendarDeleteFollowUp || calendarDeleteBusy) return
+    if (!window.confirm(appLocale === 'da-DK'
+      ? 'Vil du også slette denne begivenhed permanent i Google Kalender: ' + calendarDeleteFollowUp.title + '?'
+      : 'Biztosan törlöd a Google Naptárból is ezt az eseményt: ' + calendarDeleteFollowUp.title + '?')) return
+    setCalendarDeleteBusy(true)
+    setCalendarDeleteError(null)
+    const {data,error}=await supabase.functions.invoke('google-calendar-oauth',{
+      body:{action:'delete_linked_calendar_event',item_id:calendarDeleteFollowUp.id,confirmed:true},
+    })
+    setCalendarDeleteBusy(false)
+    if (error || data?.error || data?.status!=='deleted') {
+      setCalendarDeleteError(appLocale === 'da-DK'
+        ? 'Google Kalender kunne ikke slette aftalen. Kontrollér kalenderen, før du prøver igen.'
+        : 'A Google Naptárban nem sikerült igazolni a törlést. Ellenőrizd a naptárat újrapróbálás előtt.')
+      return
+    }
+    setCreateSuccess(appLocale === 'da-DK'
+      ? 'Begivenheden er slettet i Google Kalender og assistenten.'
+      : 'Az eseményt az asszisztensből és a Google Naptárból is töröltük.')
+    setCalendarDeleteFollowUp(null)
   }
 
   function startReminderEdit(itemId: string, title: string,
@@ -3833,6 +3869,29 @@ export default function App() {
                       disabled={createBusy}
                     >
                       {tr("Mégse")}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {calendarDeleteFollowUp && (
+                <div className="confirmation-card delete-confirmation">
+                  <strong>{appLocale === 'da-DK'
+                    ? 'Skal aftalen også slettes i Google Kalender?'
+                    : 'A Google Naptárból is töröljük az eseményt?'}</strong>
+                  <p><strong>{calendarDeleteFollowUp.title}</strong></p>
+                  <p>{appLocale === 'da-DK'
+                    ? 'Opgaven er allerede slettet i assistenten. Google-aftalen bevares, medmindre du godkender sletningen særskilt.'
+                    : 'Az ügyet már töröltük az asszisztensből. A Google-esemény megmarad, hacsak itt külön nem kéred a törlését.'}</p>
+                  {calendarDeleteError && <p className="notice error">{calendarDeleteError}</p>}
+                  <div className="confirmation-actions">
+                    <button className="danger-button" type="button" disabled={calendarDeleteBusy}
+                      onClick={() => void handleDeleteLinkedGoogleEvent()}>
+                      {appLocale === 'da-DK' ? 'Slet også i Google Kalender' : 'Google Naptárból is törlés'}
+                    </button>
+                    <button className="secondary-button" type="button" disabled={calendarDeleteBusy}
+                      onClick={() => {setCalendarDeleteFollowUp(null);setCalendarDeleteError(null)}}>
+                      {appLocale === 'da-DK' ? 'Behold i Google Kalender' : 'Maradjon a Google Naptárban'}
                     </button>
                   </div>
                 </div>
