@@ -2625,7 +2625,7 @@ Deno.serve(async (req) => {
         const words = normalize(message)
         interpretation.date_scope = 'specific_date'
         interpretation.date_phrase = mentionedPastDay
-        if (/\b(?:lezart|elintezett|elvegzett|keszre|befejezett|udfort|afsluttet|faerdig)\b/.test(words)) {
+        if (/\b(?:lezart|elintezett|elvegzett|keszre|befejezett|udfort(?:e)?|afsluttet(?:e)?|f(?:æ|ae)rdig(?:e)?)\b/.test(words)) {
           interpretation.status = 'done'
         } else if (/\b(?:nyitott|abne|aabne)\b/.test(words)) {
           interpretation.status = 'open'
@@ -4433,12 +4433,12 @@ Deno.serve(async (req) => {
       if (itemsError) throw itemsError
 
       const normalizedMessage = normalize(message)
-      const doneOnly = /\b(?:lezart|elintezett|elvegzett|keszre|kesznek|befejezett|udfort|afsluttet|faerdig)\b/.test(normalizedMessage)
+      const doneOnly = /\b(?:lezart|elintezett|elvegzett|keszre|kesznek|befejezett|udfort(?:e)?|afsluttet(?:e)?|f(?:æ|ae)rdig(?:e)?)\b/.test(normalizedMessage)
       const openOnly = /\b(?:nyitott|abne|aabne)\b/.test(normalizedMessage)
       // Az idő- és állapotszavak nem az ügy címei. Csak a tényleges
       // témaszavakat használjuk a kiválasztáshoz.
       const targetTitle = normalize(interpretation.target_title).replace(
-        /\b(?:a|az|egy|mar|tegnap(?:i|rol)?|tegnapelott(?:i)?|igar|i gar|forgars|i forgars|lezart|elintezett|elvegzett|keszre|kesznek|jelolt|nyitott|esemeny(?:t|ek|eim|emet|em)?|feladat(?:ot|ok|aim|om)?|ugy(?:et|ek|eim|em)?|teendo(?:t|k|m)?|aftale(?:n|r)?|opgave(?:n|r)?)\b/g, ' ',
+        /\b(?:a|az|egy|mar|tegnap(?:i|rol)?|tegnapelott(?:i)?|igar|i gar|forgars|i forgars|lezart|elintezett|elvegzett|keszre|kesznek|jelolt|nyitott|udfort(?:e)?|afsluttet(?:e)?|f(?:æ|ae)rdig(?:e)?|esemeny(?:t|ek|eim|emet|em)?|feladat(?:ot|ok|aim|om)?|ugy(?:et|ek|eim|em)?|teendo(?:t|k|m)?|aftale(?:n|r)?|opgave(?:n|r)?)\b/g, ' ',
       ).replace(/\s+/g, ' ').trim()
       const genericTarget = !targetTitle
       const targetTokens = genericTarget ? [] : targetTitle.split(/\s+/).filter((token) => token.length >= 3)
