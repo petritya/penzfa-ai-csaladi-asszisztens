@@ -3117,7 +3117,7 @@ export default function App() {
                   <li><strong>Készre jelölés:</strong> „A könyvelőt felhívtam.”</li>
                   <li><strong>Törlés:</strong> „Töröld a pénteki fodrászt.”</li>
                 </ol>
-                <p>Bizonytalan ügyválasztásnál pontosítást kérünk; módosítás, lezárás és törlés előtt jóváhagyás szükséges.</p>
+                <p>Bizonytalan ügyválasztásnál pontosítást kérünk. A kiválasztott ügy dátuma, emlékeztetője és megjegyzése egy Küldés gombbal menthető. A készre jelölést és a törlést külön meg kell erősíteni.</p>
               </details>
 
               <details className="help-section" open>
@@ -3129,7 +3129,7 @@ export default function App() {
                 <p>
                   Meglévő ügyhöz keress rá a feladatra, válaszd a
                   <strong> „Megjegyzés hozzáírása”</strong> gombot, majd írd vagy mondd be
-                  az új szöveget, és hagyd jóvá.
+                  az új szöveget, és nyomd meg a Küldés gombot.
                 </p>
                 <p>A korábbi megjegyzések megmaradnak, és a találatoknál is láthatók.</p>
               </details>
@@ -3145,17 +3145,33 @@ export default function App() {
                   Az értesítéseket minden eszközön külön engedélyezd a Fiók és értesítések résznél.
                 </p>
                 <p>
-                  A Google Naptárat a Beállításokban kapcsolhatod össze.
-                  A dátumos ügyeket a találatoknál kézzel átviheted.
-                  Időponttal 1 órás, anélkül egész napos esemény készül.
-                  A Beállításokban külön bekapcsolhatod az automatikus küldést.
-                  Csak az ezután létrehozott, neked kijelölt dátumos ügyek
-                  kerülnek át. Korábban elküldött ügyet csak külön megerősítés után küldünk újra,
-                  ha már nincs meg a Google Naptárban.
-                  A Google Naptár új eseményeinek figyelését külön bekapcsolhatod.
-                  Minden új bejegyzésre legfeljebb egy push érkezik; átvételhez külön
-                  jóváhagyás kell. Válasz nélkül egyszer a következő reggeli briefingben
-                  jelezzük, majd a javaslat lejár.
+                  A Google Naptárat a Beállításokban kapcsolhatod össze. Az új, dátumos
+                  ügyeket kézzel, vagy a külön bekapcsolható automatikus küldéssel viheted
+                  át. Időponttal alapból egyórás, anélkül egész napos esemény készül.
+                  Az automatikus új eseményküldés csak a bekapcsolás után létrehozott,
+                  neked kijelölt ügyekre vonatkozik.
+                </p>
+                <p>
+                  A már összekapcsolt esemény dátumának, időpontjának és megjegyzésének
+                  asszisztensbeli módosítása a Google Naptárba is átkerül, rendszerint
+                  az ötpercenkénti ellenőrzéskor. Nem készül második esemény.
+                  A Google Naptárban végzett módosítás vagy törlés külön
+                  jóváhagyási javaslatként jelenik meg az asszisztensben;
+                  jóváhagyás nélkül nem írjuk át a meglévő ügyet.
+                </p>
+                <p>
+                  Készre jelöléskor a Google-esemény megmarad, leírása végére
+                  „Elvégezve” (dán nyelvű beállításnál „Udført”) kerül.
+                  Az asszisztensbeli törlés nem töröl automatikusan a Google Naptárban:
+                  a Google-beli törléshez külön megerősítés kell.
+                  Ha a két helyen időközben egymástól eltérő módosítás történt,
+                  nem írjuk felül csendben a másikat; a helyzetet egyeztetni kell.
+                </p>
+                <p>
+                  A Google Naptár új eseményeinek figyelését külön kapcsolhatod be.
+                  Minden új bejegyzésre legfeljebb egy push érkezik; az átvételt
+                  külön jóvá kell hagyni. Válasz nélkül a következő reggeli
+                  briefingben egyszer jelezzük, majd a javaslat lejár.
                 </p>
               </details>
 
