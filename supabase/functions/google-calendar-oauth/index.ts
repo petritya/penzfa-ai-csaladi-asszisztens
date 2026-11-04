@@ -403,6 +403,11 @@ Deno.serve(async (request: Request) => {
         if (!declined) return json({ error:'A döntést időközben már kezelték.' },409)
         // Kifejezett Google-oldali eltérés marad: későbbi helyi mentés se
         // írja felül automatikusan a felhasználó által elutasított verziót.
+        await db.from('google_calendar_change_candidates')
+          .update({status:'conflict',decided_at:new Date().toISOString()})
+          .eq('user_id',userId).eq('event_id',candidate.event_id)
+          .eq('status','pending')
+          .neq('id',id)
         await db.from('google_calendar_exports')
           .update({sync_status:'conflict',sync_error:'google_change_declined'})
           .eq('item_id',candidate.item_id).eq('event_id',candidate.event_id)
@@ -504,6 +509,11 @@ Deno.serve(async (request: Request) => {
       await db.from('google_calendar_change_candidates')
         .update({status:'accepted',decided_at:new Date().toISOString()})
         .eq('id',id).eq('user_id',userId).eq('status','processing')
+      // Régebbi Google-verziót többé ne ajánljunk fel újra.
+      await db.from('google_calendar_change_candidates')
+        .update({status:'conflict',decided_at:new Date().toISOString()})
+        .eq('user_id',userId).eq('event_id',candidate.event_id)
+        .eq('status','pending').neq('id',id)
       await db.from('activity_log').insert({
         family_id:member.family_id,actor_user_id:userId,item_id:updated.id,
         action:candidate.change_type==='delete'?'calendar_delete_accepted':'calendar_change_accepted',
