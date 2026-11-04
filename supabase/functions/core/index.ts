@@ -1036,6 +1036,13 @@ function queryItemLine(
     : ''
 
   if (item.status === 'done') {
+    // Eseménynél az esemény napját/időpontját mutatjuk, nem azt,
+    // amikor a felhasználó később a Késznek jelölöm gombra kattintott.
+    // A szűrés (doneHistoryDate) ugyanezt a dátumot használja.
+    if (item.item_type === 'event') {
+      const eventDate = doneHistoryDate(item, timeZone)
+      return `✓ ${ownerPrefix}${subject}${item.title}${eventDate ? ` – ${formatHungarianDate(eventDate)}${item.due_date ? time : ''} – elvégezve` : ' – elvégezve'}${responsible}`
+    }
     const completedDate = item.completed_at
       ? dateInTimezone(item.completed_at, timeZone)
       : null
