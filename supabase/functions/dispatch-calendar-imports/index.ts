@@ -13,7 +13,7 @@ function json(payload: unknown, status=200) {
   })
 }
 type Event = {
-  id?: string; status?: string; eventType?: string; summary?: string;
+  id?: string; status?: string; eventType?: string; summary?: string; etag?: string; updated?: string;
   description?: string; created?: string; recurrence?: string[];
   recurringEventId?: string; extendedProperties?: { private?: { penzfa_item_id?: string } };
   start?: { date?: string; dateTime?: string };
@@ -60,7 +60,7 @@ async function decryptRefreshToken(value:string) {
   },base,{name:'AES-GCM',length:256},false,['decrypt'])
   return new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:encrypted.slice(0,12)},k,encrypted.slice(12)))
 }
-async function notifyOnce(userId:string,title:string,locale:string) {
+async function notifyOnce(userId:string,title:string,locale:string,changeType?: 'update'|'delete') {
   const appId=Deno.env.get('ONESIGNAL_APP_ID')
   const token=Deno.env.get('ONESIGNAL_REST_API_KEY')
   if(!appId||!token)return false
@@ -72,8 +72,16 @@ async function notifyOnce(userId:string,title:string,locale:string) {
       headers:{Authorization:'Key '+token,'Content-Type':'application/json'},
       body:JSON.stringify({
         app_id:appId,include_aliases:{external_id:[userId]},target_channel:'push',
-        headings:{en:da?'Ny begivenhed i Google Kalender':'Új esemény a Google Naptárban'},
-        contents:{en:da?'Vil du overføre: '+title+'?':'Átveszed a Pénzfába? '+title},
+        headings:{en:changeType === 'delete'
+          ? (da ? 'Slettet i Google Kalender' : 'Törlés a Google Naptárban')
+          : changeType === 'update'
+            ? (da ? 'Ændring i Google Kalender' : 'Módosítás a Google Naptárban')
+            : (da?'Ny begivenhed i Google Kalender':'Új esemény a Google Naptárban')},
+        contents:{en:changeType === 'delete'
+          ? (da ? 'Vil du også slette i assistenten: ' : 'Az asszisztensből is törlöd: ') + title + '?'
+          : changeType === 'update'
+            ? (da ? 'Vil du overføre ændringen: ' : 'Átveszed a módosítást: ') + title + '?'
+            : (da ? 'Vil du overføre: ' : 'Átveszed az asszisztensbe: ') + title + '?')},
         url:root+'/?push=calendar-import',
       }),
       signal:AbortSignal.timeout(8000),
@@ -147,7 +155,7 @@ Deno.serve(async(req:Request)=>{
         u.searchParams.set('updatedMin',new Date(since).toISOString())
         u.searchParams.set('maxResults','250')
         u.searchParams.set('singleEvents','false')
-        u.searchParams.set('showDeleted','false')
+        u.searchParams.set('showDeleted','true')
         u.searchParams.set('eventTypes','default')
         if(pageToken)u.searchParams.set('pageToken',pageToken)
         const listRes=await fetch(u.toString(),{
@@ -156,8 +164,58 @@ Deno.serve(async(req:Request)=>{
         if(!listRes.ok){complete=false;break}
         const result=await listRes.json() as {items?:Event[];nextPageToken?:string}
         for(const ev of result.items??[]){
-          if(!ev.id||ev.status==='cancelled'||!ev.summary||!ev.created||!ev.start)continue
-          if(ev.recurringEventId||ev.recurrence?.length)continue
+          if(!ev.id || ev.recurringEventId || ev.recurrence?.length) continue
+          // A régebben összekapcsolt események új verzióját külön jóváhagyásra
+          // kínáljuk fel. A saját visszaírt változatok ETag-je egyezik, ezért
+          // nem indítunk körkörös szinkronizálást.
+          const {data:link,error:linkError}=await db.from('google_calendar_exports')
+            .select('item_id,status,exported_at,sync_google_etag')
+            .eq('user_id',c.user_id).eq('event_id',ev.id).maybeSingle()
+          if(linkError){complete=false;break}
+          if(link?.status==='sent'){
+            const hasChanged=Boolean(ev.etag && (
+              link.sync_google_etag
+                ? ev.etag !== link.sync_google_etag
+                : (ev.updated && Date.parse(ev.updated)>Date.parse(link.exported_at)+30000)
+            ))
+            if(hasChanged){
+              const {data:localItem}=await db.from('items')
+                .select('id,title,updated_at,status')
+                .eq('id',link.item_id).eq('responsible_user_id',c.user_id).maybeSingle()
+              if(localItem?.status==='open'){
+                const changeType=ev.status==='cancelled'?'delete':'update'
+                const startDate=ev.start?.dateTime?new Date(ev.start.dateTime):null
+                const converted=startDate&&!Number.isNaN(startDate.getTime())
+                  ?localParts(timeZone,startDate):null
+                const date=converted?.date??ev.start?.date??null
+                const eventTime=converted?.time??null
+                if(changeType==='delete'||(ev.summary&&date)){
+                  const {data:inserted,error:insertError}=await db
+                    .from('google_calendar_change_candidates')
+                    .insert({
+                      user_id:c.user_id,event_id:ev.id,item_id:link.item_id,
+                      google_etag:ev.etag,
+                      change_type:changeType,
+                      title:changeType==='delete'?localItem.title:ev.summary,
+                      notes:changeType==='delete'?null:ev.description??null,
+                      due_date:changeType==='delete'?null:date,
+                      due_time:changeType==='delete'?null:eventTime,
+                      item_updated_at:localItem.updated_at,
+                      status:'pending',push_attempted_at:new Date().toISOString(),
+                    }).select('id').maybeSingle()
+                  if(insertError?.code!=='23505'&&(insertError||!inserted)){
+                    complete=false;break
+                  }
+                  if(inserted){
+                    found++
+                    if(await notifyOnce(c.user_id,localItem.title,settings?.ui_locale??'hu-HU',changeType))pushed++
+                  }
+                }
+              }
+            }
+            continue
+          }
+          if(ev.status==='cancelled'||!ev.summary||!ev.created||!ev.start)continue
           if(ev.extendedProperties?.private?.penzfa_item_id)continue
           if(Date.parse(ev.created)<Date.parse(c.auto_import_enabled_at))continue
 
@@ -168,9 +226,7 @@ Deno.serve(async(req:Request)=>{
           const dueTime=start?.time??null
           if(!dueDate||dueDate<localParts(timeZone,now).date)continue
 
-          const {data:existingExport}=await db.from('google_calendar_exports')
-            .select('item_id').eq('user_id',c.user_id).eq('event_id',ev.id).limit(1).maybeSingle()
-          if(existingExport)continue
+          if(link)continue
 
           const {data:stillConnected}=await db.from('google_calendar_connections')
             .select('auto_import_enabled_at').eq('user_id',c.user_id).maybeSingle()
