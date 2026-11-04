@@ -346,10 +346,14 @@ Deno.serve(async (req) => {
           : null,
       }))
 
+      // A briefing minden lejárt, még nyitott saját ügyet számoljon,
+      // ne csak az elmúlt két napot. Megjelenítéskor a három legfrissebb
+      // lejárt ügy szerepel, a többi az összesítő számban jelenik meg.
       const overdue = items.filter((item) =>
-        item.due_date
-        && item.due_date < local.date
-        && daysBetween(item.due_date, local.date) <= 2
+        item.due_date && item.due_date < local.date
+      ).sort((a, b) =>
+        String(b.due_date).localeCompare(String(a.due_date))
+        || String(b.due_time ?? '').localeCompare(String(a.due_time ?? ''))
       )
       const dueToday = items.filter((item) => item.due_date === local.date)
 
