@@ -60,7 +60,7 @@ async function decryptRefreshToken(value:string) {
   },base,{name:'AES-GCM',length:256},false,['decrypt'])
   return new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:encrypted.slice(0,12)},k,encrypted.slice(12)))
 }
-async function notifyOnce(userId:string,title:string,locale:string,changeType?: 'update'|'delete') {
+async function notifyOnce(userId:string,title:string,locale:string,changeType?: 'update'|'delete',changeId?:string) {
   const appId=Deno.env.get('ONESIGNAL_APP_ID')
   const token=Deno.env.get('ONESIGNAL_REST_API_KEY')
   if(!appId||!token)return false
@@ -82,7 +82,9 @@ async function notifyOnce(userId:string,title:string,locale:string,changeType?: 
           : changeType === 'update'
             ? (da ? 'Vil du overføre ændringen: ' : 'Átveszed a módosítást: ') + title + '?'
             : (da ? 'Vil du overføre: ' : 'Átveszed az asszisztensbe: ') + title + '?'},
-        url:root+'/?push=calendar-import',
+        url:changeType && changeId
+          ? root+'/?push=calendar-change&change_id='+encodeURIComponent(changeId)
+          : root+'/?push=calendar-import',
       }),
       signal:AbortSignal.timeout(8000),
     })
@@ -208,7 +210,7 @@ Deno.serve(async(req:Request)=>{
                   }
                   if(inserted){
                     found++
-                    if(await notifyOnce(c.user_id,localItem.title,settings?.ui_locale??'hu-HU',changeType))pushed++
+                    if(await notifyOnce(c.user_id,localItem.title,settings?.ui_locale??'hu-HU',changeType,inserted.id))pushed++
                   }
                 }
               }
