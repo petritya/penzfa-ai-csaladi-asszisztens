@@ -431,6 +431,8 @@ export default function App() {
     lines: string[]
   } | null>(null)
   const [pushContextLoading, setPushContextLoading] = useState(false)
+  // Prevents two quick taps from completing the same item twice.
+  const completionRequestRef = useRef(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
@@ -2810,100 +2812,148 @@ export default function App() {
     setCreateError(data?.error ?? 'Az ügyet most nem sikerült módosítani.')
   }
 
-  async function handleCompleteCandidate(candidate: Pick<CompleteCandidate, 'id' | 'title'>) {
-    if (!supabase) return
+  function finishCompletedItem(title: string, partnerWarning?: string | null) {
+    // After completing an item, leave the old search/confirmation context
+    // entirely. Otherwise another tap targets an item that is no longer open.
+    setCreateMessage('')
+    setCreateDraft(null)
+    setCompleteDraft(null)
+    setCompleteCandidates([])
+    setQueryResults([])
+    setAssistantAnswer(null)
+    setUpdateDraft(null)
+    setReminderUpdateDraft(null)
+    setReminderEditTarget(null)
+    setDateEditTarget(null)
+    setNoteEditTarget(null)
+    setReminderFollowUp(null)
+    setDeleteDraft(null)
+    setCalendarExportDraft(null)
+    setCalendarExportFeedback(null)
+    setCalendarExportError(null)
+    setCreateError(null)
+    setVoiceError(null)
+    setPushContext(null)
+    setLocalizedPush(null)
+    setCreateSuccess(
+      (appLocale === 'da-DK' ? 'Markeret som udført: ' : 'Sikeresen készre jelölve: ')
+      + title + (partnerWarning ? ' – ' + partnerWarning : ''),
+    )
+    window.requestAnimationFrame(() => {
+      document.querySelector('.capture-primary')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    })
+  }
 
+  async function handleCompleteCandidate(candidate: Pick<CompleteCandidate, 'id' | 'title'>) {
+    if (!supabase || createBusy || completionRequestRef.current) return
+    completionRequestRef.current = true
     setCreateBusy(true)
     setCreateError(null)
     setCreateSuccess(null)
 
-    const { data: prepared, error: prepareError } = await invokeLocalizedCore({
-      body: {
-        action: 'prepare_complete_target',
-        target_item_id: candidate.id,
-      },
-    })
+    try {
+      const { data: prepared, error: prepareError } = await invokeLocalizedCore({
+        body: {
+          action: 'prepare_complete_target',
+          target_item_id: candidate.id,
+        },
+      })
 
-    if (prepareError) {
+      if (prepareError) {
+        setCreateError(prepareError.message)
+        return
+      }
+
+      if (prepared?.status === 'future_event_needs_date') {
+        setAssistantAnswer(
+          prepared.prompt ?? 'Ez az esemény még jövőbeli. Írd meg, mikor történt meg valójában.',
+        )
+        return
+      }
+
+      if (prepared?.status !== 'needs_confirmation' || !prepared?.draft?.pending_action_id
+        || prepared.draft.target_item_id !== candidate.id) {
+        setCreateError(prepared?.error ?? (appLocale === 'da-DK'
+          ? 'Den valgte opgave kunne ikke forberedes.'
+          : 'A kiválasztott ügyet most nem sikerült előkészíteni.'))
+        return
+      }
+
+      const { data, error } = await invokeLocalizedCore({
+        body: {
+          action: 'confirm_complete',
+          pending_action_id: prepared.draft.pending_action_id,
+        },
+      })
+
+      if (error) {
+        setCreateError(error.message)
+        return
+      }
+
+      if (data?.status === 'completed' && data.item?.id === candidate.id) {
+        finishCompletedItem(
+          String(data.item.title ?? candidate.title),
+          data.partner_notification_warning ?? null,
+        )
+        return
+      }
+
+      setCreateError(data?.error ?? (appLocale === 'da-DK'
+        ? 'Opgaven kunne ikke markeres som udført.'
+        : 'Az ügyet most nem sikerült készre jelölni.'))
+    } catch {
+      setCreateError(appLocale === 'da-DK'
+        ? 'Det lykkedes ikke at gemme opgavens status.'
+        : 'A készre jelölést most nem sikerült elmenteni.')
+    } finally {
+      completionRequestRef.current = false
       setCreateBusy(false)
-      setCreateError(prepareError.message)
-      return
     }
-
-    if (prepared?.status === 'future_event_needs_date') {
-      setCreateBusy(false)
-      setAssistantAnswer(
-        prepared.prompt ?? 'Ez az esemény még jövőbeli. Írd meg, mikor történt meg valójában.',
-      )
-      return
-    }
-
-    if (prepared?.status !== 'needs_confirmation' || !prepared?.draft?.pending_action_id) {
-      setCreateBusy(false)
-      setCreateError(prepared?.error ?? 'A kiválasztott ügyet most nem sikerült előkészíteni.')
-      return
-    }
-
-    const { data, error } = await invokeLocalizedCore({
-      body: {
-        action: 'confirm_complete',
-        pending_action_id: prepared.draft.pending_action_id,
-      },
-    })
-
-    setCreateBusy(false)
-
-    if (error) {
-      setCreateError(error.message)
-      return
-    }
-
-    if (data?.status === 'completed') {
-      setCreateSuccess(`${appLocale === 'da-DK' ? 'Markeret som udført' : 'Készre jelölve'}: ${data.item?.title ?? candidate.title}`)
-      setCompleteCandidates([])
-      setQueryResults((current) => current.filter((item) => item.id !== candidate.id))
-      setAssistantAnswer(data.partner_notification_warning ?? null)
-      return
-    }
-
-    setCreateError(data?.error ?? 'Az ügyet most nem sikerült készre jelölni.')
   }
 
   async function handleConfirmComplete() {
-    if (!supabase || !completeDraft) return
-
+    if (!supabase || !completeDraft || createBusy || completionRequestRef.current) return
+    completionRequestRef.current = true
     setCreateBusy(true)
     setCreateError(null)
     setCreateSuccess(null)
-    setAssistantAnswer(null)
 
-    const { data, error } = await invokeLocalizedCore({
-      body: {
-        action: 'confirm_complete',
-        pending_action_id: completeDraft.pending_action_id,
-      },
-    })
+    try {
+      const { data, error } = await invokeLocalizedCore({
+        body: {
+          action: 'confirm_complete',
+          pending_action_id: completeDraft.pending_action_id,
+        },
+      })
 
-    setCreateBusy(false)
-
-    if (error) {
-      setCreateError(error.message)
-      return
-    }
-
-    if (data?.status === 'completed') {
-      setCreateSuccess(`${appLocale === 'da-DK' ? 'Markeret som udført' : 'Készre jelölve'}: ${data.item?.title ?? (appLocale === 'da-DK' ? 'opgave' : 'ügy')}`)
-      setCreateMessage('')
-      setCompleteDraft(null)
-      setCompleteCandidates([])
-
-      if (data.partner_notification_warning) {
-        setAssistantAnswer(data.partner_notification_warning)
+      if (error) {
+        setCreateError(error.message)
+        return
       }
-      return
-    }
 
-    setCreateError(data?.error ?? 'Az ügyet most nem sikerült készre jelölni.')
+      if (data?.status === 'completed') {
+        finishCompletedItem(
+          String(data.item?.title ?? (appLocale === 'da-DK' ? 'opgave' : 'ügy')),
+          data.partner_notification_warning ?? null,
+        )
+        return
+      }
+
+      setCreateError(data?.error ?? (appLocale === 'da-DK'
+        ? 'Opgaven kunne ikke markeres som udført.'
+        : 'Az ügyet most nem sikerült készre jelölni.'))
+    } catch {
+      setCreateError(appLocale === 'da-DK'
+        ? 'Det lykkedes ikke at gemme opgavens status.'
+        : 'A készre jelölést most nem sikerült elmenteni.')
+    } finally {
+      completionRequestRef.current = false
+      setCreateBusy(false)
+    }
   }
 
   async function confirmCreateDraft(
@@ -3631,6 +3681,7 @@ export default function App() {
 
           {familyName && (
             <section className="capture-block capture-primary" aria-label={tr("Kommunikáció")}>
+              {createSuccess && <p className="notice success" role="status">{createSuccess}</p>}
               <h2>{noteEditTarget
                 ? (appLocale === 'da-DK' ? 'Tilføj note' : 'Megjegyzés hozzáírása')
                 : dateEditTarget
@@ -4199,7 +4250,7 @@ export default function App() {
                 </div>
               )}
 
-              {createSuccess && <p className="notice success">{createSuccess}</p>}
+
               {createError && <p className="notice error">{createError}</p>}
             </section>
           )}
