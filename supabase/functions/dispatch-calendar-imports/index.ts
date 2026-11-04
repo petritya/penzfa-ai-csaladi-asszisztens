@@ -81,7 +81,7 @@ async function notifyOnce(userId:string,title:string,locale:string,changeType?: 
           ? (da ? 'Vil du også slette i assistenten: ' : 'Az asszisztensből is törlöd: ') + title + '?'
           : changeType === 'update'
             ? (da ? 'Vil du overføre ændringen: ' : 'Átveszed a módosítást: ') + title + '?'
-            : (da ? 'Vil du overføre: ' : 'Átveszed az asszisztensbe: ') + title + '?')},
+            : (da ? 'Vil du overføre: ' : 'Átveszed az asszisztensbe: ') + title + '?'},
         url:root+'/?push=calendar-import',
       }),
       signal:AbortSignal.timeout(8000),
