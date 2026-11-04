@@ -3573,11 +3573,13 @@ export default function App() {
                       onClick={() => void handleDecideCalendarChange(candidate, 'accept')}>
                       {candidate.change_type === 'delete'
                         ? (appLocale === 'da-DK' ? 'Overfør sletning' : 'Törlés átvétele')
-                        : (appLocale === 'da-DK' ? 'Overfør ændring' : 'Módosítás átvétele')}
+                        : (appLocale === 'da-DK' ? 'Ja, overtag ændringen' : 'Igen, átveszem')}
                     </button>
                     <button className="secondary-button" type="button" disabled={calendarChangeBusy}
                       onClick={() => void handleDecideCalendarChange(candidate, 'reject')}>
-                      {appLocale === 'da-DK' ? 'Behold i assistenten' : 'Megtartom az asszisztensben'}
+                      {candidate.change_type === 'update'
+                        ? (appLocale === 'da-DK' ? 'Nej, behold den tidligere tid' : 'Nem, maradjon a korábbi időpont')
+                        : (appLocale === 'da-DK' ? 'Behold i assistenten' : 'Megtartom az asszisztensben')}
                     </button>
                   </div>
                 </div>
