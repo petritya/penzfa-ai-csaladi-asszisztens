@@ -1270,22 +1270,13 @@ export default function App() {
   async function handleDecideCalendarChange(candidate: CalendarChangeCandidate, decision: 'accept' | 'reject') {
     if (!supabase || !session || calendarChangeBusy) return
     const accept = decision === 'accept'
-    const prompt = candidate.change_type === 'delete'
-      ? (accept
-        ? (appLocale === 'da-DK'
-          ? 'Google Kalender har slettet denne aftale. Vil du også slette den i assistenten: '
-          : 'A Google Naptárban törölték. Az asszisztensből is törlöd ezt: ')
-        : (appLocale === 'da-DK'
-          ? 'Vil du beholde aftalen i assistenten: '
-          : 'Megtartod az eseményt az asszisztensben: '))
-      : (accept
-        ? (appLocale === 'da-DK'
-          ? 'Vil du overføre ændringen fra Google Kalender: '
-          : 'Átveszed a Google Naptár módosítását: ')
-        : (appLocale === 'da-DK'
-          ? 'Vil du beholde den nuværende version i assistenten: '
-          : 'Megtartod az asszisztens jelenlegi változatát: '))
-    if (!window.confirm(prompt + (candidate.title ?? candidate.event_id) + '?')) return
+    // A módosításnál az azonosított esemény kártyáján lévő Igen/Nem
+    // a megerősítés. Törlés átvételéhez külön, második jóváhagyás kell.
+    if (candidate.change_type === 'delete' && accept && !window.confirm(
+      appLocale === 'da-DK'
+        ? 'Vil du også slette denne Google Kalender-aftale i assistenten: ' + (candidate.title ?? '') + '?'
+        : 'Biztosan törlöd az asszisztensből is ezt a Google Naptár-eseményt: ' + (candidate.title ?? '') + '?'
+    )) return
     setCalendarChangeBusy(true)
     setCalendarChangeError(null)
     const { data, error } = await supabase.functions.invoke('google-calendar-oauth', {
@@ -3141,6 +3132,9 @@ export default function App() {
       && localizedPush?.locale === appLocale ? localizedPush : null
     const exampleManagedMember = familyMembers.find((member) => member.member_kind === 'managed') ?? null
     const selectedEditTarget = noteEditTarget ?? dateEditTarget ?? reminderEditTarget
+    const hasCalendarPushTarget = calendarPushRequest?.changeId
+      ? calendarChangeCandidates.some(candidate => candidate.id === calendarPushRequest.changeId)
+      : calendarChangeCandidates.length > 0 || calendarImportCandidates.length > 0
     const exampleText = exampleManagedMember
       ? `${exampleManagedMember.display_name} kontrollja jövő kedden 10-kor.`
       : 'Jövő kedden 10-kor kontroll.'
@@ -3494,11 +3488,39 @@ export default function App() {
           {familyName && calendarConnected && calendarImportNotice && (
             <p className="notice success" role="status">{calendarImportNotice}</p>
           )}
+          {familyName && calendarPushRequest && (
+            <section className="capture-block calendar-import-inbox" aria-label={
+              appLocale === 'da-DK' ? 'Åbn Google Kalender-besked' : 'Megnyitott Google Naptár-értesítés'
+            }>
+              <h2>{appLocale === 'da-DK'
+                ? 'Google Kalender – beslutning'
+                : 'Google Naptár – döntésre váró módosítás'}</h2>
+              {calendarPushLoading || !calendarPushLoaded ? (
+                <p role="status">{appLocale === 'da-DK'
+                  ? 'Henter ændringen…' : 'A módosítás betöltése…'}</p>
+              ) : hasCalendarPushTarget ? (
+                <p role="status">{appLocale === 'da-DK'
+                  ? 'Åbn godkendelsesfeltet nedenfor for at vælge Ja eller Nej.'
+                  : 'Az alábbi eseménynél választhatsz: átveszed vagy elutasítod a módosítást.'}</p>
+              ) : (
+                <>
+                  <p role="alert">{appLocale === 'da-DK'
+                    ? 'Ændringen blev ikke fundet. Der er ikke overført noget automatisk. Prøv at hente forslagene igen.'
+                    : 'A hivatkozott módosítást most nem sikerült megjeleníteni. Nem vettünk át semmit automatikusan.'}</p>
+                  <button type="button" className="secondary-button"
+                    onClick={() => setCalendarPushRequest(current => current ? { ...current } : null)}>
+                    {appLocale === 'da-DK' ? 'Hent igen' : 'Újrapróbálás'}
+                  </button>
+                </>
+              )}
+            </section>
+          )}
+
           {familyName && calendarConnected && calendarChangeNotice && (
             <p className="notice success" role="status">{calendarChangeNotice}</p>
           )}
           {familyName && calendarConnected && (calendarChangeCandidates.length > 0 || Boolean(calendarChangeError)) && (
-            <section className="capture-block calendar-import-inbox"
+            <section id="calendar-changes-inbox" className="capture-block calendar-import-inbox"
               aria-label={appLocale === 'da-DK' ? 'Ændringer i Google Kalender' : 'Google Naptár – módosítások'}>
               <h2>{appLocale === 'da-DK'
                 ? 'Ændringer fra Google Kalender – afventer din beslutning'
@@ -3513,7 +3535,8 @@ export default function App() {
                 </>
               )}
               {calendarChangeCandidates.map(candidate => (
-                <div className="confirmation-card" key={candidate.id}>
+                <div className="confirmation-card" key={candidate.id}
+                  id={'calendar-change-card-' + candidate.id}>
                   <strong>{candidate.title ?? candidate.event_id}</strong>
                   {candidate.change_type === 'delete' ? (
                     <p>{appLocale === 'da-DK'
@@ -3521,7 +3544,19 @@ export default function App() {
                       : 'Ezt az eseményt törölték a Google Naptárban. Átveszed a törlést az asszisztensbe?'}</p>
                   ) : (
                     <>
-                      <p>{appLocale === 'da-DK' ? 'Nyt tidspunkt i Google Kalender: ' : 'Új időpont a Google Naptárban: '}
+                      {candidate.local_item?.due_date && (
+                        <p><strong>{appLocale === 'da-DK'
+                          ? 'Nuværende tidspunkt i assistenten: '
+                          : 'Jelenleg az asszisztensben: '}</strong>
+                          {new Date(candidate.local_item.due_date + 'T12:00:00')
+                            .toLocaleDateString(appLocale === 'da-DK' ? 'da-DK' : 'hu-HU', { dateStyle: 'long' })}
+                          {candidate.local_item.due_time
+                            ? ' ' + candidate.local_item.due_time.slice(0, 5) : ''}
+                        </p>
+                      )}
+                      <p><strong>{appLocale === 'da-DK'
+                        ? 'Nyt tidspunkt i Google Kalender: '
+                        : 'Új időpont a Google Naptárban: '}</strong>
                         {candidate.due_date ? new Date(candidate.due_date + 'T12:00:00')
                           .toLocaleDateString(appLocale === 'da-DK' ? 'da-DK' : 'hu-HU', { dateStyle: 'long' }) : ''}
                         {candidate.due_time ? ' ' + candidate.due_time.slice(0, 5) : ''}
@@ -3551,7 +3586,7 @@ export default function App() {
           )}
 
           {familyName && calendarConnected && (calendarImportCandidates.length > 0 || Boolean(calendarImportError)) && (
-            <section className="capture-block calendar-import-inbox" aria-label={appLocale === 'da-DK' ? 'Google Kalender – forslag' : 'Google Naptár – átvételi javaslatok'}>
+            <section id="calendar-import-inbox" className="capture-block calendar-import-inbox" aria-label={appLocale === 'da-DK' ? 'Google Kalender – forslag' : 'Google Naptár – átvételi javaslatok'}>
               {calendarImportCandidates.length > 0 && (
                 <h2>{appLocale === 'da-DK' ? 'Nye begivenheder fra Google Kalender' : 'Új események a Google Naptárból'}</h2>
               )}
