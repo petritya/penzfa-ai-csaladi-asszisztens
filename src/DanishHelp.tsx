@@ -36,6 +36,7 @@ export default function DanishHelp({ onBack }: Props) {
               <li><strong>Slet:</strong> „Slet frisørtiden på fredag.”</li>
             </ol>
             <p>Hvis opgaven ikke er entydig, beder appen dig vælge. Når en opgave er valgt, gemmes dato, påmindelse og noter med ét tryk på Send. Afslutning og sletning kræver særskilt bekræftelse.</p>
+            <p>Du kan også søge bagud, fx „Hvilke aftaler havde jeg i går?” eller „Vis de afsluttede aftaler fra i går.” Afsluttede opgaver kan slettes fra assistenten, men du skal først vælge den rigtige opgave og bekræfte. Sletning i Google Kalender kræver en særskilt beslutning.</p>
           </details>
 
           <details className="help-section" open>
