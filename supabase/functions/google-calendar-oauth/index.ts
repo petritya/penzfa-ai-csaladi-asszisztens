@@ -354,7 +354,7 @@ Deno.serve(async (request: Request) => {
 
     if (body.action === 'list_calendar_changes') {
       const { data, error } = await db.from('google_calendar_change_candidates')
-        .select('id,event_id,item_id,change_type,title,notes,due_date,due_time,discovered_at')
+        .select('id,event_id,item_id,change_type,title,notes,due_date,due_time,discovered_at,local_item:items!google_calendar_change_candidates_item_id_fkey(title,due_date,due_time)')
         .eq('user_id', userId).eq('status','pending')
         .order('discovered_at',{ascending:false}).limit(30)
       if (error) throw error
