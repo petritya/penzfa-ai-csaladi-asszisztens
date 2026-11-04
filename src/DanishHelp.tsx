@@ -35,7 +35,7 @@ export default function DanishHelp({ onBack }: Props) {
               <li><strong>Markér som udført:</strong> „Jeg har ringet til revisoren.”</li>
               <li><strong>Slet:</strong> „Slet frisørtiden på fredag.”</li>
             </ol>
-            <p>Hvis opgaven ikke er entydig, beder appen dig vælge. Ændring, afslutning og sletning skal bekræftes.</p>
+            <p>Hvis opgaven ikke er entydig, beder appen dig vælge. Når en opgave er valgt, gemmes dato, påmindelse og noter med ét tryk på Send. Afslutning og sletning kræver særskilt bekræftelse.</p>
           </details>
 
           <details className="help-section" open>
@@ -46,7 +46,7 @@ export default function DanishHelp({ onBack }: Props) {
             </p>
             <p>
               Til en eksisterende opgave: Søg efter opgaven, vælg
-              <strong> „Tilføj note”</strong>, skriv eller indtal teksten, og bekræft.
+              <strong> „Tilføj note”</strong>, skriv eller indtal teksten, og tryk Send.
             </p>
             <p>Tidligere noter bevares og vises sammen med opgaven i søgeresultaterne.</p>
           </details>
@@ -62,15 +62,33 @@ export default function DanishHelp({ onBack }: Props) {
               Aktivér notifikationer særskilt på hver enhed under Konto og notifikationer.
             </p>
             <p>
-              Forbind Google Kalender under Indstillinger. Opgaver med dato kan sendes manuelt fra søgeresultaterne.
-              Uden klokkeslæt bliver de heldagsaftaler, ellers varer de 1 time. En tidligere sendt
-              opgave kan kun sendes igen efter bekræftelse, og kun hvis den ikke
-              længere findes i Google Kalender. Automatisk overførsel kan aktiveres
-              under Indstillinger og gælder kun nye opgaver tildelt dig med dato.
-              Nye begivenheder i Google Kalender kan også overvåges efter særskilt
-              aktivering. Du får højst én push-besked pr. begivenhed, og Pénzfa
-              opretter først en opgave, når du godkender den. Uden svar nævnes
-              forslaget højst én gang i næste morgenoverblik og udløber derefter.
+              Forbind Google Kalender under Indstillinger. Nye opgaver med dato
+              kan overføres manuelt eller automatisk, når den indstilling er slået til.
+              Med klokkeslæt oprettes som udgangspunkt en aftale på én time,
+              ellers en heldagsaftale. Automatisk oprettelse gælder kun nye
+              opgaver, som er tildelt dig, efter aktiveringen.
+            </p>
+            <p>
+              Når du ændrer dato, klokkeslæt eller noter på en allerede forbundet
+              aftale i assistenten, opdateres den samme Google-aftale normalt
+              ved kontrollen cirka hvert femte minut. Der oprettes ingen dublet.
+              Ændringer eller sletninger, der foretages i Google Kalender,
+              vises som forslag, som du skal godkende, før de overføres.
+            </p>
+            <p>
+              Når du markerer en opgave som udført, bevares aftalen i Google Kalender,
+              og teksten "Udført" tilføjes til beskrivelsen ("Elvégezve" ved ungarsk sprog).
+              Når du sletter en opgave i assistenten, bevares Google-aftalen,
+              medmindre du også bekræfter sletningen dér.
+              Hvis begge steder er blevet ændret, overskriver assistenten
+              ikke automatisk den ene version. Forskellen skal afklares.
+            </p>
+            <p>
+              Overvågning af nye Google Kalender-begivenheder aktiveres særskilt.
+              Der sendes højst én push-besked pr. ny begivenhed.
+              Nye begivenheder importeres først efter godkendelse.
+              Ubesvarede forslag nævnes højst én gang i næste morgenoverblik
+              og udløber derefter.
             </p>
           </details>
 
