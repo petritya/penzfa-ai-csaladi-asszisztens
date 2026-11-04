@@ -2640,6 +2640,9 @@ export default function App() {
       setCreateSuccess(`${appLocale === 'da-DK' ? 'Slettet' : 'Törölve'}: ${data.item?.title ?? (appLocale === 'da-DK' ? 'opgave' : 'ügy')}`)
       setCreateMessage('')
       setDeleteDraft(null)
+      setDeleteCandidates([])
+      setQueryResults([])
+      setAssistantAnswer(null)
       if (calendarConnected && data.item?.id) {
         const { data: linked } = await supabase.functions.invoke('google-calendar-oauth', {
           body: { action: 'get_linked_calendar_item', item_id: data.item.id },
@@ -3964,10 +3967,11 @@ export default function App() {
                             <p className="query-note-text">{item.notes}</p>
                           </div>
                         )}
-                        {item.status === 'open' && (
+                        {item.status !== 'deleted' && (
                           <details className="query-actions-details">
                             <summary>{appLocale === 'da-DK' ? 'Handlinger' : 'Műveletek'}</summary>
                             <div className="confirmation-actions">
+                            {item.status === 'open' && (<>
                             <button
                               className="query-action-button"
                               type="button"
@@ -4014,6 +4018,12 @@ export default function App() {
                                 {tr("Késznek jelölöm")}
                               </button>
                             )}
+                            </>)}
+                            <button className="query-action-button" type="button"
+                              disabled={createBusy}
+                              onClick={() => void handlePrepareDeleteCandidate(item)}>
+                              {appLocale === 'da-DK' ? 'Slet opgaven' : 'Törlés'}
+                            </button>
                             </div>
                           </details>
                         )}
