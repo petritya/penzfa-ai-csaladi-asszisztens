@@ -69,6 +69,10 @@ type DeleteDraft = {
   confirmation_text: string
 }
 
+type DeleteCandidate = Pick<CompleteCandidate, 'id' | 'title' | 'label'> & {
+  status?: 'open' | 'done'
+}
+
 type ReminderEditTarget = {
   id: string
   title: string
@@ -415,6 +419,7 @@ export default function App() {
   const [noteEditTarget, setNoteEditTarget] = useState<NoteEditTarget | null>(null)
   const [reminderFollowUp, setReminderFollowUp] = useState<ReminderFollowUp | null>(null)
   const [deleteDraft, setDeleteDraft] = useState<DeleteDraft | null>(null)
+  const [deleteCandidates, setDeleteCandidates] = useState<DeleteCandidate[]>([])
   const [calendarDeleteFollowUp, setCalendarDeleteFollowUp] = useState<{id:string;title:string}|null>(null)
   const [calendarDeleteBusy, setCalendarDeleteBusy] = useState(false)
   const [calendarDeleteError, setCalendarDeleteError] = useState<string|null>(null)
@@ -460,6 +465,7 @@ export default function App() {
     setNoteEditTarget(null)
     setReminderFollowUp(null)
     setDeleteDraft(null)
+    setDeleteCandidates([])
     setCreateError(null)
     setCreateSuccess(null)
     setAssistantAnswer(null)
@@ -2339,6 +2345,7 @@ export default function App() {
     setNoteEditTarget(null)
     setReminderFollowUp(null)
     setDeleteDraft(null)
+    setDeleteCandidates([])
     setCreateError(null)
     setCreateSuccess(null)
     setAssistantAnswer(null)
@@ -2518,17 +2525,11 @@ export default function App() {
         return
       }
 
-      if (data?.status === 'choose_target') {
-        const labels = (data.candidates ?? [])
-          .map((candidate: { label?: string }) => candidate.label)
-          .filter(Boolean)
-          .join('\n• ')
-
-        setAssistantAnswer(
-          labels
-            ? `Több egyező nyitott ügyet találtam. Pontosítsd, melyiket töröljem:\n• ${labels}`
-            : 'Több egyező nyitott ügyet találtam. Kérlek, pontosíts.',
-        )
+      if (data?.status === 'choose_target' && Array.isArray(data.candidates)) {
+        setDeleteCandidates(data.candidates as DeleteCandidate[])
+        setAssistantAnswer(appLocale === 'da-DK'
+          ? 'Flere opgaver passer. Vælg den, du vil slette, og bekræft derefter.'
+          : 'Több megfelelő ügyet találtam. Válaszd ki, melyiket töröljük, majd erősítsd meg.')
         setCreateMessage('')
         return
       }
@@ -2581,6 +2582,36 @@ export default function App() {
     }
 
     setCreateError(data?.error ?? 'Az ügyet most nem sikerült értelmezni.')
+  }
+
+  async function handlePrepareDeleteCandidate(candidate: Pick<DeleteCandidate, 'id' | 'title'>) {
+    if (!supabase || createBusy) return
+    setCreateBusy(true)
+    setCreateError(null)
+    setCreateSuccess(null)
+    try {
+      const { data, error } = await invokeLocalizedCore({
+        body: { action: 'prepare_delete_target', target_item_id: candidate.id },
+      })
+      if (error || data?.status !== 'needs_confirmation'
+        || !data.draft?.pending_action_id || data.draft.target_item_id !== candidate.id) {
+        setCreateError(error?.message ?? data?.error ?? (appLocale === 'da-DK'
+          ? 'Den valgte opgave kan ikke slettes.'
+          : 'Nem sikerült előkészíteni a kiválasztott ügy törlését.'))
+        return
+      }
+      setDeleteDraft(data.draft as DeleteDraft)
+      setDeleteCandidates([])
+      setQueryResults([])
+      setAssistantAnswer(null)
+      setCreateMessage('')
+    } catch {
+      setCreateError(appLocale === 'da-DK'
+        ? 'Opgaven kunne ikke vælges til sletning.'
+        : 'Nem sikerült kiválasztani a törlendő ügyet.')
+    } finally {
+      setCreateBusy(false)
+    }
   }
 
   async function handleConfirmDelete() {
@@ -2828,6 +2859,7 @@ export default function App() {
     setNoteEditTarget(null)
     setReminderFollowUp(null)
     setDeleteDraft(null)
+    setDeleteCandidates([])
     setCalendarExportDraft(null)
     setCalendarExportFeedback(null)
     setCalendarExportError(null)
@@ -3020,6 +3052,7 @@ export default function App() {
     setNoteEditTarget(null)
     setReminderFollowUp(null)
     setDeleteDraft(null)
+    setDeleteCandidates([])
     setCalendarExportDraft(null)
     setCalendarExportError(null)
     setCreateError(null)
@@ -3867,6 +3900,27 @@ export default function App() {
                   ))}
                   </div>
                 </>
+              )}
+
+              {deleteCandidates.length > 0 && (
+                <div className="confirmation-card">
+                  <strong>{appLocale === 'da-DK'
+                    ? 'Vælg hvilken opgave der skal slettes:'
+                    : 'Melyik ügyet szeretnéd törölni?'}</strong>
+                  <div className="complete-candidates">
+                    {deleteCandidates.map((candidate) => (
+                      <button className="complete-candidate-button" type="button"
+                        disabled={createBusy} key={candidate.id}
+                        onClick={() => void handlePrepareDeleteCandidate(candidate)}>
+                        {candidate.label}
+                      </button>
+                    ))}
+                  </div>
+                  <button className="secondary-button" type="button"
+                    onClick={() => setDeleteCandidates([])} disabled={createBusy}>
+                    {appLocale === 'da-DK' ? 'Annuller' : 'Mégse'}
+                  </button>
+                </div>
               )}
 
               {queryResults.length > 0 && (
