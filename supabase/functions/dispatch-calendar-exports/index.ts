@@ -226,6 +226,220 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+
+  // Meglévő Google-esemény módosítása; soha nem hozunk létre új eseményt.
+  // A lezárás csak egy nyelvfüggő "Elvégezve"/"Udført" sort ír a leírásba.
+  // ETag + egyszeri állapotfoglalás védi a párhuzamos és Google-oldali módosításokat.
+  type ExistingLink = {
+    user_id: string; item_id: string; event_id: string; exported_at: string;
+    sync_local_updated_at: string | null; sync_google_etag: string | null;
+    sync_status: string;
+  }
+  async function updateExisting(link: ExistingLink): Promise<'sent' | 'skipped' | 'conflict' | 'failed'> {
+    const [{ data: item }, { data: connection }, { data: settings }, { data: member }] = await Promise.all([
+      db.from('items').select('id,family_id,title,notes,due_date,due_time,status,updated_at,responsible_user_id')
+        .eq('id', link.item_id).maybeSingle(),
+      db.from('google_calendar_connections')
+        .select('refresh_token_encrypted,auto_export_enabled_at,auto_export_error')
+        .eq('user_id', link.user_id).maybeSingle(),
+      db.from('user_settings').select('timezone,ui_locale').eq('user_id', link.user_id).maybeSingle(),
+      db.from('family_members').select('family_id').eq('user_id', link.user_id)
+        .eq('member_kind','active').maybeSingle(),
+    ])
+    if (!item || !member || member.family_id !== item.family_id
+      || item.responsible_user_id !== link.user_id
+      || (item.status !== 'open' && item.status !== 'done')
+      || !connection?.auto_export_enabled_at || connection.auto_export_error
+      || !connection.refresh_token_encrypted) return 'skipped'
+    const baseline = link.sync_local_updated_at ?? link.exported_at
+    if (!baseline || Date.parse(item.updated_at) <= Date.parse(baseline)) return 'skipped'
+    if (item.status === 'open' && !item.due_date) return 'skipped'
+
+    // Az első munka foglalása atomikus; bizonytalan hálózati hiba nem
+    // vált ki második automatikus Google-módosítást.
+    const { data: locked, error: lockError } = await db.from('google_calendar_exports')
+      .update({ sync_status: 'syncing', sync_attempted_at: new Date().toISOString(), sync_error: null })
+      .eq('user_id', link.user_id).eq('item_id', link.item_id)
+      .eq('status', 'sent').eq('sync_status', link.sync_status)
+      .select('item_id').maybeSingle()
+    if (lockError || !locked) return 'skipped'
+    async function finish(status: string, error: string | null, etag?: string) {
+      const values: Record<string, unknown> = { sync_status: status, sync_error: error }
+      if (status === 'synced') {
+        values.sync_local_updated_at = item.updated_at
+        if (etag) values.sync_google_etag = etag
+      }
+      await db.from('google_calendar_exports').update(values)
+        .eq('user_id', link.user_id).eq('item_id', link.item_id).eq('sync_status', 'syncing')
+    }
+    try {
+      const refreshToken = await decryptRefreshToken(connection.refresh_token_encrypted)
+      const refresh = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: clientId, client_secret: clientSecret,
+          refresh_token: refreshToken, grant_type: 'refresh_token',
+        }),
+        signal: AbortSignal.timeout(8000),
+      })
+      if (!refresh.ok) {
+        const err = await refresh.json().catch(() => ({})) as { error?: string }
+        if (err.error === 'invalid_grant') {
+          await db.from('google_calendar_connections')
+            .update({ auto_export_enabled_at: null, auto_export_error: 'reauthorize_required' })
+            .eq('user_id', link.user_id)
+            .eq('refresh_token_encrypted', connection.refresh_token_encrypted)
+        }
+        await finish('error', err.error === 'invalid_grant' ? 'reauthorize_required' : 'google_auth_failed')
+        return 'failed'
+      }
+      const accessToken = (await refresh.json() as { access_token?: string }).access_token
+      if (!accessToken) { await finish('error', 'missing_google_token'); return 'failed' }
+      const endpoint = 'https://www.googleapis.com/calendar/v3/calendars/primary/events/'
+        + encodeURIComponent(link.event_id)
+      const remoteResponse = await fetch(endpoint, {
+        headers: { Authorization: 'Bearer ' + accessToken },
+        signal: AbortSignal.timeout(10000),
+      })
+      if (remoteResponse.status === 404 || remoteResponse.status === 410) {
+        await finish('conflict', 'google_event_deleted')
+        return 'conflict'
+      }
+      if (!remoteResponse.ok) {
+        await finish('error', 'google_read_http_' + remoteResponse.status)
+        return 'failed'
+      }
+      const remote = await remoteResponse.json() as {
+        id?: string; etag?: string; status?: string; updated?: string;
+        summary?: string; description?: string;
+        recurringEventId?: string; recurrence?: string[];
+        start?: { date?: string; dateTime?: string };
+        end?: { date?: string; dateTime?: string };
+      }
+      if (remote.id !== link.event_id || !remote.etag || remote.status === 'cancelled'
+        || remote.recurringEventId || remote.recurrence?.length) {
+        await finish('conflict', 'unsupported_or_changed_google_event')
+        return 'conflict'
+      }
+
+      const changes: Record<string, unknown> = {}
+      if (item.status === 'done') {
+        const marker = settings?.ui_locale === 'da-DK' ? 'Udført' : 'Elvégezve'
+        const before = String(remote.description ?? '')
+        const hasMarker = before.split(/\r?\n/).some(line =>
+          line.trim() === 'Elvégezve' || line.trim() === 'Udført')
+        if (!hasMarker) changes.description = (before.trimEnd()
+          ? before.trimEnd() + '\n' : '') + marker
+      } else {
+        if (remote.summary !== item.title) changes.summary = item.title
+        const desiredNotes = item.notes ?? ''
+        if ((remote.description ?? '') !== desiredNotes) changes.description = desiredNotes
+        const target = calendarEventWindow(item.due_date, item.due_time, settings?.timezone || 'Europe/Budapest')
+        const newStart = target.start as { date?: string; dateTime?: string; timeZone?: string }
+        const previousStart = remote.start
+        const sameStart = newStart.date
+          ? remote.start?.date === newStart.date && !remote.start?.dateTime
+          : Boolean(remote.start?.dateTime && newStart.dateTime
+            && Date.parse(remote.start.dateTime) === Date.parse(newStart.dateTime))
+        if (!sameStart) {
+          changes.start = newStart
+          if (newStart.date) {
+            const oldStart = Date.parse(remote.start?.date ?? '')
+            const oldEnd = Date.parse(remote.end?.date ?? '')
+            const days = Number.isFinite(oldStart) && Number.isFinite(oldEnd)
+              ? Math.round((oldEnd - oldStart) / 86400000) : 1
+            changes.end = {
+              date: nextDateByDays(newStart.date, days >= 1 && days <= 365 ? days : 1),
+            }
+          } else {
+            const oldStart = Date.parse(remote.start?.dateTime ?? '')
+            const oldEnd = Date.parse(remote.end?.dateTime ?? '')
+            const duration = oldEnd - oldStart
+            const minutes = Number.isFinite(duration) && duration >= 60000 && duration <= 30 * 86400000
+              ? duration : 3600000
+            changes.end = {
+              dateTime: new Date(Date.parse(newStart.dateTime!) + minutes).toISOString(),
+              timeZone: newStart.timeZone,
+            }
+          }
+        }
+      }
+      // Azonos állapot esetén új PATCH nem szükséges, csak a napló frissül.
+      if (Object.keys(changes).length === 0) {
+        await finish('synced', null, remote.etag)
+        return 'sent'
+      }
+      // Ismeretlen kezdeti ETag esetén a Google távoli módosításának idejét
+      // hasonlítjuk az utolsó ismert export időpontjához.
+      const editedInGoogle = link.sync_google_etag
+        ? link.sync_google_etag !== remote.etag
+        : (Boolean(remote.updated) && Date.parse(remote.updated!) > Date.parse(link.exported_at) + 30000)
+      if (editedInGoogle) {
+        await finish('conflict', 'google_changed_since_last_sync')
+        return 'conflict'
+      }
+
+      // Ha az ügy közben megváltozott, az elavult állapotot nem írjuk ki.
+      const { data: current } = await db.from('items')
+        .select('updated_at,status').eq('id', item.id).maybeSingle()
+      if (!current || current.updated_at !== item.updated_at || current.status !== item.status) {
+        await finish('synced', null, remote.etag)
+        // A legújabb verzió továbbra is újraellenőrizhető.
+        return 'skipped'
+      }
+      const updated = await fetch(endpoint + '?sendUpdates=none', {
+        method: 'PATCH',
+        headers: {
+          Authorization: 'Bearer ' + accessToken,
+          'Content-Type': 'application/json',
+          'If-Match': remote.etag,
+        },
+        body: JSON.stringify(changes),
+        signal: AbortSignal.timeout(10000),
+      })
+      if (updated.status === 412) {
+        await finish('conflict', 'google_changed_during_sync')
+        return 'conflict'
+      }
+      if (updated.status === 404 || updated.status === 410) {
+        await finish('conflict', 'google_event_deleted')
+        return 'conflict'
+      }
+      if (!updated.ok) {
+        await finish('error', 'google_write_http_' + updated.status)
+        return 'failed'
+      }
+      const confirmed = await updated.json() as { id?: string; etag?: string }
+      if (confirmed.id !== link.event_id || !confirmed.etag) {
+        await finish('error', 'google_response_uncertain')
+        return 'failed'
+      }
+      await finish('synced', null, confirmed.etag)
+      return 'sent'
+    } catch (error) {
+      // A PATCH kimenetele hálózati hibánál lehet bizonytalan:
+      // kézi vizsgálatig ne próbálkozzunk újból.
+      await finish('error', 'network_result_uncertain')
+      console.warn('Google Calendar update needs review', error)
+      return 'failed'
+    }
+  }
+
+  function nextDateByDays(date: string, days: number): string {
+    const [y, m, d] = date.split('-').map(Number)
+    return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
+  }
+
+  const { data: linked, error: linkedError } = await db.from('google_calendar_exports')
+    .select('user_id,item_id,event_id,exported_at,sync_local_updated_at,sync_google_etag,sync_status')
+    .eq('status','sent').in('sync_status',['idle','synced'])
+    .order('first_attempted_at',{ascending:true}).limit(100)
+  if (linkedError) return json({ error: 'Meglévő naptárkapcsolatok vizsgálata nem sikerült.' }, 500)
+  const updateResults = await Promise.all(
+    ((linked ?? []) as ExistingLink[]).map(link => updateExisting(link))
+  )
+
   const results = await Promise.all((pending as Pending[] ?? []).map((row) => sendOne(row)))
   return json({
     status: 'ok',
@@ -233,5 +447,8 @@ Deno.serve(async (req: Request) => {
     sent: results.filter((v) => v === 'sent').length,
     skipped: results.filter((v) => v === 'skipped').length,
     failed: results.filter((v) => v === 'failed').length,
+    updated: updateResults.filter((v) => v === 'sent').length,
+    update_conflicts: updateResults.filter((v) => v === 'conflict').length,
+    update_failed: updateResults.filter((v) => v === 'failed').length,
   })
 })
