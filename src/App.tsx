@@ -141,6 +141,18 @@ type CalendarChangeCandidate = {
   due_date: string | null
   due_time: string | null
   discovered_at: string
+  local_item?: { title: string; due_date: string | null; due_time: string | null } | null
+}
+
+type CalendarPushRequest = { kind: 'change' | 'import'; changeId: string | null }
+
+// A push értesítésből érkezett hivatkozás régebbi és új formáját is kezeljük.
+function readCalendarPushRequest(): CalendarPushRequest | null {
+  const params = new URLSearchParams(window.location.search)
+  const kind = params.get('push')
+  if (kind === 'calendar-change') return { kind: 'change', changeId: params.get('change_id') }
+  if (kind === 'calendar-import') return { kind: 'import', changeId: null }
+  return null
 }
 
 type CalendarExportDraft = {
@@ -363,6 +375,11 @@ export default function App() {
   const [calendarChangeBusy, setCalendarChangeBusy] = useState(false)
   const [calendarChangeError, setCalendarChangeError] = useState<string | null>(null)
   const [calendarChangeNotice, setCalendarChangeNotice] = useState<string | null>(null)
+  const [calendarPushRequest, setCalendarPushRequest] = useState<CalendarPushRequest | null>(
+    () => readCalendarPushRequest(),
+  )
+  const [calendarPushLoading, setCalendarPushLoading] = useState(false)
+  const [calendarPushLoaded, setCalendarPushLoaded] = useState(false)
   const [calendarImportBusy, setCalendarImportBusy] = useState(false)
   const [calendarImportLoading, setCalendarImportLoading] = useState(false)
   const [calendarImportNotice, setCalendarImportNotice] = useState<string | null>(null)
@@ -1295,6 +1312,66 @@ export default function App() {
     const timer = window.setTimeout(() => setCalendarChangeNotice(null), 5000)
     return () => window.clearTimeout(timer)
   }, [calendarChangeNotice])
+
+  // A Google értesítésére kattintás nem csupán a kezdőlapot nyitja meg:
+  // az adott javaslatot újra lekérjük, majd a döntéshez görgetünk.
+  // Régi (?push=calendar-import) linkekre is működik.
+  useEffect(() => {
+    const captureIncomingCalendarLink = () => {
+      const request = readCalendarPushRequest()
+      if (request) setCalendarPushRequest(request)
+    }
+    window.addEventListener('pageshow', captureIncomingCalendarLink)
+    window.addEventListener('focus', captureIncomingCalendarLink)
+    document.addEventListener('visibilitychange', captureIncomingCalendarLink)
+    return () => {
+      window.removeEventListener('pageshow', captureIncomingCalendarLink)
+      window.removeEventListener('focus', captureIncomingCalendarLink)
+      document.removeEventListener('visibilitychange', captureIncomingCalendarLink)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!session || !familyName || !calendarPushRequest) return
+    let cancelled = false
+    const url = new URL(window.location.href)
+    if (url.searchParams.get('push') === 'calendar-change' ||
+        url.searchParams.get('push') === 'calendar-import') {
+      url.searchParams.delete('push')
+      url.searchParams.delete('change_id')
+      window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash)
+    }
+    setCalendarPushLoading(true)
+    setCalendarPushLoaded(false)
+    void Promise.all([reloadCalendarChanges(), reloadCalendarImports()]).finally(() => {
+      if (cancelled) return
+      setCalendarPushLoading(false)
+      setCalendarPushLoaded(true)
+    })
+    return () => { cancelled = true }
+  }, [session?.user.id, familyName, calendarPushRequest])
+
+  useEffect(() => {
+    if (!calendarPushRequest || !calendarPushLoaded || !calendarConnected) return
+    const matchingChange = calendarPushRequest.changeId
+      ? calendarChangeCandidates.find(candidate => candidate.id === calendarPushRequest.changeId)
+      : calendarChangeCandidates[0]
+    const target = matchingChange
+      ? 'calendar-change-card-' + matchingChange.id
+      : !calendarPushRequest.changeId && calendarImportCandidates.length
+        ? 'calendar-import-inbox'
+        : null
+    if (!target) return
+    const frame = window.requestAnimationFrame(() => {
+      const element = document.getElementById(target)
+      if (!element) return
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      setCalendarPushRequest(null)
+      setCalendarPushLoaded(false)
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [calendarPushRequest, calendarPushLoaded, calendarConnected,
+      calendarChangeCandidates, calendarImportCandidates])
 
   // Mobilos push-megnyitáskor egy már futó PWA is visszatérhet előtérbe.
   // Ilyenkor újra lekérjük a függő Google Naptár-eseményeket, hogy a
