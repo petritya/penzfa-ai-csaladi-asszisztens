@@ -131,6 +131,18 @@ type CalendarImportCandidate = {
   expires_at: string
 }
 
+type CalendarChangeCandidate = {
+  id: string
+  event_id: string
+  item_id: string
+  change_type: 'update' | 'delete'
+  title: string | null
+  notes: string | null
+  due_date: string | null
+  due_time: string | null
+  discovered_at: string
+}
+
 type CalendarExportDraft = {
   item_id: string
   title: string
@@ -347,6 +359,10 @@ export default function App() {
   const [calendarAutoImportEnabled, setCalendarAutoImportEnabled] = useState(false)
   const [calendarImportNeedsReauth, setCalendarImportNeedsReauth] = useState(false)
   const [calendarImportCandidates, setCalendarImportCandidates] = useState<CalendarImportCandidate[]>([])
+  const [calendarChangeCandidates, setCalendarChangeCandidates] = useState<CalendarChangeCandidate[]>([])
+  const [calendarChangeBusy, setCalendarChangeBusy] = useState(false)
+  const [calendarChangeError, setCalendarChangeError] = useState<string | null>(null)
+  const [calendarChangeNotice, setCalendarChangeNotice] = useState<string | null>(null)
   const [calendarImportBusy, setCalendarImportBusy] = useState(false)
   const [calendarImportLoading, setCalendarImportLoading] = useState(false)
   const [calendarImportNotice, setCalendarImportNotice] = useState<string | null>(null)
@@ -1112,8 +1128,16 @@ export default function App() {
           if (!imports.error && Array.isArray(imports.data?.items)) {
             setCalendarImportCandidates(imports.data.items as CalendarImportCandidate[])
           }
+          const changes = await supabase!.functions.invoke('google-calendar-oauth', {
+            body: { action: 'list_calendar_changes' },
+          })
+          if (!active) return
+          if (!changes.error && Array.isArray(changes.data?.items)) {
+            setCalendarChangeCandidates(changes.data.items as CalendarChangeCandidate[])
+          }
         } else {
           setCalendarImportCandidates([])
+          setCalendarChangeCandidates([])
         }
         setCalendarAutoExportEnabled(Boolean(data?.auto_export_enabled))
         setCalendarNeedsReauth(data?.auto_export_error === 'reauthorize_required')
@@ -1162,6 +1186,7 @@ export default function App() {
     setCalendarConnected(false)
     setCalendarAutoImportEnabled(false)
     setCalendarImportCandidates([])
+    setCalendarChangeCandidates([])
     setCalendarAutoExportEnabled(false)
     setCalendarNeedsReauth(false)
     setCalendarNotice(appLocale === 'da-DK' ? 'Google Kalender er afbrudt.' : 'Google Naptár kapcsolat bontva.')
@@ -1207,6 +1232,67 @@ export default function App() {
     setCalendarImportError(null)
   }
 
+  async function reloadCalendarChanges() {
+    if (!supabase || !session) return
+    const { data, error } = await supabase.functions.invoke('google-calendar-oauth', {
+      body: { action: 'list_calendar_changes' },
+    })
+    if (error || data?.error) {
+      setCalendarChangeError(appLocale === 'da-DK'
+        ? 'Kunne ikke hente ændringer fra Google Kalender.'
+        : 'Nem sikerült betölteni a Google Naptár módosításait.')
+      return
+    }
+    setCalendarChangeCandidates(Array.isArray(data?.items) ? data.items as CalendarChangeCandidate[] : [])
+    setCalendarChangeError(null)
+  }
+
+  async function handleDecideCalendarChange(candidate: CalendarChangeCandidate, decision: 'accept' | 'reject') {
+    if (!supabase || !session || calendarChangeBusy) return
+    const accept = decision === 'accept'
+    const prompt = candidate.change_type === 'delete'
+      ? (accept
+        ? (appLocale === 'da-DK'
+          ? 'Google Kalender har slettet denne aftale. Vil du også slette den i assistenten: '
+          : 'A Google Naptárban törölték. Az asszisztensből is törlöd ezt: ')
+        : (appLocale === 'da-DK'
+          ? 'Vil du beholde aftalen i assistenten: '
+          : 'Megtartod az eseményt az asszisztensben: '))
+      : (accept
+        ? (appLocale === 'da-DK'
+          ? 'Vil du overføre ændringen fra Google Kalender: '
+          : 'Átveszed a Google Naptár módosítását: ')
+        : (appLocale === 'da-DK'
+          ? 'Vil du beholde den nuværende version i assistenten: '
+          : 'Megtartod az asszisztens jelenlegi változatát: '))
+    if (!window.confirm(prompt + (candidate.title ?? candidate.event_id) + '?')) return
+    setCalendarChangeBusy(true)
+    setCalendarChangeError(null)
+    const { data, error } = await supabase.functions.invoke('google-calendar-oauth', {
+      body: { action: 'decide_calendar_change', change_id: candidate.id, decision, confirmed: true },
+    })
+    setCalendarChangeBusy(false)
+    if (error || data?.error) {
+      setCalendarChangeError(appLocale === 'da-DK'
+        ? 'Ændringen kunne ikke behandles. Den oprindelige opgave er ikke overskrevet.'
+        : 'A változtatást nem sikerült átvezetni. A meglévő ügyet nem írtuk felül.')
+      await reloadCalendarChanges()
+      return
+    }
+    setCalendarChangeCandidates(current => current.filter(row => row.event_id !== candidate.event_id))
+    setCalendarChangeNotice(accept
+      ? (candidate.change_type === 'delete'
+        ? (appLocale === 'da-DK' ? 'Sletningen er overført til assistenten.' : 'A törlést átvettük az asszisztensbe.')
+        : (appLocale === 'da-DK' ? 'Ændringen er overført til assistenten.' : 'A módosítást átvettük az asszisztensbe.'))
+      : (appLocale === 'da-DK' ? 'Assistentens version er bevaret.' : 'Az asszisztens változata megmaradt.'))
+  }
+
+  useEffect(() => {
+    if (!calendarChangeNotice) return
+    const timer = window.setTimeout(() => setCalendarChangeNotice(null), 5000)
+    return () => window.clearTimeout(timer)
+  }, [calendarChangeNotice])
+
   // Mobilos push-megnyitáskor egy már futó PWA is visszatérhet előtérbe.
   // Ilyenkor újra lekérjük a függő Google Naptár-eseményeket, hogy a
   // jóváhagyási lehetőség kézi Frissítés nélkül is megjelenjen.
@@ -1219,11 +1305,14 @@ export default function App() {
       if (Date.now() - lastRefresh < 2000) return
       lastRefresh = Date.now()
       void reloadCalendarImports()
+      void reloadCalendarChanges()
     }
 
     document.addEventListener('visibilitychange', refreshOnResume)
     window.addEventListener('focus', refreshOnResume)
+    const poll = window.setInterval(refreshOnResume, 60_000)
     return () => {
+      window.clearInterval(poll)
       document.removeEventListener('visibilitychange', refreshOnResume)
       window.removeEventListener('focus', refreshOnResume)
     }
@@ -3276,6 +3365,62 @@ export default function App() {
           {familyName && calendarConnected && calendarImportNotice && (
             <p className="notice success" role="status">{calendarImportNotice}</p>
           )}
+          {familyName && calendarConnected && calendarChangeNotice && (
+            <p className="notice success" role="status">{calendarChangeNotice}</p>
+          )}
+          {familyName && calendarConnected && (calendarChangeCandidates.length > 0 || Boolean(calendarChangeError)) && (
+            <section className="capture-block calendar-import-inbox"
+              aria-label={appLocale === 'da-DK' ? 'Ændringer i Google Kalender' : 'Google Naptár – módosítások'}>
+              <h2>{appLocale === 'da-DK'
+                ? 'Ændringer fra Google Kalender – afventer din beslutning'
+                : 'Google Naptár-változások – döntésre várnak'}</h2>
+              {calendarChangeError && (
+                <>
+                  <p className="notice error" role="alert">{calendarChangeError}</p>
+                  <button className="secondary-button" type="button"
+                    onClick={() => void reloadCalendarChanges()} disabled={calendarChangeBusy}>
+                    {appLocale === 'da-DK' ? 'Prøv igen' : 'Újrapróbálás'}
+                  </button>
+                </>
+              )}
+              {calendarChangeCandidates.map(candidate => (
+                <div className="confirmation-card" key={candidate.id}>
+                  <strong>{candidate.title ?? candidate.event_id}</strong>
+                  {candidate.change_type === 'delete' ? (
+                    <p>{appLocale === 'da-DK'
+                      ? 'Denne aftale er slettet i Google Kalender. Vil du også slette den i assistenten?'
+                      : 'Ezt az eseményt törölték a Google Naptárban. Átveszed a törlést az asszisztensbe?'}</p>
+                  ) : (
+                    <>
+                      <p>{appLocale === 'da-DK' ? 'Nyt tidspunkt i Google Kalender: ' : 'Új időpont a Google Naptárban: '}
+                        {candidate.due_date ? new Date(candidate.due_date + 'T12:00:00')
+                          .toLocaleDateString(appLocale === 'da-DK' ? 'da-DK' : 'hu-HU', { dateStyle: 'long' }) : ''}
+                        {candidate.due_time ? ' ' + candidate.due_time.slice(0, 5) : ''}
+                      </p>
+                      {candidate.notes && (
+                        <p className="confirmation-hint" style={{whiteSpace:'pre-wrap'}}>
+                          <strong>{appLocale === 'da-DK' ? 'Note:' : 'Megjegyzés:'}</strong> {candidate.notes}
+                        </p>
+                      )}
+                    </>
+                  )}
+                  <div className="confirmation-actions">
+                    <button className="primary-button" type="button" disabled={calendarChangeBusy}
+                      onClick={() => void handleDecideCalendarChange(candidate, 'accept')}>
+                      {candidate.change_type === 'delete'
+                        ? (appLocale === 'da-DK' ? 'Overfør sletning' : 'Törlés átvétele')
+                        : (appLocale === 'da-DK' ? 'Overfør ændring' : 'Módosítás átvétele')}
+                    </button>
+                    <button className="secondary-button" type="button" disabled={calendarChangeBusy}
+                      onClick={() => void handleDecideCalendarChange(candidate, 'reject')}>
+                      {appLocale === 'da-DK' ? 'Behold i assistenten' : 'Megtartom az asszisztensben'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </section>
+          )}
+
           {familyName && calendarConnected && (calendarImportCandidates.length > 0 || Boolean(calendarImportError)) && (
             <section className="capture-block calendar-import-inbox" aria-label={appLocale === 'da-DK' ? 'Google Kalender – forslag' : 'Google Naptár – átvételi javaslatok'}>
               {calendarImportCandidates.length > 0 && (
@@ -4043,8 +4188,8 @@ export default function App() {
                             onChange={(event) => void handleToggleCalendarAutoImport(event.target.checked)}
                           />
                           <span>{appLocale === 'da-DK'
-                            ? 'Google Kalender → Assistent: foreslå nye aftaler'
-                            : 'Google Naptár → AI családi asszisztens: új események felajánlása'}</span>
+                            ? 'Google Kalender → Assistent: foreslå aftaler og ændringer'
+                            : 'Google Naptár → AI családi asszisztens: események és módosítások felajánlása'}</span>
                         </label>
                         <small>{appLocale === 'da-DK'
                           ? 'Kontrol hvert 5. minut: højst én push. Uden svar nævnes aftalen i næste morgenoverblik én gang og udløber næste dags aften. Ingen automatisk import.'
@@ -4061,8 +4206,8 @@ export default function App() {
                             onChange={(event) => void handleToggleCalendarAutoExport(event.target.checked)}
                           />
                           <span>{appLocale === 'da-DK'
-                            ? 'Send nye opgaver med dato automatisk til Google Kalender'
-                            : 'AI családi asszisztens → Google Naptár: automatikus feltöltés'}</span>
+                            ? 'Send nye og ændrede opgaver til Google Kalender'
+                            : 'AI családi asszisztens → Google Naptár: létrehozás és módosítás'}</span>
                         </label>
                         <small>{appLocale === 'da-DK'
                           ? 'Kun nye opgaver fra aktiveringstidspunktet. Med klokkeslæt varer aftalen 1 time, ellers hele dagen. Ingen automatisk genafsendelse. Kontrol ca. hvert 5. minut.'
