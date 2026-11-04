@@ -209,13 +209,18 @@ Deno.serve(async (req: Request) => {
         }
         return 'failed'
       }
+      let newEventEtag: string | null = null
       if (created.status !== 409) {
-        const event = await created.json() as { id?: string }
+        const event = await created.json() as { id?: string; etag?: string }
         if (event.id !== eventId) return 'failed'
+        newEventEtag = event.etag ?? null
       }
 
       const { data: saved, error: saveError } = await db.from('google_calendar_exports')
-        .update({ status: 'sent', exported_at: new Date().toISOString() })
+        .update({ status: 'sent', exported_at: new Date().toISOString(),
+          sync_local_updated_at: row.event_updated_at,
+          sync_google_etag: newEventEtag,
+          sync_status: 'synced' })
         .eq('user_id', row.user_id).eq('item_id', row.item_id)
         .eq('event_id', eventId).eq('status', 'sending')
         .select('item_id').maybeSingle()
