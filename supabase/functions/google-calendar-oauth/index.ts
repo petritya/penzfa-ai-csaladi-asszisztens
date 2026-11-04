@@ -597,9 +597,9 @@ Deno.serve(async (request: Request) => {
         return json({ error: 'A Google Naptár nem fogadta el az eseményt. Ellenőrizd a naptárjogosultságot.' }, 502)
       }
 
-      let created: { id?: string; htmlLink?: string } | null = null
+      let created: { id?: string; htmlLink?: string; etag?: string } | null = null
       if (inserted.status !== 409) {
-        created = await inserted.json() as { id?: string; htmlLink?: string }
+        created = await inserted.json() as { id?: string; htmlLink?: string; etag?: string }
         if (created.id !== eventId) {
           return json({ error: 'A Google Naptár válasza bizonytalan, ezért nem próbálkozunk automatikusan újra.' }, 502)
         }
@@ -610,6 +610,10 @@ Deno.serve(async (request: Request) => {
           event_id: eventId,
           resend_count: nextResendCount,
           exported_at: new Date().toISOString(),
+          sync_local_updated_at: item.updated_at,
+          sync_google_etag: created?.etag ?? null,
+          sync_status: 'synced',
+          sync_error: null,
         })
         .eq('user_id', userId).eq('item_id', item.id).eq('status', 'sending')
         .eq('event_id', isManualResend ? exportLog.event_id : eventId)
