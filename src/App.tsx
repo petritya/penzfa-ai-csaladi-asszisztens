@@ -3275,6 +3275,7 @@ export default function App() {
                   <li><strong>Törlés:</strong> „Töröld a pénteki fodrászt.”</li>
                 </ol>
                 <p>Bizonytalan ügyválasztásnál pontosítást kérünk. A kiválasztott ügy dátuma, emlékeztetője és megjegyzése egy Küldés gombbal menthető. A készre jelölést és a törlést külön meg kell erősíteni.</p>
+                <p>A korábbi ügyekre is kereshetsz, például „Milyen eseményeim voltak tegnap?” vagy „Mutasd a tegnapi lezárt ügyeket.” A már elvégzett események is törölhetők az asszisztensből, de előtte mindig kiválasztást és jóváhagyást kérünk. A Google Naptárból csak külön döntés után törlünk.</p>
               </details>
 
               <details className="help-section" open>
