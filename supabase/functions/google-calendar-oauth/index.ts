@@ -266,6 +266,92 @@ Deno.serve(async (request: Request) => {
 
     // Google -> asszisztens: az egy már összekapcsolt eseményre vonatkozó
     // módosítás/törlés nem mehet át felhasználói döntés nélkül.
+    if (body.action === 'get_linked_calendar_item') {
+      const id = String(body.item_id ?? '')
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+        return json({linked:false})
+      }
+      const { data: link } = await db.from('google_calendar_exports')
+        .select('event_id,status,google_deleted_at').eq('user_id',userId)
+        .eq('item_id',id).maybeSingle()
+      return json({linked:Boolean(link?.status==='sent'&&!link.google_deleted_at)})
+    }
+
+    // Két külön explicit döntés: lokális törlés után a Google Naptárból
+    // kizárólag a második, külön megerősített kérés törölhet.
+    if (body.action === 'delete_linked_calendar_event') {
+      const id = String(body.item_id ?? '')
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+        || body.confirmed!==true) {
+        return json({error:'A Google-esemény törléséhez külön megerősítés kell.'},400)
+      }
+      const {data:member}=await db.from('family_members')
+        .select('family_id').eq('user_id',userId).eq('member_kind','active').maybeSingle()
+      if (!member) return json({error:'Nincs családi jogosultság.'},403)
+      const [{data:item},{data:link},{data:connection}]=await Promise.all([
+        db.from('items').select('id,status').eq('id',id).eq('family_id',member.family_id)
+          .eq('responsible_user_id',userId).maybeSingle(),
+        db.from('google_calendar_exports')
+          .select('event_id,status,sync_google_etag,exported_at,google_deleted_at')
+          .eq('user_id',userId).eq('item_id',id).maybeSingle(),
+        db.from('google_calendar_connections')
+          .select('refresh_token_encrypted').eq('user_id',userId).maybeSingle(),
+      ])
+      if (!item || item.status!=='deleted' || !link || link.status!=='sent')
+        return json({error:'Előbb a megfelelő saját ügyet töröld az asszisztensből.'},409)
+      if (link.google_deleted_at) return json({status:'deleted'})
+      if (!connection || !clientId || !clientSecret)
+        return json({error:'Kapcsold össze újra a Google Naptárat.'},409)
+      try {
+        const refreshToken=await decryptRefreshToken(connection.refresh_token_encrypted,clientSecret)
+        const refresh=await fetch('https://oauth2.googleapis.com/token',{
+          method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+          body:new URLSearchParams({client_id:clientId,client_secret:clientSecret,
+            refresh_token:refreshToken,grant_type:'refresh_token'}),
+          signal:AbortSignal.timeout(8000),
+        })
+        if (!refresh.ok) return json({error:'A Google-engedély frissítése nem sikerült.'},502)
+        const accessToken=(await refresh.json() as {access_token?:string}).access_token
+        if (!accessToken) return json({error:'Hiányzó Google-hozzáférés.'},502)
+        const endpoint='https://www.googleapis.com/calendar/v3/calendars/primary/events/'
+          +encodeURIComponent(link.event_id)
+        const remoteRes=await fetch(endpoint,{
+          headers:{Authorization:'Bearer '+accessToken},signal:AbortSignal.timeout(10000)})
+        if (remoteRes.status===404||remoteRes.status===410) {
+          await db.from('google_calendar_exports')
+            .update({google_deleted_at:new Date().toISOString(),sync_error:null})
+            .eq('user_id',userId).eq('item_id',id)
+          return json({status:'deleted'})
+        }
+        if (!remoteRes.ok) return json({error:'A Google-esemény ellenőrzése nem sikerült.'},502)
+        const remote=await remoteRes.json() as {id?:string;etag?:string;updated?:string;status?:string}
+        if (remote.id!==link.event_id||!remote.etag)return json({error:'Az esemény nem ellenőrizhető.'},409)
+        const changed=link.sync_google_etag
+          ?remote.etag!==link.sync_google_etag
+          :Boolean(remote.updated&&Date.parse(remote.updated)>Date.parse(link.exported_at)+30000)
+        if (changed) return json({error:'A Google-esemény közben megváltozott. A törlést nem hajtottuk végre.'},409)
+        const deleted=await fetch(endpoint+'?sendUpdates=none',{
+          method:'DELETE',headers:{Authorization:'Bearer '+accessToken,'If-Match':remote.etag},
+          signal:AbortSignal.timeout(10000),
+        })
+        if (deleted.status===412)return json({error:'A Google-esemény törlés közben módosult.'},409)
+        if (!deleted.ok&&deleted.status!==404&&deleted.status!==410)
+          return json({error:'A Google Naptár nem fogadta el a törlést.'},502)
+        await db.from('google_calendar_exports')
+          .update({google_deleted_at:new Date().toISOString(),sync_error:null})
+          .eq('user_id',userId).eq('item_id',id)
+        await db.from('activity_log').insert({
+          family_id:member.family_id,actor_user_id:userId,item_id:id,
+          action:'calendar_event_deleted_by_request',
+          details:{event_id:link.event_id},
+        })
+        return json({status:'deleted'})
+      } catch {
+        // Bizonytalan kimenetnél nem ismétlünk törlést automatikusan.
+        return json({error:'A Google Naptár törlésének eredménye nem biztos. Ellenőrizd a naptárban.'},502)
+      }
+    }
+
     if (body.action === 'list_calendar_changes') {
       const { data, error } = await db.from('google_calendar_change_candidates')
         .select('id,event_id,item_id,change_type,title,notes,due_date,due_time,discovered_at')
