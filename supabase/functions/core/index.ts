@@ -52,6 +52,7 @@ type UpdateCandidate = {
   subject_display_name: string | null
   responsible_display_name: string | null
   item_type?: 'task' | 'event' | 'deadline'
+  status?: 'open' | 'done'
 }
 
 type UpdateDraft = {
@@ -531,6 +532,21 @@ function findHungarianWeekday(value: string) {
   return null
 }
 
+// A múltbeli napot kizárólag a felhasználó helyi időzónája alapján
+// számítjuk. Magyar és dán alakok, ragozott "tegnapi" is támogatott.
+function relativePastDayFromPhrase(phrase: string | null, timeZone: string): string | null {
+  if (!phrase) return null
+  const text = normalize(phrase).replace(/[^a-z0-9]+/g, ' ').trim()
+  const today = localDateInTimezone(timeZone)
+  if (/\b(?:tegnapelott(?:i)?|forgars|i forgars)\b/.test(text)) {
+    return addDays(today, -2)
+  }
+  if (/\b(?:tegnap(?:i|rol)?|igar|i gar)\b/.test(text)) {
+    return addDays(today, -1)
+  }
+  return null
+}
+
 function resolvePastOrTodayDatePhrase(phrase: string | null, timeZone: string) {
   if (!phrase) return null
 
@@ -934,6 +950,8 @@ function resolveQueryDateRange(
   const today = localDateInTimezone(timeZone)
 
   if (scope === 'none') return null
+  const pastDay = relativePastDayFromPhrase(phrase, timeZone)
+  if (pastDay) return { start: pastDay, end: pastDay }
   if (scope === 'today') return { start: today, end: today }
   if (scope === 'tomorrow') {
     const date = addDays(today, 1)
@@ -2600,6 +2618,28 @@ Deno.serve(async (req) => {
       }
 
       const timeZone = settings?.timezone ?? 'Europe/Budapest'
+      const mentionedPastDay = relativePastDayFromPhrase(message, timeZone)
+      if (mentionedPastDay) {
+        // A tegnapi események közt a már elvégzettek is szerepelnek.
+        // Csak kifejezett kérés szűkíthet nyitottra, készre vagy töröltre.
+        const words = normalize(message)
+        interpretation.date_scope = 'specific_date'
+        interpretation.date_phrase = mentionedPastDay
+        if (/\b(?:lezart|elintezett|elvegzett|keszre|befejezett|udfort|afsluttet|faerdig)\b/.test(words)) {
+          interpretation.status = 'done'
+        } else if (/\b(?:nyitott|abne|aabne)\b/.test(words)) {
+          interpretation.status = 'open'
+        } else if (/\b(?:torolt|slettet)\b/.test(words)) {
+          interpretation.status = 'deleted'
+        } else {
+          interpretation.status = 'all'
+        }
+        const cleanKeywords = normalize(interpretation.keywords ?? '')
+          .replace(/\b(?:tegnap(?:i|rol)?|tegnapelott(?:i)?|igar|i gar|forgars|i forgars)\b/g, ' ')
+          .replace(/\s+/g, ' ').trim()
+        interpretation.keywords = /^(?:|esemeny(?:ek|eim)?|feladat(?:ok|aim)?|ugy(?:ek|eim)?|opgaver|aftaler)$/.test(cleanKeywords)
+          ? null : cleanKeywords
+      }
       const dateRange = resolveQueryDateRange(
         interpretation.date_scope,
         interpretation.date_phrase,
@@ -4340,9 +4380,11 @@ Deno.serve(async (req) => {
       )
 
       const timeZone = settings?.timezone ?? 'Europe/Budapest'
-      const targetDate = interpretation.target_date_phrase
+      const targetDate = relativePastDayFromPhrase(
+        interpretation.target_date_phrase ?? message, timeZone,
+      ) ?? (interpretation.target_date_phrase
         ? resolveDatePhrase(interpretation.target_date_phrase, timeZone)
-        : null
+        : null)
 
       if (interpretation.target_date_phrase && !targetDate) {
         return json({
@@ -4382,21 +4424,29 @@ Deno.serve(async (req) => {
         responsibleUserId = responsible.user_id
       }
 
-      const { data: openItems, error: itemsError } = await db
+      const { data: eligibleItems, error: itemsError } = await db
         .from('items')
-        .select('id, title, item_type, due_date, due_time, subject_member_id, responsible_user_id')
+        .select('id, title, item_type, due_date, due_time, status, subject_member_id, responsible_user_id')
         .eq('family_id', familyId)
-        .eq('status', 'open')
+        .in('status', ['open', 'done'])
         .order('due_date', { ascending: true, nullsFirst: false })
       if (itemsError) throw itemsError
 
-      const targetTitle = normalize(interpretation.target_title)
-      const targetTokens = targetTitle.split(/\s+/).filter((token) => token.length >= 3)
-
-      let matches = (openItems ?? []).filter((item) => {
+      const normalizedMessage = normalize(message)
+      const doneOnly = /\b(?:lezart|elintezett|elvegzett|keszre|befejezett|udfort|afsluttet|faerdig)\b/.test(normalizedMessage)
+      const openOnly = /\b(?:nyitott|abne|aabne)\b/.test(normalizedMessage)
+      const targetTitle = normalize(interpretation.target_title).replace(
+        /\b(?:tegnap(?:i|rol)?|tegnapelott(?:i)?|igar|i gar|forgars|i forgars|lezart|elintezett|keszre|nyitott)\b/g, ' ',
+      ).replace(/\s+/g, ' ').trim()
+      const genericTarget = /^(?:|a|az|egy|esemeny(?:t|ek|eim)?|feladat(?:ot|ok|aim)?|ugy(?:et|ek|eim)?|teendo(?:t|k)?|aftale(?:n|r)?|opgave(?:n|r)?)$/.test(targetTitle)
+      const targetTokens = genericTarget ? [] : targetTitle.split(/\s+/).filter((token) => token.length >= 3)
+      let matches = (eligibleItems ?? []).filter((item) => {
         if (subjectId && item.subject_member_id !== subjectId) return false
         if (responsibleUserId && item.responsible_user_id !== responsibleUserId) return false
+        if (doneOnly && item.status !== 'done') return false
+        if (openOnly && item.status !== 'open') return false
         if (targetDate && item.due_date !== targetDate) return false
+        if (genericTarget) return Boolean(targetDate)
         if (fuzzyTitleMatches(item.title, targetTitle)) return true
         const itemTitle = normalize(item.title)
         return targetTokens.some((token) => itemTitle.includes(token))
@@ -4416,10 +4466,12 @@ Deno.serve(async (req) => {
       }
 
       if (!matches.length && requestLocale === 'da-DK') {
-        const eligible = (openItems ?? []).filter((item) =>
+        const eligible = (eligibleItems ?? []).filter((item) =>
           (!subjectId || item.subject_member_id === subjectId)
           && (!responsibleUserId || item.responsible_user_id === responsibleUserId)
           && (!targetDate || item.due_date === targetDate)
+          && (!doneOnly || item.status === 'done')
+          && (!openOnly || item.status === 'open')
         )
         const candidateIds = await findSemanticQueryCandidateIds(message, eligible)
         const ids = new Set(candidateIds)
@@ -4436,6 +4488,7 @@ Deno.serve(async (req) => {
       const candidates: UpdateCandidate[] = matches.map((item) => ({
         id: item.id,
         title: item.title,
+        status: item.status as 'open' | 'done',
         due_date: item.due_date,
         due_time: item.due_time,
         subject_display_name: item.subject_member_id
@@ -4449,7 +4502,7 @@ Deno.serve(async (req) => {
       if (candidates.length === 0) {
         return json({
           status: 'no_match',
-          error: 'Nem találtam egyértelműen ilyen nyitott ügyet.',
+          error: 'Nem találtam a megadott dátumhoz és címhez illő nyitott vagy lezárt ügyet.',
           code: 'DELETE_TARGET_NOT_FOUND',
         })
       }
@@ -4459,7 +4512,7 @@ Deno.serve(async (req) => {
           status: 'choose_target',
           candidates: candidates.map((candidate) => ({
             ...candidate,
-            label: updateCandidateLabel(candidate),
+            label: (candidate.status === 'done' ? 'Elvégezve – ' : 'Nyitott – ') + updateCandidateLabel(candidate),
           })),
         })
       }
@@ -4475,6 +4528,7 @@ Deno.serve(async (req) => {
           payload: {
             before: {
               title: candidate.title,
+              status: candidate.status,
               due_date: candidate.due_date,
               due_time: candidate.due_time ? String(candidate.due_time).slice(0, 5) : null,
             },
@@ -4489,7 +4543,7 @@ Deno.serve(async (req) => {
         draft: {
           pending_action_id: pending.id,
           target_item_id: candidate.id,
-          confirmation_text: `Ezt találtam: ${updateCandidateLabel(candidate)}. Biztosan töröljem?`,
+          confirmation_text: `Ezt találtam: ${candidate.status === 'done' ? 'Elvégezve – ' : 'Nyitott – '}${updateCandidateLabel(candidate)}. Biztosan töröljem?`,
         },
       })
     }
@@ -4499,10 +4553,10 @@ Deno.serve(async (req) => {
 
       const { data: item } = await db
         .from('items')
-        .select('id, title, due_date, due_time, subject_member_id, responsible_user_id')
+        .select('id, title, due_date, due_time, status, subject_member_id, responsible_user_id')
         .eq('id', targetItemId)
         .eq('family_id', familyId)
-        .eq('status', 'open')
+        .in('status', ['open', 'done'])
         .maybeSingle()
 
       if (!item) return json({ error: 'A kiválasztott ügy már nem található.' })
@@ -4519,6 +4573,7 @@ Deno.serve(async (req) => {
       const candidate: UpdateCandidate = {
         id: item.id,
         title: item.title,
+        status: item.status as 'open' | 'done',
         due_date: item.due_date,
         due_time: item.due_time,
         subject_display_name: subject?.display_name ?? null,
@@ -4535,6 +4590,7 @@ Deno.serve(async (req) => {
           payload: {
             before: {
               title: item.title,
+              status: item.status,
               due_date: item.due_date,
               due_time: item.due_time ? String(item.due_time).slice(0, 5) : null,
             },
@@ -4549,7 +4605,7 @@ Deno.serve(async (req) => {
         draft: {
           pending_action_id: pending.id,
           target_item_id: item.id,
-          confirmation_text: `Ezt találtam: ${updateCandidateLabel(candidate)}. Biztosan töröljem?`,
+          confirmation_text: `Ezt találtam: ${item.status === 'done' ? 'Elvégezve – ' : 'Nyitott – '}${updateCandidateLabel(candidate)}. Biztosan töröljem?`,
         },
       })
     }
@@ -4581,6 +4637,7 @@ Deno.serve(async (req) => {
       }
 
       const resolvedAt = new Date().toISOString()
+      const expectedStatus = pending.payload?.before?.status === 'done' ? 'done' : 'open'
 
       const { data: updatedItem, error: updateError } = await db
         .from('items')
@@ -4590,10 +4647,14 @@ Deno.serve(async (req) => {
         })
         .eq('id', pending.target_item_id)
         .eq('family_id', familyId)
-        .eq('status', 'open')
+        .eq('status', expectedStatus)
         .select('*')
-        .single()
+        .maybeSingle()
       if (updateError) throw updateError
+      if (!updatedItem) return json({
+        error: 'Az ügy állapota időközben megváltozott. A törlés nem történt meg.',
+        code: 'DELETE_TARGET_CHANGED',
+      }, 409)
 
       await db
         .from('reminders')
