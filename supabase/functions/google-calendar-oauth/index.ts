@@ -246,6 +246,7 @@ Deno.serve(async (request: Request) => {
       allow_resend?: boolean
       enabled?: boolean
       event_id?: string
+      change_id?: string
       decision?: 'accept' | 'reject'
     }
     if (body.action === 'status') {
@@ -260,6 +261,169 @@ Deno.serve(async (request: Request) => {
         auto_import_enabled: Boolean(data?.auto_import_enabled_at),
         auto_import_error: data?.auto_import_error ?? null,
       })
+    }
+
+
+    // Google -> asszisztens: az egy már összekapcsolt eseményre vonatkozó
+    // módosítás/törlés nem mehet át felhasználói döntés nélkül.
+    if (body.action === 'list_calendar_changes') {
+      const { data, error } = await db.from('google_calendar_change_candidates')
+        .select('id,event_id,item_id,change_type,title,notes,due_date,due_time,discovered_at')
+        .eq('user_id', userId).eq('status','pending')
+        .order('discovered_at',{ascending:false}).limit(30)
+      if (error) throw error
+      // Több új Google-verzióból csak a legutóbbit ajánljuk fel ugyanahhoz az eseményhez.
+      const seen = new Set<string>()
+      const changes = (data ?? []).filter(row => {
+        if (seen.has(row.event_id)) return false
+        seen.add(row.event_id)
+        return true
+      })
+      return json({ items: changes })
+    }
+
+    if (body.action === 'decide_calendar_change') {
+      const id = String(body.change_id ?? '')
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+        || (body.decision !== 'accept' && body.decision !== 'reject')
+        || body.confirmed !== true) {
+        return json({ error: 'A döntéshez eseményazonosító és megerősítés szükséges.' }, 400)
+      }
+      const { data: member } = await db.from('family_members')
+        .select('family_id').eq('user_id',userId)
+        .eq('member_kind','active').maybeSingle()
+      if (!member) return json({ error: 'Nincs családi jogosultság.' }, 403)
+      const { data: candidate, error: candidateError } = await db.from('google_calendar_change_candidates')
+        .select('*').eq('id',id).eq('user_id',userId).eq('status','pending').maybeSingle()
+      if (candidateError) throw candidateError
+      if (!candidate) return json({ error: 'A változtatási javaslat már nem aktív.' }, 409)
+      const { data: item } = await db.from('items').select('id,title,status,updated_at')
+        .eq('id',candidate.item_id).eq('family_id',member.family_id)
+        .eq('responsible_user_id',userId).maybeSingle()
+      if (!item || item.status !== 'open') return json({ error: 'A kapcsolódó ügy már nem nyitott.' }, 409)
+      if (item.updated_at !== candidate.item_updated_at) {
+        await db.from('google_calendar_change_candidates')
+          .update({status:'conflict',decided_at:new Date().toISOString()})
+          .eq('id',id).eq('user_id',userId).eq('status','pending')
+        return json({ error: 'Az ügy időközben megváltozott az asszisztensben. Nem írtunk felül adatot.' }, 409)
+      }
+
+      if (body.decision === 'reject') {
+        const { data: declined, error: declinedError } = await db.from('google_calendar_change_candidates')
+          .update({status:'declined',decided_at:new Date().toISOString()})
+          .eq('id',id).eq('user_id',userId).eq('status','pending')
+          .select('id').maybeSingle()
+        if (declinedError) throw declinedError
+        if (!declined) return json({ error:'A döntést időközben már kezelték.' },409)
+        // Kifejezett Google-oldali eltérés marad: későbbi helyi mentés se
+        // írja felül automatikusan a felhasználó által elutasított verziót.
+        await db.from('google_calendar_exports')
+          .update({sync_status:'conflict',sync_error:'google_change_declined'})
+          .eq('item_id',candidate.item_id).eq('event_id',candidate.event_id)
+          .eq('user_id',userId)
+        return json({ status:'declined' })
+      }
+
+      // Védett egyszeri feldolgozás: ugyanarra a javaslatra nem lehet
+      // két párhuzamos jóváhagyást végrehajtani.
+      const { data: claimed, error: claimError } = await db.from('google_calendar_change_candidates')
+        .update({status:'processing'}).eq('id',id).eq('user_id',userId)
+        .eq('status','pending').select('id').maybeSingle()
+      if (claimError) throw claimError
+      if (!claimed) return json({ error:'A döntés már feldolgozás alatt van.' },409)
+      async function resetCandidate(status:'pending'|'conflict') {
+        await db.from('google_calendar_change_candidates')
+          .update({status,decided_at:status==='conflict'?new Date().toISOString():null})
+          .eq('id',id).eq('user_id',userId).eq('status','processing')
+      }
+
+      // Az érvényes Google-verziót közvetlenül a jóváhagyás előtt újra
+      // ellenőrizzük, hogy időközben történt módosítást ne fogadjunk el vakon.
+      const { data: connection } = await db.from('google_calendar_connections')
+        .select('refresh_token_encrypted').eq('user_id',userId).maybeSingle()
+      if (!connection || !clientId || !clientSecret) {
+        await resetCandidate('pending')
+        return json({error:'Kapcsold össze újra a Google Naptárat.'},409)
+      }
+      try {
+        const refreshToken = await decryptRefreshToken(connection.refresh_token_encrypted,clientSecret)
+        const tokenResponse = await fetch('https://oauth2.googleapis.com/token',{
+          method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+          body:new URLSearchParams({
+            client_id:clientId,client_secret:clientSecret,refresh_token:refreshToken,
+            grant_type:'refresh_token',
+          }),signal:AbortSignal.timeout(8000),
+        })
+        if (!tokenResponse.ok) {
+          await resetCandidate('pending')
+          return json({error:'A Google-engedély frissítése nem sikerült.'},502)
+        }
+        const token=(await tokenResponse.json() as {access_token?:string}).access_token
+        if (!token) {await resetCandidate('pending');return json({error:'Hiányzó Google-engedély.'},502)}
+        const evResponse=await fetch(
+          'https://www.googleapis.com/calendar/v3/calendars/primary/events/'+encodeURIComponent(candidate.event_id),
+          {headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(10000)})
+        if (candidate.change_type==='update') {
+          if (!evResponse.ok) {
+            await resetCandidate('conflict')
+            return json({error:'A Google-esemény már nem érhető el változatlanul.'},409)
+          }
+          const ev=await evResponse.json() as {etag?:string;status?:string}
+          if (ev.etag!==candidate.google_etag||ev.status==='cancelled') {
+            await resetCandidate('conflict')
+            return json({error:'A Google-esemény újra megváltozott; az átvételt nem hajtottuk végre.'},409)
+          }
+        } else if (evResponse.ok) {
+          const ev=await evResponse.json() as {status?:string}
+          if (ev.status!=='cancelled') {
+            await resetCandidate('conflict')
+            return json({error:'A Google-esemény már nem törölt; a törlést nem hajtottuk végre.'},409)
+          }
+        } else if (evResponse.status!==404 && evResponse.status!==410) {
+          await resetCandidate('pending')
+          return json({error:'A Google-esemény törlése nem ellenőrizhető.'},502)
+        }
+      } catch {
+        await resetCandidate('pending')
+        return json({error:'A Google ellenőrzése hálózati hiba miatt nem sikerült.'},502)
+      }
+
+      if (candidate.change_type==='update' && (!candidate.title || !candidate.due_date)) {
+        await resetCandidate('conflict')
+        return json({error:'A változás adatai hiányosak.'},409)
+      }
+      const values: Record<string,unknown> = candidate.change_type==='delete'
+        ? {status:'deleted',completed_at:null}
+        : {title:candidate.title,notes:candidate.notes,due_date:candidate.due_date,
+          due_time:candidate.due_time}
+      const { data: updated, error: updateError } = await db.from('items')
+        .update(values).eq('id',candidate.item_id).eq('family_id',member.family_id)
+        .eq('responsible_user_id',userId).eq('status','open')
+        .eq('updated_at',candidate.item_updated_at)
+        .select('id,updated_at').maybeSingle()
+      if (updateError || !updated) {
+        await resetCandidate('conflict')
+        return json({error:'Az ügy időközben megváltozott, ezért nem írtunk felül semmit.'},409)
+      }
+      if (candidate.change_type==='delete') {
+        await db.from('reminders').update({enabled:false,next_notification_at:null})
+          .eq('item_id',updated.id)
+      }
+      await db.from('google_calendar_exports').update({
+        sync_local_updated_at:updated.updated_at,
+        sync_google_etag:candidate.google_etag,
+        sync_status:'synced',sync_error:null,
+      }).eq('user_id',userId).eq('item_id',updated.id)
+        .eq('event_id',candidate.event_id).eq('status','sent')
+      await db.from('google_calendar_change_candidates')
+        .update({status:'accepted',decided_at:new Date().toISOString()})
+        .eq('id',id).eq('user_id',userId).eq('status','processing')
+      await db.from('activity_log').insert({
+        family_id:member.family_id,actor_user_id:userId,item_id:updated.id,
+        action:candidate.change_type==='delete'?'calendar_delete_accepted':'calendar_change_accepted',
+        details:{google_event_id:candidate.event_id,change_type:candidate.change_type},
+      })
+      return json({status:'accepted',change_type:candidate.change_type})
     }
 
     if (body.action === 'set_auto_import') {
