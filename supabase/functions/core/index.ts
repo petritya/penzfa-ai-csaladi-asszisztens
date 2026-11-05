@@ -1077,6 +1077,39 @@ function extractOutputText(response: any) {
   return null
 }
 
+// Az AI kizárólag nyelvi értelmezést végez, így az üres/sérült
+// hálózati válasz legfeljebb egyszer biztonságosan újrakérhető.
+// Az adatbázisba írás minden esetben a Core későbbi külön lépése.
+async function fetchOpenAiReliable(url: string, init: RequestInit): Promise<Response> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await fetch(url, init)
+      const raw = await response.clone().text()
+
+      if (!raw.trim()) {
+        if (attempt === 0) continue
+        throw new Error('Az AI-szolgáltatás üres választ adott. Próbáld meg újra.')
+      }
+
+      try {
+        JSON.parse(raw)
+      } catch {
+        if (attempt === 0) continue
+        throw new Error('Az AI-szolgáltatás nem értelmezhető választ adott. Próbáld meg újra.')
+      }
+
+      return response
+    } catch (error) {
+      if (attempt === 0) continue
+      if (error instanceof Error && error.message.startsWith('Az AI-szolgáltatás')) {
+        throw error
+      }
+      throw new Error('Az AI-szolgáltatás jelenleg nem érhető el. Próbáld meg újra.')
+    }
+  }
+  throw new Error('Az AI-szolgáltatás nem válaszolt. Próbáld meg újra.')
+}
+
 async function interpretIntentWithOpenAI(
   message: string,
   locale: UserLocale = 'hu-HU',
@@ -1084,7 +1117,7 @@ async function interpretIntentWithOpenAI(
   const apiKey = Deno.env.get('OPENAI_API_KEY')
   if (!apiKey) throw new Error('OPENAI_API_KEY nincs beállítva a Supabase Edge Function secretjei között.')
 
-  const response = await fetch('https://api.openai.com/v1/responses', {
+  const response = await fetchOpenAiReliable('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -1197,7 +1230,7 @@ async function reminderPhraseForCore(value: string, locale: UserLocale): Promise
   if (locale !== 'da-DK' || !value.trim()) return value
   const key = Deno.env.get('OPENAI_API_KEY')
   if (!key) throw new Error('Hiányzó AI-konfiguráció.')
-  const response = await fetch('https://api.openai.com/v1/responses', {
+  const response = await fetchOpenAiReliable('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -1223,7 +1256,7 @@ async function translateDisplayTexts(texts: string[], locale: UserLocale): Promi
   if (!texts.length) return []
   const key = Deno.env.get('OPENAI_API_KEY')
   if (!key) throw new Error('Hiányzó AI-konfiguráció.')
-  const response = await fetch('https://api.openai.com/v1/responses', {
+  const response = await fetchOpenAiReliable('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -1296,7 +1329,7 @@ async function interpretWithOpenAI(
   const apiKey = Deno.env.get('OPENAI_API_KEY')
   if (!apiKey) throw new Error('OPENAI_API_KEY nincs beállítva a Supabase Edge Function secretjei között.')
 
-  const response = await fetch('https://api.openai.com/v1/responses', {
+  const response = await fetchOpenAiReliable('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -1396,7 +1429,7 @@ async function interpretUpdateWithOpenAI(
   const apiKey = Deno.env.get('OPENAI_API_KEY')
   if (!apiKey) throw new Error('OPENAI_API_KEY nincs beállítva a Supabase Edge Function secretjei között.')
 
-  const response = await fetch('https://api.openai.com/v1/responses', {
+  const response = await fetchOpenAiReliable('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -1486,7 +1519,7 @@ async function interpretCompleteWithOpenAI(
   const apiKey = Deno.env.get('OPENAI_API_KEY')
   if (!apiKey) throw new Error('OPENAI_API_KEY nincs beállítva a Supabase Edge Function secretjei között.')
 
-  const response = await fetch('https://api.openai.com/v1/responses', {
+  const response = await fetchOpenAiReliable('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -1554,7 +1587,7 @@ async function interpretDeleteWithOpenAI(
   const apiKey = Deno.env.get('OPENAI_API_KEY')
   if (!apiKey) throw new Error('OPENAI_API_KEY nincs beállítva a Supabase Edge Function secretjei között.')
 
-  const response = await fetch('https://api.openai.com/v1/responses', {
+  const response = await fetchOpenAiReliable('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -1668,7 +1701,7 @@ async function interpretQueryWithOpenAI(
   const apiKey = Deno.env.get('OPENAI_API_KEY')
   if (!apiKey) throw new Error('OPENAI_API_KEY nincs beállítva a Supabase Edge Function secretjei között.')
 
-  const response = await fetch('https://api.openai.com/v1/responses', {
+  const response = await fetchOpenAiReliable('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -1768,7 +1801,7 @@ async function findSemanticQueryCandidateIds(
   const apiKey = Deno.env.get('OPENAI_API_KEY')
   if (!apiKey) return [] as string[]
 
-  const response = await fetch('https://api.openai.com/v1/responses', {
+  const response = await fetchOpenAiReliable('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
