@@ -2099,6 +2099,27 @@ export default function App() {
     }
   }
 
+  // A Supabase FunctionsHttpError alapértelmezett szövege technikai.
+  // A Core által visszaadott rövid, felhasználónak szóló hibát mutatjuk.
+  async function describeCoreFailure(error: unknown): Promise<string> {
+    const context = (error as { context?: unknown } | null)?.context
+    if (context instanceof Response) {
+      try {
+        const payload = await context.clone().json() as { error?: unknown }
+        if (typeof payload?.error === 'string' && payload.error.trim()) {
+          return appLocale === 'da-DK'
+            ? 'Sprogforståelsen mislykkedes. Prøv venligst igen.'
+            : payload.error
+        }
+      } catch {
+        // A hálózati válasz sérült vagy üres: magyar/dán alapüzenet.
+      }
+    }
+    return appLocale === 'da-DK'
+      ? 'Sprogforståelsen mislykkedes. Prøv venligst igen.'
+      : 'A nyelvi feldolgozás most nem sikerült. Próbáld meg újra.'
+  }
+
   async function handleMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!supabase) return
@@ -2361,7 +2382,7 @@ export default function App() {
 
     if (intentError) {
       setCreateBusy(false)
-      setCreateError(intentError.message)
+      setCreateError(await describeCoreFailure(intentError))
       return
     }
 
@@ -2558,7 +2579,7 @@ export default function App() {
     setCreateBusy(false)
 
     if (error) {
-      setCreateError(error.message)
+      setCreateError(await describeCoreFailure(error))
       return
     }
 
