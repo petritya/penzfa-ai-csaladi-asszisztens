@@ -155,7 +155,6 @@ function buildBriefingMessage(
   dueToday: any[],
   overdue: any[],
   reminderToday: any[],
-  missingReminder: any[],
   locale: Locale = 'hu-HU',
   localizedTitles: Map<string, string> = new Map(),
 ) {
@@ -165,11 +164,6 @@ function buildBriefingMessage(
 
   if (!dueToday.length && !overdue.length && !reminderToday.length) {
     lines.push(da ? 'Der er ingen åbne opgaver, der skal håndteres i dag.' : 'Mára nincs esedékes vagy jelzendő nyitott ügy.')
-    if (missingReminder.length) {
-      lines.push(da
-        ? `Bemærk: ${missingReminder.length} åbne opgaver mangler en påmindelse.`
-        : `Pontosítás: ${missingReminder.length} nyitott ügyhöz nincs emlékeztető.`)
-    }
     return lines.join('\n')
   }
 
@@ -191,11 +185,6 @@ function buildBriefingMessage(
     + Math.min(reminderToday.length, 3)
   const total = dueToday.length + overdue.length + reminderToday.length
   if (total > shown) lines.push(da ? `+ ${total - shown} flere opgaver` : `+ még ${total - shown} ügy`)
-  if (missingReminder.length) {
-    lines.push(da
-      ? `Bemærk: ${missingReminder.length} åbne opgaver mangler en påmindelse.`
-      : `Pontosítás: ${missingReminder.length} nyitott ügyhöz nincs emlékeztető.`)
-  }
   return lines.join('\n')
 }
 
@@ -368,12 +357,6 @@ Deno.serve(async (req) => {
         return reminderLocal.date === local.date && reminderLocal.time <= briefingTime
       })
 
-      const missingReminder = items.filter((item) => {
-        if (!item.due_date || item.due_date <= local.date) return false
-        const reminder = reminderByItem.get(item.id)
-        return !reminder?.enabled || !reminder.next_notification_at
-      })
-
       // Az egyetlen másnapi lehetőség: csak a tegnap felfedezett,
       // még eldöntetlen Google Naptár-javaslatok említése.
       const { data: importCandidates, error: importsError } = await db
@@ -398,7 +381,6 @@ Deno.serve(async (req) => {
         dueToday,
         overdue,
         reminderToday,
-        missingReminder,
       ) + importNote
 
       // A briefing_runs továbbra is az eredeti ügycímeket tartalmazó
@@ -419,7 +401,7 @@ Deno.serve(async (req) => {
             : '. Átveszed a Pénzfába? Ma még dönthetsz az alkalmazásban.')
         : ''
       const pushMessage = buildBriefingMessage(
-        membership.display_name, dueToday, overdue, reminderToday, missingReminder,
+        membership.display_name, dueToday, overdue, reminderToday,
         userLocale, localizedTitles,
       ) + translatedImportNote
 
@@ -517,7 +499,6 @@ Deno.serve(async (req) => {
           overdue_count: overdue.length,
           due_today_count: dueToday.length,
           reminder_today_count: reminderToday.length,
-          missing_reminder_count: missingReminder.length,
         },
       })
 
