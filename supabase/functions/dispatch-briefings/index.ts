@@ -435,6 +435,12 @@ Deno.serve(async (req) => {
       )
 
       if (!delivery.sent) {
+        console.warn(JSON.stringify({
+          event: 'briefing_push_failed',
+          user_id: settings.user_id,
+          error: delivery.error ?? null,
+        }))
+
         await db
           .from('briefing_runs')
           .update({ status: 'failed' })
