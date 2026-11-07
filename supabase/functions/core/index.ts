@@ -3973,10 +3973,12 @@ Deno.serve(async (req) => {
       )
 
       const timeZone = settings?.timezone ?? 'Europe/Budapest'
-      const newDate = resolveLastWeekdayOfMonth(message, timeZone)
-        ?? (interpretation.new_date_phrase
-          ? resolveDatePhrase(interpretation.new_date_phrase, timeZone)
-          : null)
+      // Általános módosításnál a teljes mondat a régi dátumot is
+      // tartalmazhatja: kizárólag az AI által új dátumként azonosított
+      // kifejezést használjuk, nehogy a cél esemény napjára írjunk át.
+      const newDate = interpretation.new_date_phrase
+        ? resolveDatePhrase(interpretation.new_date_phrase, timeZone)
+        : null
       const targetDate = interpretation.target_date_phrase
         ? resolveDatePhrase(interpretation.target_date_phrase, timeZone)
         : null
