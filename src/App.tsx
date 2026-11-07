@@ -438,6 +438,8 @@ export default function App() {
   const [pushContextLoading, setPushContextLoading] = useState(false)
   // Prevents two quick taps from completing the same item twice.
   const completionRequestRef = useRef(false)
+  const testAttemptRef = useRef<string | null>(null)
+  const voiceAttemptRef = useRef<string | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
@@ -1880,13 +1882,75 @@ export default function App() {
     setFamilyRefreshKey((value) => value + 1)
   }
 
+  // IDEIGLENES MVP-TESZTNAPLÓ. Csak szakasz, kimenet, technikai HTTP-kód
+  // és anonim kísérletazonosító; soha nem naplózunk feladatot, hangot,
+  // promptot, személynevet, hibaüzenetet, tokent vagy teljes URL-t.
+  // Kivezetéskor a helper + hívásai és az mvp_test_diagnostics tábla törölhetők.
+  function logTestStep(
+    stage: 'submit' | 'transcribe_audio' | 'interpret_intent' | 'interpret_create' |
+      'add_create_reminder' | 'confirm_create' | 'finished',
+    outcome: 'started' | 'ok' | 'failed' | 'needs_confirmation' |
+      'needs_clarification' | 'cancelled' | 'duplicate' | 'created',
+    err?: unknown,
+    invalidResponse = false,
+    dataError = false,
+  ) {
+    if (!supabase || !session?.user.id) return
+    const attemptId = testAttemptRef.current
+    if (!attemptId) return
+    const context = (err as { context?: unknown } | null)?.context
+    const httpStatus = context instanceof Response ? context.status : null
+    const errorKind = err
+      ? httpStatus === 401 ? 'auth' : httpStatus !== null ? 'http' : 'network'
+      : invalidResponse ? 'invalid_response' : dataError ? 'application' : null
+    // Best effort: a naplóhibának soha nincs hatása a tényleges rögzítésre.
+    try {
+      void Promise.resolve(supabase.from('mvp_test_diagnostics').insert({
+        user_id: session.user.id,
+        attempt_id: attemptId,
+        stage,
+        outcome,
+        error_kind: errorKind,
+        http_status: httpStatus,
+        client_kind: isStandalone ? 'standalone' : 'browser',
+        ui_locale: appLocale,
+      })).catch(() => {})
+    } catch { /* Naplózás nélkül is működik a Core. */ }
+  }
+
   // Csak felhasználónak megjelenítendő szöveget fordítunk dánra.
   async function invokeLocalizedCore(options: { body: Record<string, unknown> }) {
     if (!supabase) throw new Error('Nincs aktív kapcsolat.')
-    const result = await supabase.functions.invoke('core', {
-      ...options,
-      body: { ...options.body, ui_locale: appLocale },
-    })
+    const action = String(options.body.action ?? '')
+    let result: Awaited<ReturnType<typeof supabase.functions.invoke>>
+    try {
+      result = await supabase.functions.invoke('core', {
+        ...options,
+        body: { ...options.body, ui_locale: appLocale },
+      })
+    } catch (error) {
+      if (['interpret_intent','interpret_create','add_create_reminder','confirm_create'].includes(action)) {
+        logTestStep(action as 'interpret_intent' | 'interpret_create' |
+          'add_create_reminder' | 'confirm_create', 'failed', error)
+      }
+      return { data: null, error: new Error(appLocale === 'da-DK'
+        ? 'Forbindelsen blev afbrudt. Prøv igen.'
+        : 'A kapcsolat megszakadt. Próbáld meg újra.') }
+    }
+    if (['interpret_intent','interpret_create','add_create_reminder','confirm_create'].includes(action)) {
+      const status = String((result.data as {status?: unknown} | null)?.status ?? '')
+      const outcome = result.error || !result.data || (result.data as {error?:unknown}).error
+        ? 'failed'
+        : status === 'created' ? 'created'
+        : status === 'duplicate' ? 'duplicate'
+        : status === 'needs_confirmation' ? 'needs_confirmation'
+        : status === 'reminder_needs_clarification' || status === 'needs_clarification'
+          ? 'needs_clarification' : 'ok'
+      logTestStep(action as 'interpret_intent' | 'interpret_create' |
+        'add_create_reminder' | 'confirm_create', outcome, result.error,
+        !result.error && !result.data,
+        Boolean((result.data as { error?: unknown } | null)?.error))
+    }
     if (result.error || !result.data) return result
     const data = result.data as Record<string, any>
     // A magyar felület már magyar választ kap a Core-tól: nincs mit AI-val fordítani.
@@ -1933,6 +1997,10 @@ export default function App() {
     // A callbackban is biztosan nem-null Supabase kliensre hivatkozunk.
     const activeSupabase = supabase
 
+    const voiceAttempt = crypto.randomUUID()
+    testAttemptRef.current = voiceAttempt
+    voiceAttemptRef.current = voiceAttempt
+    logTestStep('transcribe_audio', 'started')
     setVoiceTranscribing(true)
     setVoiceError(null)
 
@@ -1955,6 +2023,7 @@ export default function App() {
       let { data, error } = await invokeTranscription()
 
       if (error) {
+        logTestStep('transcribe_audio', 'failed', error)
         const response = (error as { context?: unknown }).context
         const status = response instanceof Response ? response.status : null
 
@@ -1968,6 +2037,7 @@ export default function App() {
       }
 
       if (error || !data?.text) {
+        logTestStep('transcribe_audio', 'failed', error, !error && !data?.text, Boolean(data?.error))
         let detail = data?.error
         const response = (error as { context?: unknown } | null)?.context
         if (!detail && response instanceof Response) {
@@ -1982,6 +2052,7 @@ export default function App() {
         return
       }
 
+      logTestStep('transcribe_audio', 'ok')
       setCreateMessage(String(data.text).trim())
       const addingReminderToDraft = Boolean(
         createDraft?.due_date && !createDraft.first_reminder_at,
@@ -1996,6 +2067,7 @@ export default function App() {
       if (!reminderEditTarget) setAssistantAnswer(null)
       setQueryResults([])
     } catch (error) {
+      logTestStep('transcribe_audio', 'failed', error)
       setVoiceError(
         error instanceof Error
           ? error.message
@@ -2126,6 +2198,9 @@ export default function App() {
 
     const message = createMessage.trim()
     if (!message) return
+    testAttemptRef.current = voiceAttemptRef.current ?? crypto.randomUUID()
+    voiceAttemptRef.current = null
+    logTestStep('submit', 'started')
     setCalendarExportDraft(null)
     setCalendarExportFeedback(null)
     setCalendarExportError(null)
@@ -3038,6 +3113,8 @@ export default function App() {
     }
 
     if (data?.status === 'created') {
+      logTestStep('finished', 'created')
+      testAttemptRef.current = null
       setCreateSuccess(`${appLocale === 'da-DK' ? 'Gemt' : 'Rögzítve'}: ${data.item?.title ?? draft.title}`)
       setCreateMessage('')
       setCreateDraft(null)
@@ -3049,6 +3126,7 @@ export default function App() {
     }
 
     if (data?.status === 'duplicate') {
+      logTestStep('finished', 'duplicate')
       setCreateError(data.message ?? 'Ez az ügy már szerepel a nyitott ügyek között.')
       setCreateDraft(null)
       return
