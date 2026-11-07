@@ -2065,6 +2065,7 @@ export default function App() {
 
       if (error || !data?.text) {
         logTestStep('transcribe_audio', 'failed', error, !error && !data?.text, Boolean(data?.error))
+        voiceAttemptRef.current = null
         let detail = data?.error
         const response = (error as { context?: unknown } | null)?.context
         if (!detail && response instanceof Response) {
@@ -2095,6 +2096,7 @@ export default function App() {
       setQueryResults([])
     } catch (error) {
       logTestStep('transcribe_audio', 'failed', error)
+      voiceAttemptRef.current = null
       setVoiceError(
         error instanceof Error
           ? error.message
