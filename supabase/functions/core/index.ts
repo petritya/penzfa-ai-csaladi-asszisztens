@@ -629,13 +629,16 @@ function resolveLastWeekdayOfMonth(phrase: string | null, timeZone: string): str
   }
   if (weekday === null) return null
 
+  // Capture narrowed values before the nested helper for predictable TypeScript typing.
+  const targetMonth = month
+  const targetWeekday = weekday
   const today = localDateInTimezone(timeZone)
   const explicitYear = text.match(/\b20\d{2}\b/)
   let year = explicitYear ? Number(explicitYear[0]) : Number(today.slice(0, 4))
   const lastOfMonth = (yearValue: number) => {
-    const last = new Date(Date.UTC(yearValue, month, 0))
-    const day = last.getUTCDate() - (last.getUTCDay() - weekday + 7) % 7
-    return makeIsoDate(yearValue, month, day)
+    const last = new Date(Date.UTC(yearValue, targetMonth, 0))
+    const day = last.getUTCDate() - (last.getUTCDay() - targetWeekday + 7) % 7
+    return makeIsoDate(yearValue, targetMonth, day)
   }
   let result = lastOfMonth(year)
   // Év nélkül a következő előfordulást keressük, nem múltbeli dátumot.
