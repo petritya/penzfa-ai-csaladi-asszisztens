@@ -61,8 +61,16 @@ export default function DanishHelp({ onBack }: Props) {
             <p>
               Slå morgenoverblikket til, og vælg tidspunkt under Indstillinger.
               Aktivér notifikationer særskilt på hver enhed under Konto og notifikationer.
-              Forfaldne opgaver vises de første to dage efter fristen. Derefter forbliver de åbne og søgbare, men vises ikke mere i morgenoverblikket.
-              En manglende særskilt påmindelse udløser ikke gentagne advarsler.
+              Morgenoverblikket laves én gang ved det valgte tidspunkt, ud fra
+              de opgaver, der allerede er registreret og forfalder samme dag,
+              samt påmindelser, der er planlagt til morgenen.
+              Morgendagens aftaler vises normalt først i morgen, medmindre
+              du har sat en særskilt påmindelse til i dag.
+              Opgaver oprettet senere på dagen kan findes ved at spørge:
+              „Hvilke opgaver har jeg i dag?”
+              Forfaldne opgaver vises de første to dage efter fristen.
+              Derefter er de fortsat åbne og søgbare, men vises ikke i morgenoverblikket.
+              Manglende særskilt påmindelse udløser ikke gentagne advarsler.
             </p>
             <p>
               Forbind Google Kalender under Indstillinger. Nye opgaver med dato
