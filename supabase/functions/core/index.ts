@@ -601,10 +601,14 @@ function resolvePastOrTodayDatePhrase(phrase: string | null, timeZone: string) {
 // A megnevezett hónap utolsó megadott hétköznapját a Core számolja ki.
 // A forrásmondatot is ellenőrizzük, mert az AI néha csak "vasárnap"-ot
 // tesz a date_phrase mezőbe, elhagyva az "utolsó" pontosítást.
-function resolveLastWeekdayOfMonth(phrase: string | null, timeZone: string): string | null {
+// A hónap első vagy utolsó megadott hétköznapját a Core számolja ki.
+// A forrásmondatot is figyeljük, mert az AI néha elveszíti a sorszámot.
+function resolveOrdinalWeekdayOfMonth(phrase: string | null, timeZone: string): string | null {
   if (!phrase) return null
   const text = normalize(phrase).replace(/[^\p{L}0-9]+/gu, ' ').trim()
-  if (!/\b(?:utolso\w*|sidste)\b/.test(text)) return null
+  const isFirst = /\b(?:elso\w*|f[oø]rste\w*)\b/.test(text)
+  const isLast = /\b(?:utolso\w*|sidste\w*)\b/.test(text)
+  if (isFirst === isLast) return null
 
   let month = findHungarianMonth(text)
   if (month === null) {
@@ -614,6 +618,14 @@ function resolveLastWeekdayOfMonth(phrase: string | null, timeZone: string): str
       ['september', 9], ['oktober', 10], ['november', 11], ['december', 12],
     ]
     month = danishMonths.find(([name]) => text.includes(name))?.[1] ?? null
+  }
+
+  const today = localDateInTimezone(timeZone)
+  const [currentYear, currentMonth] = today.split('-').map(Number)
+  const explicitlyCurrentMonth = /\b(?:honap\w*|maned\w*)\b/.test(text)
+  const nextMonth = /\b(?:jovo|kovetkezo|naeste|næste)\s+(?:honap\w*|maned\w*)\b/.test(text)
+  if (month === null && explicitlyCurrentMonth) {
+    month = nextMonth ? currentMonth % 12 + 1 : currentMonth
   }
   if (month === null) return null
 
@@ -629,22 +641,26 @@ function resolveLastWeekdayOfMonth(phrase: string | null, timeZone: string): str
   }
   if (weekday === null) return null
 
-  // Capture narrowed values before the nested helper for predictable TypeScript typing.
   const targetMonth = month
   const targetWeekday = weekday
-  const today = localDateInTimezone(timeZone)
   const explicitYear = text.match(/\b20\d{2}\b/)
-  let year = explicitYear ? Number(explicitYear[0]) : Number(today.slice(0, 4))
-  const lastOfMonth = (yearValue: number) => {
+  let year = explicitYear ? Number(explicitYear[0]) : currentYear
+  if (!explicitYear && nextMonth && currentMonth === 12 && targetMonth === 1) year++
+
+  const dayOfMonth = (yearValue: number) => {
+    if (isFirst) {
+      const first = new Date(Date.UTC(yearValue, targetMonth - 1, 1))
+      return 1 + (targetWeekday - first.getUTCDay() + 7) % 7
+    }
     const last = new Date(Date.UTC(yearValue, targetMonth, 0))
-    const day = last.getUTCDate() - (last.getUTCDay() - targetWeekday + 7) % 7
-    return makeIsoDate(yearValue, targetMonth, day)
+    return last.getUTCDate() - (last.getUTCDay() - targetWeekday + 7) % 7
   }
-  let result = lastOfMonth(year)
-  // Év nélkül a következő előfordulást keressük, nem múltbeli dátumot.
-  if (!explicitYear && result && result < today) {
-    year += 1
-    result = lastOfMonth(year)
+  let result = makeIsoDate(year, targetMonth, dayOfMonth(year))
+  // "A hónap első péntekje" az aktuális hónapot jelenti akkor is,
+  // ha a dátum már elmúlt. A felületen megjelenik ellenőrzésre.
+  if (!explicitYear && !explicitlyCurrentMonth && result && result < today) {
+    year++
+    result = makeIsoDate(year, targetMonth, dayOfMonth(year))
   }
   return result
 }
@@ -657,7 +673,7 @@ function resolveDatePhrase(phrase: string | null, timeZone: string) {
   const explicitIso = raw.match(/\b(20\d{2}-\d{2}-\d{2})\b/)
   if (explicitIso) return explicitIso[1]
 
-  const lastWeekday = resolveLastWeekdayOfMonth(raw, timeZone)
+  const lastWeekday = resolveOrdinalWeekdayOfMonth(raw, timeZone)
   if (lastWeekday) return lastWeekday
 
   const today = localDateInTimezone(timeZone)
@@ -3114,7 +3130,7 @@ Deno.serve(async (req) => {
 
       const timeZone = settings?.timezone ?? 'Europe/Budapest'
       const briefingTime = String(settings?.briefing_time ?? '07:00:00').slice(0, 5)
-      const dueDate = resolveLastWeekdayOfMonth(message, timeZone)
+      const dueDate = resolveOrdinalWeekdayOfMonth(message, timeZone)
         ?? resolveDatePhrase(interpretation.date_phrase, timeZone)
       const dueTime = validateTime(interpretation.time)
 
@@ -4219,7 +4235,7 @@ Deno.serve(async (req) => {
       )
 
       const timeZone = settings?.timezone ?? 'Europe/Budapest'
-      const newDate = resolveLastWeekdayOfMonth(message, timeZone)
+      const newDate = resolveOrdinalWeekdayOfMonth(message, timeZone)
         ?? (parsed.new_date_phrase
           ? resolveDatePhrase(parsed.new_date_phrase, timeZone)
           : null)
