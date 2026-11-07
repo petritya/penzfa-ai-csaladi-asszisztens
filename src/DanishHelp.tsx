@@ -23,6 +23,7 @@ export default function DanishHelp({ onBack }: Props) {
               og hvem der er ansvarlig.
             </p>
             <p><strong>Eksempel:</strong> „Jeg skal ringe til revisoren i morgen kl. 10.”</p>
+            <p>Du kan også sige „første fredag i november”, „månedens første mandag” eller „sidste søndag i november”. Assistenten beregner kalenderdatoen.</p>
             <p>Kontrollér oplysningerne, før du gemmer eller ændrer noget.</p>
           </details>
 
