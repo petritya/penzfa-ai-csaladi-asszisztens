@@ -1937,6 +1937,33 @@ export default function App() {
         ? 'Forbindelsen blev afbrudt. Prøv igen.'
         : 'A kapcsolat megszakadt. Próbáld meg újra.') }
     }
+    // Az első mobilos kérés néha lejárt sessionnel vagy átmeneti hálózati
+    // hibával indul. CSAK a tiszta szándékfelismerésre engedünk 1 retryt;
+    // rögzítést és más adatot módosító hívást soha nem ismétlünk automatikusan.
+    if (action === 'interpret_intent' && (result.error || !result.data)) {
+      const response = (result.error as {context?: unknown} | null)?.context
+      const httpCode = response instanceof Response ? response.status : null
+      if (httpCode === 401 || httpCode === 429
+        || (httpCode !== null && httpCode >= 500)
+        || (httpCode === null && result.error) || (!result.error && !result.data)) {
+        logTestStep('interpret_intent', 'failed', result.error,
+          !result.error && !result.data)
+        if (httpCode === 401) {
+          try { await supabase.auth.refreshSession() } catch { /* megtartjuk az eredeti hibát */ }
+        }
+        try {
+          result = await supabase.functions.invoke('core', {
+            ...options,
+            body: { ...options.body, ui_locale: appLocale },
+          })
+        } catch (error) {
+          logTestStep('interpret_intent', 'failed', error)
+          return { data: null, error: new Error(appLocale === 'da-DK'
+            ? 'Forbindelsen blev afbrudt. Prøv igen.'
+            : 'A kapcsolat megszakadt. Próbáld meg újra.') }
+        }
+      }
+    }
     if (['interpret_intent','interpret_create','add_create_reminder','confirm_create'].includes(action)) {
       const status = String((result.data as {status?: unknown} | null)?.status ?? '')
       const outcome = result.error || !result.data || (result.data as {error?:unknown}).error
@@ -3092,6 +3119,7 @@ export default function App() {
     reminderDecision: 'scheduled' | 'none',
   ) {
     if (!supabase) return
+    if (!testAttemptRef.current) testAttemptRef.current = crypto.randomUUID()
 
     setCreateBusy(true)
     setCreateError(null)
