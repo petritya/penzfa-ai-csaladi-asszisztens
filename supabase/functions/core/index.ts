@@ -656,9 +656,11 @@ function resolveOrdinalWeekdayOfMonth(phrase: string | null, timeZone: string): 
     return last.getUTCDate() - (last.getUTCDay() - targetWeekday + 7) % 7
   }
   let result = makeIsoDate(year, targetMonth, dayOfMonth(year))
-  // "A hónap első péntekje" az aktuális hónapot jelenti akkor is,
-  // ha a dátum már elmúlt. A felületen megjelenik ellenőrzésre.
-  if (!explicitYear && !explicitlyCurrentMonth && result && result < today) {
+  // Az aktuális hónap első péntekje akkor is ebben a hónapban van,
+  // ha már elmúlt. A korábbi hónap nevét év nélkül a következő évre értjük.
+  // Az alkalmazás minden esetben megmutatja a kapott dátumot mentés előtt.
+  if (!explicitYear && !explicitlyCurrentMonth && targetMonth !== currentMonth
+    && result && result < today) {
     year++
     result = makeIsoDate(year, targetMonth, dayOfMonth(year))
   }
