@@ -3322,12 +3322,14 @@ export default function App() {
                 <p>
                   A reggeli briefing bekapcsolását és idejét a Beállításokban adhatod meg.
                   Az értesítéseket minden eszközön külön engedélyezd a Fiók és értesítések résznél.
-                  A lejárt ügy a következő két nap reggeli összefoglalójában még megjelenik, utána nyitott és kereshető marad, de nem kerül a briefingbe.
-                  Külön emlékeztető hiánya miatt nem ismétlünk figyelmeztetést.
-                  A lejárt, nyitott ügyeket a lejárat utáni első két napon még jelzi,
-                  utána a briefingből kihagyja, de az ügy továbbra is nyitott és kereshető.
-                  Ha egy ügyhöz nem kértél külön emlékeztetőt, emiatt nem küldünk
-                  ismétlődő figyelmeztetést a briefingben.
+                  A briefing egyszer készül, az adott reggeli küldéskor már rögzített,
+                  aznap esedékes ügyekből és az arra a napra beállított emlékeztetőkből.
+                  A másnapi ügy külön emlékeztető nélkül még nem szerepel benne.
+                  A reggeli küldés után felvett mai ügyeket bármikor lekérdezheted:
+                  „Milyen feladataim vannak mára?”
+                  A lejárt ügyeket még a lejárat utáni első két napban jelzi,
+                  aztán a briefingből kihagyja, de nyitottak és visszakereshetők maradnak.
+                  A hiányzó külön emlékeztető miatt nem ismételget figyelmeztetést.
                 </p>
                 <p>
                   A Google Naptárat a Beállításokban kapcsolhatod össze. Az új, dátumos
