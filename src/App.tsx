@@ -3283,6 +3283,7 @@ export default function App() {
                   Lehetőleg mondd el, mi a teendő, mikor esedékes, és ki intézi.
                 </p>
                 <p><strong>Példa:</strong> „Holnap 10-kor hívjam fel a könyvelőt.”</p>
+                <p>A dátumot így is megadhatod: „november első péntekjén”, „a hónap első hétfőjén”, „november utolsó vasárnapján”. A rendszer a hónap megfelelő napját számolja ki.</p>
                 <p>Mentés és módosítás előtt ellenőrizd a felismert adatokat.</p>
               </details>
 
