@@ -1919,7 +1919,7 @@ export default function App() {
   }
 
   // Csak felhasználónak megjelenítendő szöveget fordítunk dánra.
-  async function invokeLocalizedCore(options: { body: Record<string, unknown> }) {
+  async function invokeLocalizedCore(options: { body: Record<string, unknown> }): Promise<{ data: any; error: Error | null }> {
     if (!supabase) throw new Error('Nincs aktív kapcsolat.')
     const action = String(options.body.action ?? '')
     let result: Awaited<ReturnType<typeof supabase.functions.invoke>>
