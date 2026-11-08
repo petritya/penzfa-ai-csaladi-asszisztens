@@ -3502,6 +3502,11 @@ export default function App() {
                   A hiányzó külön emlékeztető miatt nem ismételget figyelmeztetést.
                 </p>
                 <p>
+                  Ha külön lekérdezed a lejárt ügyeket, minden sikeres készre jelölés után
+                  automatikusan frissül a még lejárt, nyitott ügyek listája. Nem kell
+                  újra kérdezned, de minden ügyet külön jelölsz készre.
+                </p>
+                <p>
                   A Google Naptárat a Beállításokban kapcsolhatod össze. Az új, dátumos
                   ügyeket kézzel, vagy a külön bekapcsolható automatikus küldéssel viheted
                   át. Időponttal alapból egyórás, anélkül egész napos esemény készül.
