@@ -2185,9 +2185,10 @@ export default function App() {
         }
       }
 
-      // Rövid szeletekben gyűjtjük a hangot. Android/PWA alatt ez
-      // stabilabb az első felvételnél, mint egyetlen záró Blob-ra hagyatkozni.
-      recorder.start(250)
+      // Egyetlen összefüggő hangfájlt kérünk. A stop előtti részletek
+      // WebM fejléce Android/PWA alatt az első felvételnél hibás lehet.
+      // A végső dataavailable esemény az onstop előtt érkezik meg.
+      recorder.start()
       setVoiceListening(true)
     } catch (error) {
       mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
