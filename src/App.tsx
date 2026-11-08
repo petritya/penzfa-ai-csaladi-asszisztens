@@ -438,6 +438,8 @@ export default function App() {
   const [pushContextLoading, setPushContextLoading] = useState(false)
   // Prevents two quick taps from completing the same item twice.
   const completionRequestRef = useRef(false)
+  // Csak a kifejezett "lejárt ügyek" keresését frissítjük készre jelölés után.
+  const overdueQueryRef = useRef<string | null>(null)
   const testAttemptRef = useRef<string | null>(null)
   const voiceAttemptRef = useRef<string | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -2475,6 +2477,7 @@ export default function App() {
     setCreateSuccess(null)
     setAssistantAnswer(null)
     setQueryResults([])
+    overdueQueryRef.current = null
     setVoiceError(null)
 
     const { data: intentData, error: intentError } = await invokeLocalizedCore({
@@ -2517,6 +2520,15 @@ export default function App() {
       const structuredItems = Array.isArray(data?.items)
         ? data.items as QueryResultItem[]
         : []
+
+      const normalizedQuery = message.normalize('NFD')
+        .replace(/\p{Diacritic}/gu, '').toLowerCase()
+      // Nem az "összes nyitott" vagy "mai" listát tartjuk a képernyőn.
+      overdueQueryRef.current = data?.status === 'ok'
+        && /\b(?:lejart|forfaldne|forfalden|overskredne)\b/.test(normalizedQuery)
+        && structuredItems.length > 0
+        && structuredItems.every((item) => item.status === 'open' && item.is_overdue)
+        ? message : null
 
       setQueryResults(structuredItems)
       setAssistantAnswer(
@@ -2971,14 +2983,30 @@ export default function App() {
     setCreateError(data?.error ?? 'Az ügyet most nem sikerült módosítani.')
   }
 
-  function finishCompletedItem(title: string, partnerWarning?: string | null) {
-    // After completing an item, leave the old search/confirmation context
-    // entirely. Otherwise another tap targets an item that is no longer open.
+  async function finishCompletedItem(
+    title: string,
+    partnerWarning?: string | null,
+    completedItemId?: string,
+  ) {
+    // Korábbi hiba: az elavult találat újabb koppintása sikertelen műveletet
+    // okozott. Kizárólag a lejárt ügyek célzott listájánál frissítünk.
+    const overdueQuery = completedItemId && overdueQueryRef.current
+      && queryResults.some((item) =>
+        item.id === completedItemId && item.status === 'open' && item.is_overdue)
+      ? overdueQueryRef.current : null
+
     setCreateMessage('')
     setCreateDraft(null)
     setCompleteDraft(null)
     setCompleteCandidates([])
-    setQueryResults([])
+    if (overdueQuery && completedItemId) {
+      // Az éppen lezárt tétel azonnal eltűnik, a többi letiltva marad
+      // a szerverről érkező friss lista megérkezéséig.
+      setQueryResults((items) => items.filter((item) => item.id !== completedItemId))
+    } else {
+      overdueQueryRef.current = null
+      setQueryResults([])
+    }
     setAssistantAnswer(null)
     setUpdateDraft(null)
     setReminderUpdateDraft(null)
@@ -2999,12 +3027,43 @@ export default function App() {
       (appLocale === 'da-DK' ? 'Markeret som udført: ' : 'Sikeresen készre jelölve: ')
       + title + (partnerWarning ? ' – ' + partnerWarning : ''),
     )
-    window.requestAnimationFrame(() => {
-      document.querySelector('.capture-primary')?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
+
+    if (overdueQuery) {
+      // Friss DB-lekérdezés, nem tárolt UI-találatok alapján folytatjuk.
+      // A lezárást NEM ismételjük, még akkor sem, ha a frissítés hibázik.
+      try {
+        const { data, error } = await invokeLocalizedCore({
+          body: { action: 'query_items', message: overdueQuery },
+        })
+        if (error || data?.status !== 'ok' || !Array.isArray(data.items)) {
+          throw new Error('Overdue query refresh failed')
+        }
+        const openOverdueItems = (data.items as QueryResultItem[])
+          .filter((item) => item.status === 'open' && item.is_overdue)
+        setQueryResults(openOverdueItems)
+        setAssistantAnswer(openOverdueItems.length
+          ? appLocale === 'da-DK'
+            ? `${openOverdueItems.length} forfaldne opgaver tilbage.`
+            : `${openOverdueItems.length} lejárt ügy maradt.`
+          : appLocale === 'da-DK'
+            ? 'Der er ikke flere forfaldne opgaver.'
+            : 'Nincs több lejárt ügy.')
+        if (!openOverdueItems.length) overdueQueryRef.current = null
+      } catch {
+        overdueQueryRef.current = null
+        setQueryResults([])
+        setAssistantAnswer(appLocale === 'da-DK'
+          ? 'Opgaven er markeret som udført, men listen kunne ikke opdateres. Søg igen.'
+          : 'Az ügyet készre jelöltük, de a lejárt lista frissítése nem sikerült. Kérdezz rá újra.')
+      }
+    } else {
+      window.requestAnimationFrame(() => {
+        document.querySelector('.capture-primary')?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        })
       })
-    })
+    }
   }
 
   async function handleCompleteCandidate(candidate: Pick<CompleteCandidate, 'id' | 'title'>) {
@@ -3055,9 +3114,10 @@ export default function App() {
       }
 
       if (data?.status === 'completed' && data.item?.id === candidate.id) {
-        finishCompletedItem(
+        await finishCompletedItem(
           String(data.item.title ?? candidate.title),
           data.partner_notification_warning ?? null,
+          candidate.id,
         )
         return
       }
@@ -3096,9 +3156,10 @@ export default function App() {
       }
 
       if (data?.status === 'completed') {
-        finishCompletedItem(
+        await finishCompletedItem(
           String(data.item?.title ?? (appLocale === 'da-DK' ? 'opgave' : 'ügy')),
           data.partner_notification_warning ?? null,
+          data.item?.id ? String(data.item.id) : undefined,
         )
         return
       }
