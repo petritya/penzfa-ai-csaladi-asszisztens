@@ -74,6 +74,11 @@ export default function DanishHelp({ onBack }: Props) {
               Manglende særskilt påmindelse udløser ikke gentagne advarsler.
             </p>
             <p>
+              Når du søger efter forfaldne opgaver og markerer én som udført,
+              opdateres listen automatisk med de resterende forfaldne opgaver.
+              Hver opgave markeres særskilt som udført.
+            </p>
+            <p>
               Forbind Google Kalender under Indstillinger. Nye opgaver med dato
               kan overføres manuelt eller automatisk, når den indstilling er slået til.
               Med klokkeslæt oprettes som udgangspunkt en aftale på én time,
