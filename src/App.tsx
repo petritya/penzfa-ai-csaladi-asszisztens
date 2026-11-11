@@ -4729,6 +4729,12 @@ export default function App() {
                         )}
                       </>
                     )}
+                    {calendarConnected && (calendarImportNeedsReauth || calendarNeedsReauth) && (
+                      <button className="secondary-button" type="button"
+                        disabled={calendarBusy} onClick={() => void handleConnectCalendar()}>
+                        {calendarBusy ? t('loading') : (appLocale === 'da-DK' ? 'Forny Google-adgang' : 'Google-engedély megújítása')}
+                      </button>
+                    )}
                     {calendarConnected ? (
                       <button className="secondary-button" type="button"
                         disabled={calendarBusy} onClick={() => void handleDisconnectCalendar()}>
