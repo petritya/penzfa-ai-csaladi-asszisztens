@@ -264,6 +264,65 @@ Deno.serve(async (request: Request) => {
     }
 
 
+    // A frissítéskor elveszett Google-törlési jóváhagyás visszaállítható
+    // a már tárolt összekapcsolásból és a helyi törlési naplóból.
+    if (body.action === 'list_pending_calendar_deletions') {
+      const { data: member, error: memberError } = await db.from('family_members')
+        .select('family_id').eq('user_id',userId).eq('member_kind','active').maybeSingle()
+      if (memberError) throw memberError
+      if (!member) return json({items:[]})
+
+      const { data: links, error: linkError } = await db.from('google_calendar_exports')
+        .select('item_id').eq('user_id',userId).eq('status','sent')
+        .is('google_deleted_at',null).limit(100)
+      if (linkError) throw linkError
+      if (!links?.length) return json({items:[]})
+
+      const { data: items, error: itemError } = await db.from('items')
+        .select('id,title,updated_at').in('id',links.map(link=>link.item_id))
+        .eq('family_id',member.family_id).eq('responsible_user_id',userId)
+        .eq('status','deleted').order('updated_at',{ascending:false}).limit(30)
+      if (itemError) throw itemError
+      if (!items?.length) return json({items:[]})
+
+      const { data: decisions, error: decisionError } = await db.from('activity_log')
+        .select('item_id,action').eq('family_id',member.family_id)
+        .in('item_id',items.map(item=>item.id))
+        .in('action',['item_deleted','calendar_event_kept_by_request'])
+      if (decisionError) throw decisionError
+      const deletedLocally = new Set((decisions??[])
+        .filter(row=>row.action==='item_deleted').map(row=>row.item_id))
+      const keptInGoogle = new Set((decisions??[])
+        .filter(row=>row.action==='calendar_event_kept_by_request').map(row=>row.item_id))
+      return json({items:items.filter(item=>deletedLocally.has(item.id)&&!keptInGoogle.has(item.id))
+        .map(item=>({id:item.id,title:item.title}))})
+    }
+
+    // A "maradjon a Google Naptárban" választás is tartós állapot:
+    // csak naplózzuk, a Google-eseményt nem módosítjuk.
+    if (body.action === 'keep_linked_calendar_event') {
+      const id=String(body.item_id??'')
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+        ||body.confirmed!==true) return json({error:'A döntéshez külön jóváhagyás kell.'},400)
+      const {data:member}=await db.from('family_members')
+        .select('family_id').eq('user_id',userId).eq('member_kind','active').maybeSingle()
+      if (!member) return json({error:'Nincs családi jogosultság.'},403)
+      const [{data:item},{data:link}]=await Promise.all([
+        db.from('items').select('id,status').eq('id',id).eq('family_id',member.family_id)
+          .eq('responsible_user_id',userId).maybeSingle(),
+        db.from('google_calendar_exports').select('event_id,status,google_deleted_at')
+          .eq('item_id',id).eq('user_id',userId).maybeSingle(),
+      ])
+      if (!item||item.status!=='deleted'||!link||link.status!=='sent'||link.google_deleted_at)
+        return json({error:'A Google-eseményhez nincs nyitott döntés.'},409)
+      const {error:recordError}=await db.from('activity_log').insert({
+        family_id:member.family_id,actor_user_id:userId,item_id:id,
+        action:'calendar_event_kept_by_request',details:{event_id:link.event_id},
+      })
+      if (recordError) throw recordError
+      return json({status:'kept'})
+    }
+
     // Google -> asszisztens: az egy már összekapcsolt eseményre vonatkozó
     // módosítás/törlés nem mehet át felhasználói döntés nélkül.
     if (body.action === 'get_linked_calendar_item') {
