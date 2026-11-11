@@ -1096,6 +1096,7 @@ export default function App() {
   useEffect(() => {
     if (!supabase || !session?.user.id || !familyName) {
       setCalendarConnected(null)
+      setCalendarDeleteFollowUp(null)
       setCalendarAutoImportEnabled(false)
       setCalendarImportCandidates([])
       setCalendarAutoExportEnabled(false)
@@ -1167,9 +1168,18 @@ export default function App() {
           if (!changes.error && Array.isArray(changes.data?.items)) {
             setCalendarChangeCandidates(changes.data.items as CalendarChangeCandidate[])
           }
+          const pendingDeletions = await supabase!.functions.invoke('google-calendar-oauth', {
+            body: { action: 'list_pending_calendar_deletions' },
+          })
+          if (!active) return
+          if (!pendingDeletions.error && Array.isArray(pendingDeletions.data?.items)) {
+            const first = pendingDeletions.data.items[0] as {id:string;title:string}|undefined
+            if (first) setCalendarDeleteFollowUp(current => current ?? {id:first.id,title:first.title})
+          }
         } else {
           setCalendarImportCandidates([])
           setCalendarChangeCandidates([])
+          setCalendarDeleteFollowUp(null)
         }
         setCalendarAutoExportEnabled(Boolean(data?.auto_export_enabled))
         setCalendarNeedsReauth(data?.auto_export_error === 'reauthorize_required')
@@ -1216,6 +1226,7 @@ export default function App() {
       return
     }
     setCalendarConnected(false)
+    setCalendarDeleteFollowUp(null)
     setCalendarAutoImportEnabled(false)
     setCalendarImportCandidates([])
     setCalendarChangeCandidates([])
@@ -2797,6 +2808,34 @@ export default function App() {
     setCreateError(data?.error ?? 'Az ügyet most nem sikerült törölni.')
   }
 
+  async function reloadPendingCalendarDeletions() {
+    if (!supabase || !session) return
+    const {data,error}=await supabase.functions.invoke('google-calendar-oauth',{
+      body:{action:'list_pending_calendar_deletions'},
+    })
+    if (error || !Array.isArray(data?.items)) return
+    const first=data.items[0] as {id:string;title:string}|undefined
+    setCalendarDeleteFollowUp(first ? {id:first.id,title:first.title} : null)
+  }
+
+  async function handleKeepLinkedGoogleEvent() {
+    if (!supabase || !session || !calendarDeleteFollowUp || calendarDeleteBusy) return
+    setCalendarDeleteBusy(true)
+    setCalendarDeleteError(null)
+    const {data,error}=await supabase.functions.invoke('google-calendar-oauth',{
+      body:{action:'keep_linked_calendar_event',item_id:calendarDeleteFollowUp.id,confirmed:true},
+    })
+    setCalendarDeleteBusy(false)
+    if (error || data?.status!=='kept') {
+      setCalendarDeleteError(appLocale === 'da-DK'
+        ? 'Beslutningen kunne ikke gemmes. Prøv igen.'
+        : 'A döntést nem sikerült menteni. Próbáld újra.')
+      return
+    }
+    setCalendarDeleteFollowUp(null)
+    await reloadPendingCalendarDeletions()
+  }
+
   async function handleDeleteLinkedGoogleEvent() {
     if (!supabase || !session || !calendarDeleteFollowUp || calendarDeleteBusy) return
     if (!window.confirm(appLocale === 'da-DK'
@@ -2818,6 +2857,7 @@ export default function App() {
       ? 'Begivenheden er slettet i Google Kalender og assistenten.'
       : 'Az eseményt az asszisztensből és a Google Naptárból is töröltük.')
     setCalendarDeleteFollowUp(null)
+    await reloadPendingCalendarDeletions()
   }
 
   function startReminderEdit(itemId: string, title: string,
@@ -4341,7 +4381,7 @@ export default function App() {
                       {appLocale === 'da-DK' ? 'Slet også i Google Kalender' : 'Google Naptárból is törlés'}
                     </button>
                     <button className="secondary-button" type="button" disabled={calendarDeleteBusy}
-                      onClick={() => {setCalendarDeleteFollowUp(null);setCalendarDeleteError(null)}}>
+                      onClick={() => void handleKeepLinkedGoogleEvent()}>
                       {appLocale === 'da-DK' ? 'Behold i Google Kalender' : 'Maradjon a Google Naptárban'}
                     </button>
                   </div>
