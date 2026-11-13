@@ -288,7 +288,12 @@ async function normalizeRecordedVoice(
   }
 
   let decoded: AudioBuffer
-  const context = new AudioContext()
+  let context: AudioContext
+  try {
+    context = new AudioContext()
+  } catch {
+    return fallback
+  }
   try {
     // A Web Audio csak teljes felvételt tud dekódolni, ezért ezt az
     // onstop után, a teljes Blobon végezzük.
@@ -2235,7 +2240,7 @@ export default function App() {
       // Androidon előbb próbáljuk a stabilabb MP4/AAC konténert, ha a
       // böngésző támogatja. Egyébként WebM + helyi WAV-normalizálás.
       const preferredTypes = isAndroid
-        ? ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm']
+        ? ['audio/mp4;codecs=mp4a.40.2', 'audio/webm;codecs=opus', 'audio/webm']
         : ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4']
       const supportedType = preferredTypes.find((type) => MediaRecorder.isTypeSupported(type))
       const recorder = supportedType
