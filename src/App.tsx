@@ -272,6 +272,74 @@ function greetingForHour(hour: number, locale: AppLocale) {
   return uiText(locale, 'greetingEvening')
 }
 
+// Androidon a MediaRecorder első WebM-fájlja időnként nem olvasható a
+// transzkripciós API számára. A helyben dekódolható WebM-et egységes,
+// 16 kHz-es mono PCM WAV formátumba csomagoljuk feltöltés előtt.
+// A hanganyag csak a készülék memóriájában van; nem naplózzuk és nem tároljuk.
+async function normalizeRecordedVoice(
+  original: Blob,
+  mimeType: string,
+  isAndroidDevice: boolean,
+): Promise<{ audio: Blob; mimeType: string }> {
+  const fallback = { audio: original, mimeType }
+  if (!isAndroidDevice || !mimeType.startsWith('audio/webm')
+    || typeof AudioContext === 'undefined' || typeof OfflineAudioContext === 'undefined') {
+    return fallback
+  }
+
+  let decoded: AudioBuffer
+  const context = new AudioContext()
+  try {
+    // A Web Audio csak teljes felvételt tud dekódolni, ezért ezt az
+    // onstop után, a teljes Blobon végezzük.
+    decoded = await context.decodeAudioData(await original.arrayBuffer())
+  } catch {
+    return fallback
+  } finally {
+    await context.close().catch(() => {})
+  }
+
+  try {
+    const rate = 16000
+    const length = Math.ceil(decoded.duration * rate)
+    // A szerver 10 MB-os határát sem lépjük át nagy hangfelvétellel.
+    if (length < 1600 || length > 4000000) return fallback
+    const offline = new OfflineAudioContext(1, length, rate)
+    const source = offline.createBufferSource()
+    source.buffer = decoded
+    source.connect(offline.destination)
+    source.start()
+    const rendered = await offline.startRendering()
+    const samples = rendered.getChannelData(0)
+    const bytes = new ArrayBuffer(44 + samples.length * 2)
+    const view = new DataView(bytes)
+    const chunk = (offset: number, value: string) => {
+      for (let i = 0; i < value.length; i += 1) view.setUint8(offset + i, value.charCodeAt(i))
+    }
+    chunk(0, 'RIFF')
+    view.setUint32(4, 36 + samples.length * 2, true)
+    chunk(8, 'WAVE')
+    chunk(12, 'fmt ')
+    view.setUint32(16, 16, true)
+    view.setUint16(20, 1, true) // PCM
+    view.setUint16(22, 1, true) // mono
+    view.setUint32(24, rate, true)
+    view.setUint32(28, rate * 2, true)
+    view.setUint16(32, 2, true)
+    view.setUint16(34, 16, true)
+    chunk(36, 'data')
+    view.setUint32(40, samples.length * 2, true)
+    for (let i = 0; i < samples.length; i += 1) {
+      const value = Math.max(-1, Math.min(1, samples[i]))
+      view.setInt16(44 + i * 2, value < 0 ? value * 32768 : value * 32767, true)
+    }
+    return { audio: new Blob([bytes], { type: 'audio/wav' }), mimeType: 'audio/wav' }
+  } catch {
+    // Ha a készülék nem képes átalakítani, megmarad a korábbi működés.
+    return fallback
+  }
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [loadingSession, setLoadingSession] = useState(hasSupabaseConfig)
@@ -2052,11 +2120,12 @@ export default function App() {
     setVoiceError(null)
 
     try {
-      const extension = mimeType.includes('mp4') ? 'm4a' : mimeType.includes('ogg') ? 'ogg' : 'webm'
+      const normalized = await normalizeRecordedVoice(audio, mimeType, isAndroid)
+      const uploadType = normalized.mimeType.split(';')[0].trim() || 'audio/webm'
+      const extension = uploadType === 'audio/wav' ? 'wav'
+        : uploadType.includes('mp4') ? 'm4a' : uploadType.includes('ogg') ? 'ogg' : 'webm'
       const form = new FormData()
-      // A codecs paramétert a WebM fájlnál a transzkripciós API nem mindig fogadja el.
-      const uploadType = mimeType.split(';')[0].trim() || 'audio/webm'
-      form.append('file', new File([audio], `penzfa-voice.${extension}`, { type: uploadType }))
+      form.append('file', new File([normalized.audio], `penzfa-voice.${extension}`, { type: uploadType }))
       form.append('language', appLocale === 'da-DK' ? 'da' : 'hu')
       form.append(
         'member_names',
@@ -2163,11 +2232,11 @@ export default function App() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       mediaStreamRef.current = stream
 
-      const preferredTypes = [
-        'audio/webm;codecs=opus',
-        'audio/webm',
-        'audio/mp4',
-      ]
+      // Androidon előbb próbáljuk a stabilabb MP4/AAC konténert, ha a
+      // böngésző támogatja. Egyébként WebM + helyi WAV-normalizálás.
+      const preferredTypes = isAndroid
+        ? ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm']
+        : ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4']
       const supportedType = preferredTypes.find((type) => MediaRecorder.isTypeSupported(type))
       const recorder = supportedType
         ? new MediaRecorder(stream, { mimeType: supportedType })
