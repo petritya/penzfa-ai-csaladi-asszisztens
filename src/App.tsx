@@ -336,6 +336,7 @@ export default function App() {
     return window.matchMedia('(display-mode: standalone)').matches
       || navigatorWithStandalone.standalone === true
   })
+  const isAndroid = /Android/i.test(window.navigator.userAgent)
   const isIos = /iPad|iPhone|iPod/i.test(window.navigator.userAgent)
     || (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1)
 
@@ -343,6 +344,10 @@ export default function App() {
   const [pushAppId, setPushAppId] = useState<string | null>(null)
   const [pushBusy, setPushBusy] = useState(false)
   const [pushError, setPushError] = useState<string | null>(null)
+  const [showPushGuide, setShowPushGuide] = useState(false)
+  const [pushGuideSeen, setPushGuideSeen] = useState(
+    () => window.localStorage.getItem('penzfa-push-guide-seen-v1') === 'yes',
+  )
 
   const [appLocale, setAppLocale] = useState<AppLocale>(detectAppLocale)
   const [deviceTimezone] = useState(detectDeviceTimezone)
@@ -1631,6 +1636,8 @@ export default function App() {
       const subscribed = await waitForPushSubscription(oneSignal)
       if (subscribed) {
         setPushStatus('enabled')
+        // Az első sikeres engedélyezés után egyetlen rövid útmutató.
+        if ((isAndroid || isIos) && !pushGuideSeen) setShowPushGuide(true)
       } else {
         setPushStatus('ready')
         setPushError(
@@ -4875,6 +4882,63 @@ export default function App() {
                       ? tr("Értesítések újrapróbálása")
                       : tr("Értesítések bekapcsolása")}
                   </button>
+                )}
+                <button className="secondary-button" type="button"
+                  onClick={() => setShowPushGuide((current) => !current)}>
+                  {appLocale === 'da-DK' ? 'Vejledning til notifikationer' : 'Értesítési beállítási útmutató'}
+                </button>
+                {showPushGuide && (
+                  <div className="capture-help">
+                    <p><strong>{appLocale === 'da-DK'
+                      ? 'Sådan undgår du forsinkede notifikationer'
+                      : 'Így csökkentheted az értesítések késését'}</strong></p>
+                    {isAndroid ? (
+                      <>
+                        <p>{appLocale === 'da-DK'
+                          ? 'Tillad notifikationer, og kontroller batteribegrænsninger for både Pénzfa og browseren. Systemindstillinger skal ændres manuelt.'
+                          : 'Engedélyezd az értesítéseket, és ellenőrizd a Pénzfa, valamint a böngésző akkumulátorkorlátozásait. Ezeket az Android-beállításokat csak te módosíthatod.'}</p>
+                        <details className="help-section">
+                          <summary>Xiaomi / Redmi / POCO (HyperOS)</summary>
+                          <ol>
+                            <li>{appLocale === 'da-DK'
+                              ? 'Indstillinger → Apps → Pénzfa → Batteri: ingen begrænsninger.'
+                              : 'Beállítások → Alkalmazások → AI családi asszisztens → Energia: Nincs korlátozás (ha elérhető).'}</li>
+                            <li>{appLocale === 'da-DK'
+                              ? 'Aktivér automatisk start i baggrunden for Pénzfa.'
+                              : 'Kapcsold be az „Automatikus indítás a háttérben” opciót a Pénzfánál.'}</li>
+                            <li>{appLocale === 'da-DK'
+                              ? 'Slå automatisk pause for ubrugte apps fra.'
+                              : 'Kapcsold ki az „Alkalmazásaktivitás szüneteltetése, ha nem használják” opciót.'}</li>
+                            <li>{appLocale === 'da-DK'
+                              ? 'Kontroller også batteriindstillingerne for Chrome.'
+                              : 'Ellenőrizd a Chrome akkumulátorhasználati korlátozását is.'}</li>
+                          </ol>
+                        </details>
+                        <details className="help-section">
+                          <summary>Samsung / Android</summary>
+                          <p>{appLocale === 'da-DK'
+                            ? 'Indstillinger → Apps → Pénzfa og browseren → Batteri: tillad baggrundsbrug. Kontroller også notifikationstilladelser og sovende apps.'
+                            : 'Beállítások → Alkalmazások → Pénzfa és a böngésző → Akkumulátor: háttérhasználat engedélyezése. Ellenőrizd az értesítési engedélyeket és az alvó alkalmazások listáját is.'}</p>
+                        </details>
+                      </>
+                    ) : isIos ? (
+                      <p>{appLocale === 'da-DK'
+                        ? 'Føj Pénzfa til hjemmeskærmen i Safari, tillad notifikationer, og kontroller Fokus og notifikationsindstillinger.'
+                        : 'Add hozzá a Pénzfát a főképernyőhöz Safariból, engedélyezd az értesítéseket, és ellenőrizd a Fókusz módot, valamint az értesítési beállításokat.'}</p>
+                    ) : (
+                      <p>{appLocale === 'da-DK'
+                        ? 'Tillad notifikationer for denne hjemmeside i browserens indstillinger.'
+                        : 'Engedélyezd a webhely értesítéseit a böngésző beállításaiban.'}</p>
+                    )}
+                    <p><small>{appLocale === 'da-DK'
+                      ? 'Menunavne varierer efter enhed. Web-push kan stadig blive forsinket.'
+                      : 'A menüpontok készülékenként eltérhetnek. A webes push időben történő megérkezése így sem garantált.'}</small></p>
+                    <button className="secondary-button" type="button" onClick={() => {
+                      window.localStorage.setItem('penzfa-push-guide-seen-v1', 'yes')
+                      setPushGuideSeen(true)
+                      setShowPushGuide(false)
+                    }}>{appLocale === 'da-DK' ? 'Færdig' : 'Rendben, beállítottam'}</button>
+                  </div>
                 )}
               </section>
             )}
